@@ -19,6 +19,8 @@
 - Commit as `Carmelo Santana <me@carmelosantana.com>`. This is the standing default identity; do not override it.
 - **Nothing is pushed to GitHub until Task 9.** The repository stays local through Task 8.
 - The `baseline` eval condition MUST pin `outputStyle` to `"Default"` explicitly. It must never omit the setting and inherit the operator's global config.
+- Every eval invocation MUST pin `--model` explicitly. It must never inherit the operator's default model. A run with an unrecorded model is not reproducible.
+- The measured run covers two models, by these exact ids: `claude-fable-5` and `claude-opus-5`. Results are reported per model, never pooled across models.
 - All reporting MUST show per-case rows before any aggregate, and MUST report total tokens alongside output tokens.
 
 ---
@@ -558,7 +560,9 @@ git commit -m "feat: add 12 eval cases covering wins and the four regression cla
 - Consumes: nothing.
 - Produces: `evals/lib/report.mjs` exporting `compare(baselineRows, candidateRows)` and `formatReport(comparison, options)`. Task 6 calls both.
 
-A **row** is `{ caseId, category, trial, condition, inputTokens, outputTokens, totalTokens, chars }`. Task 5 produces rows in exactly this shape.
+A **row** is `{ caseId, category, trial, condition, model, inputTokens, outputTokens, totalTokens, chars }`. Task 5 produces rows in exactly this shape.
+
+`compare` is deliberately model-agnostic: it compares two row sets and does not inspect `model`. Task 6 partitions rows by model BEFORE calling `compare`, so results are never pooled across models. `formatReport` takes the model name only to label its output.
 
 `compare` returns:
 
@@ -589,6 +593,7 @@ function row (caseId, condition, outputTokens, inputTokens = 100, trial = 1) {
     category: 'short-lookup',
     trial,
     condition,
+    model: 'claude-fable-5',
     inputTokens,
     outputTokens,
     totalTokens: inputTokens + outputTokens,
@@ -642,27 +647,33 @@ test('compare reports the trial count', () => {
 
 test('formatReport puts per-case rows before the aggregate', () => {
   const result = compare([row('a', 'baseline', 200)], [row('a', 'less-chatty', 100)])
-  const text = formatReport(result, { condition: 'less-chatty' })
+  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5' })
   assert.ok(text.indexOf('| a |') < text.indexOf('## Aggregate'))
 })
 
 test('formatReport reports total tokens, not only output tokens', () => {
   const result = compare([row('a', 'baseline', 200)], [row('a', 'less-chatty', 100)])
-  const text = formatReport(result, { condition: 'less-chatty' })
+  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5' })
   assert.match(text, /total/i)
 })
 
 test('formatReport names every net-negative case', () => {
   const result = compare([row('a', 'baseline', 40, 100)], [row('a', 'less-chatty', 35, 900)])
-  const text = formatReport(result, { condition: 'less-chatty' })
+  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5' })
   assert.match(text, /Net-negative/)
   assert.match(text, /`a`/)
 })
 
 test('formatReport states the trial count', () => {
   const result = compare([row('a', 'baseline', 200)], [row('a', 'less-chatty', 100)])
-  const text = formatReport(result, { condition: 'less-chatty' })
+  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5' })
   assert.match(text, /1 trial/)
+})
+
+test('formatReport names the model it measured', () => {
+  const result = compare([row('a', 'baseline', 200)], [row('a', 'less-chatty', 100)])
+  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-opus-5' })
+  assert.match(text, /claude-opus-5/)
 })
 ```
 
@@ -740,11 +751,11 @@ function signed (n) {
   return n > 0 ? `+${n}` : String(n)
 }
 
-export function formatReport (comparison, { condition }) {
+export function formatReport (comparison, { condition, model }) {
   const { perCase, totals, trials } = comparison
   const lines = []
 
-  lines.push(`# ${condition} vs baseline`)
+  lines.push(`# ${condition} vs baseline on ${model}`)
   lines.push('')
   lines.push(`Measured over ${trials} trial${trials === 1 ? '' : 's'} per case.`)
   lines.push('')
@@ -786,7 +797,7 @@ export function formatReport (comparison, { condition }) {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
-Expected: PASS, 27 tests.
+Expected: PASS, 28 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -805,7 +816,7 @@ git commit -m "feat: add per-case token comparison and reporting"
 
 **Interfaces:**
 - Consumes: `evals/prompts.jsonl` from Task 3.
-- Produces: `evals/lib/runner.mjs` exporting `CONDITIONS`, `buildArgs(prompt, styleName)`, `parseUsage(payload)`, `loadCases(url)`, and `runCase(caseRow, condition, trial)`. Task 6 calls `CONDITIONS`, `loadCases`, and `runCase`.
+- Produces: `evals/lib/runner.mjs` exporting `CONDITIONS`, `MODELS`, `buildArgs(prompt, styleName, model)`, `parseUsage(payload)`, `loadCases(url)`, and `runCase(caseRow, condition, model, trial)`. Task 6 calls `CONDITIONS`, `MODELS`, `loadCases`, and `runCase`.
 
 `CONDITIONS` maps a condition name to the exact `outputStyle` value it pins:
 
@@ -813,13 +824,21 @@ git commit -m "feat: add per-case token comparison and reporting"
 { baseline: 'Default', 'less-chatty': 'Less Chatty', 'less-chatty-terse': 'Less Chatty (terse)' }
 ```
 
+`MODELS` is the list of model ids under test, in this exact order:
+
+```js
+['claude-fable-5', 'claude-opus-5']
+```
+
 - [ ] **Step 1: Probe the real CLI response shape before writing any parser**
 
 Do not guess the JSON shape. Capture it:
 
 ```bash
-cd "$(mktemp -d)" && claude -p "Reply with the single word: ok" --output-format json --settings '{"outputStyle":"Default"}' | tee /tmp/less-chatty-probe.json | head -60
+cd "$(mktemp -d)" && claude -p "Reply with the single word: ok" --output-format json --model claude-fable-5 --settings '{"outputStyle":"Default"}' | tee /tmp/less-chatty-probe.json | head -60
 ```
+
+Confirm the response echoes back the model you pinned. If `--model claude-fable-5` is rejected, stop and report the exact error — do not silently fall back to the default model, because an unpinned run is not reproducible.
 
 Read `/tmp/less-chatty-probe.json` and note the exact field names under `usage` and the field holding the response text. The parser below assumes `usage.input_tokens`, `usage.output_tokens`, the optional `usage.cache_read_input_tokens` and `usage.cache_creation_input_tokens`, and `result` for the text.
 
@@ -832,11 +851,11 @@ Create `evals/test/runner.test.mjs`:
 ```js
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CONDITIONS, buildArgs, parseUsage, loadCases } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, buildArgs, parseUsage, loadCases } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
-  const args = buildArgs('hi', CONDITIONS.baseline)
+  const args = buildArgs('hi', CONDITIONS.baseline, 'claude-fable-5')
   const settings = JSON.parse(args[args.indexOf('--settings') + 1])
   assert.equal(settings.outputStyle, 'Default')
 })
@@ -847,8 +866,23 @@ test('every condition pins an explicit output style', () => {
   }
 })
 
+test('MODELS lists both models under test in order', () => {
+  assert.deepEqual(MODELS, ['claude-fable-5', 'claude-opus-5'])
+})
+
+test('buildArgs pins the model explicitly', () => {
+  const args = buildArgs('hi', 'Less Chatty', 'claude-opus-5')
+  assert.deepEqual(args.slice(args.indexOf('--model'), args.indexOf('--model') + 2),
+    ['--model', 'claude-opus-5'])
+})
+
+test('buildArgs refuses to build without a model', () => {
+  assert.throws(() => buildArgs('hi', 'Less Chatty'), /model/)
+  assert.throws(() => buildArgs('hi', 'Less Chatty', ''), /model/)
+})
+
 test('buildArgs requests print mode and JSON output', () => {
-  const args = buildArgs('what is 2 + 2', 'Less Chatty')
+  const args = buildArgs('what is 2 + 2', 'Less Chatty', 'claude-fable-5')
   assert.ok(args.includes('-p'))
   assert.deepEqual(args.slice(args.indexOf('--output-format'), args.indexOf('--output-format') + 2),
     ['--output-format', 'json'])
@@ -856,7 +890,7 @@ test('buildArgs requests print mode and JSON output', () => {
 })
 
 test('buildArgs passes the prompt as one argument, never through a shell', () => {
-  const args = buildArgs('rm -rf / ; echo pwned', 'Default')
+  const args = buildArgs('rm -rf / ; echo pwned', 'Default', 'claude-fable-5')
   assert.ok(args.includes('rm -rf / ; echo pwned'))
 })
 
@@ -915,10 +949,14 @@ export const CONDITIONS = {
   'less-chatty-terse': 'Less Chatty (terse)'
 }
 
-export function buildArgs (prompt, styleName) {
+export const MODELS = ['claude-fable-5', 'claude-opus-5']
+
+export function buildArgs (prompt, styleName, model) {
+  if (!model) throw new Error('buildArgs requires an explicit model; an unpinned run is not reproducible')
   return [
     '-p', prompt,
     '--output-format', 'json',
+    '--model', model,
     '--settings', JSON.stringify({ outputStyle: styleName })
   ]
 }
@@ -946,9 +984,9 @@ export async function loadCases (url = new URL('../prompts.jsonl', import.meta.u
   return text.trim().split('\n').map(line => JSON.parse(line))
 }
 
-export async function runCase (caseRow, condition, trial = 1) {
+export async function runCase (caseRow, condition, model, trial = 1) {
   const cwd = await mkdtemp(join(tmpdir(), 'less-chatty-eval-'))
-  const args = buildArgs(caseRow.prompt, CONDITIONS[condition])
+  const args = buildArgs(caseRow.prompt, CONDITIONS[condition], model)
   const { stdout } = await run('claude', args, { cwd, maxBuffer: 32 * 1024 * 1024 })
   const usage = parseUsage(JSON.parse(stdout))
 
@@ -957,6 +995,7 @@ export async function runCase (caseRow, condition, trial = 1) {
     category: caseRow.category,
     trial,
     condition,
+    model,
     ...usage
   }
 }
@@ -967,7 +1006,7 @@ export async function runCase (caseRow, condition, trial = 1) {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npm test`
-Expected: PASS, 35 tests.
+Expected: PASS, 39 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1047,7 +1086,7 @@ An empty file. It keeps the directory in git before any run exists.
 
 ```js
 import { writeFile, mkdir, readFile } from 'node:fs/promises'
-import { CONDITIONS, loadCases, runCase } from './lib/runner.mjs'
+import { CONDITIONS, MODELS, loadCases, runCase } from './lib/runner.mjs'
 import { compare, formatReport } from './lib/report.mjs'
 import { checkDrift } from './lib/drift.mjs'
 
@@ -1070,24 +1109,32 @@ const rows = {}
 
 await mkdir(RESULTS, { recursive: true })
 
-for (const condition of Object.keys(CONDITIONS)) {
-  rows[condition] = []
-  for (let trial = 1; trial <= TRIALS; trial += 1) {
-    for (const caseRow of cases) {
-      process.stderr.write(`${condition} trial ${trial} ${caseRow.id}\n`)
-      rows[condition].push(await runCase(caseRow, condition, trial))
+for (const model of MODELS) {
+  rows[model] = {}
+  for (const condition of Object.keys(CONDITIONS)) {
+    rows[model][condition] = []
+    for (let trial = 1; trial <= TRIALS; trial += 1) {
+      for (const caseRow of cases) {
+        process.stderr.write(`${model} ${condition} trial ${trial} ${caseRow.id}\n`)
+        rows[model][condition].push(await runCase(caseRow, condition, model, trial))
+      }
     }
+    await writeFile(
+      new URL(`./${model}-${condition}.jsonl`, RESULTS),
+      rows[model][condition].map(row => JSON.stringify(row)).join('\n') + '\n'
+    )
   }
-  await writeFile(
-    new URL(`./${condition}.jsonl`, RESULTS),
-    rows[condition].map(row => JSON.stringify(row)).join('\n') + '\n'
-  )
 }
 
 const reports = []
-for (const condition of Object.keys(CONDITIONS)) {
-  if (condition === 'baseline') continue
-  reports.push(formatReport(compare(rows.baseline, rows[condition]), { condition }))
+for (const model of MODELS) {
+  for (const condition of Object.keys(CONDITIONS)) {
+    if (condition === 'baseline') continue
+    reports.push(formatReport(
+      compare(rows[model].baseline, rows[model][condition]),
+      { condition, model }
+    ))
+  }
 }
 
 const report = reports.join('\n\n---\n\n')
@@ -1095,19 +1142,21 @@ await writeFile(new URL('./report.md', RESULTS), report)
 console.log(report)
 ```
 
+Rows are partitioned by model before `compare` is called, so no comparison ever pools two models.
+
 `compare` throws when the condition sets do not match, so a partial run fails loudly instead of printing a number that looks like a measurement.
 
 - [ ] **Step 6: Verify `measure.mjs` parses and its imports resolve, without spending tokens**
 
 Run: `node --check evals/measure.mjs && node -e "import('./evals/lib/runner.mjs').then(m => console.log(Object.keys(m).join(',')))"`
-Expected: prints `CONDITIONS,buildArgs,loadCases,parseUsage,runCase`.
+Expected: prints `CONDITIONS,MODELS,buildArgs,loadCases,parseUsage,runCase`.
 
 Module namespace keys are sorted alphabetically by the JavaScript specification, so this is the sorted order, not the declaration order in the source file.
 
 - [ ] **Step 7: Run the full test suite**
 
 Run: `npm test`
-Expected: PASS, 35 tests.
+Expected: PASS, 39 tests.
 
 - [ ] **Step 8: Commit**
 
@@ -1223,7 +1272,7 @@ Cross-check each figure against `evals/results/report.md` by eye. A README numbe
 - [ ] **Step 3: Run the full test suite and the drift check**
 
 Run: `npm test && npm run check`
-Expected: PASS, 35 tests, then `shared bodies match`.
+Expected: PASS, 39 tests, then `shared bodies match`.
 
 - [ ] **Step 4: Commit**
 
