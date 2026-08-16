@@ -1,0 +1,58 @@
+Your infrastructure decides this. Four real options:
+
+- **Already run Postgres** → `pg-boss` or `graphile-worker`. Cron plus queue, no new service.
+- **Already run Redis** → BullMQ repeatable jobs. Best throughput and tooling.
+- **On Kubernetes, ECS, or a serverless host** → platform cron calling an authenticated HTTP endpoint. The platform owns scheduling, logging, and retries.
+- **Single instance, low stakes** → `croner` or `node-cron` in process. Zero infra, no durability.
+
+## In-process schedulers
+
+`node-cron`, `croner`, `toad-scheduler`. One `npm install` and you are done. `croner` handles timezones and DST better than `node-cron`.
+
+They fail on three things. Every replica fires the job, so you get duplicate runs. A restart loses any missed run. A crashed job leaves no record and no retry.
+
+Fine for a cache refresh. Not fine for billing.
+
+## Database-backed queues
+
+`pg-boss` and `graphile-worker` store jobs in Postgres. `pg-boss` ships cron scheduling directly. Both give you retries, backoff, and exactly-one-worker delivery through row locks.
+
+Throughput lands in the thousands of jobs per minute, not the hundreds of thousands. That ceiling is far above most services.
+
+`Agenda` is the MongoDB equivalent. Maintenance has slowed. Prefer the Postgres options if you have a choice.
+
+## Redis queues
+
+BullMQ is the mature choice. Repeatable jobs, concurrency limits, rate limiting, and Bull Board for a UI.
+
+You now operate Redis. Persistence must be configured, or a Redis restart drops scheduled state.
+
+## External schedulers
+
+Kubernetes CronJob, ECS scheduled tasks, Cloud Scheduler, EventBridge, Vercel Cron, GitHub Actions.
+
+The schedule lives outside your app. You get platform-level logs, alerting, and retry policy for free. Deploys never disturb the schedule.
+
+Two costs. The trigger endpoint needs authentication, usually a shared secret header. Your handler must finish inside the platform request timeout, or it must hand off to a queue.
+
+## Durable execution
+
+Temporal, Inngest, Trigger.dev. Use these when a scheduled job is a multi-step workflow that must survive a crash mid-way.
+
+Temporal is self-hosted and heavy. Inngest and Trigger.dev are SaaS with per-run pricing. All three are overkill for "send a nightly report".
+
+## What to decide regardless of choice
+
+**Concurrency.** More than one replica means you need locking. A Postgres advisory lock or a Redis `SET NX` lock is enough for the in-process options.
+
+**Idempotency.** Assume every job can run twice. Write the handler so a second run is harmless.
+
+**Missed runs.** Decide whether a job skipped during downtime should catch up or be dropped. `pg-boss` and BullMQ can catch up. Platform cron generally cannot.
+
+**Failure alerting.** A silent scheduled job that stops running is a common outage. Alert on absence, not just on errors.
+
+**Event loop.** A CPU-heavy job in-process blocks request handling. Move it to a worker process or a separate deployment.
+
+## Next step
+
+Run `psql -c "select version()"` against your service database. If Postgres answers, install `pg-boss` and you need no new infrastructure.

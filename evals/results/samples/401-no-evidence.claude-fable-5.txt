@@ -1,0 +1,9 @@
+A 401 means the server received the request and rejected it as unauthenticated. The assertion line alone cannot say why. Common causes: the test sends no auth header, the token is expired or malformed, or the test environment lacks the secret the server validates against.
+
+The evidence does not identify which one. Get the server's own explanation first:
+
+```js
+console.log(res.status, res.headers['www-authenticate'], await res.text());
+```
+
+The response body or `WWW-Authenticate` header usually names the exact failure, such as "missing token" versus "invalid signature". Run the test once with that line added and paste the output.
