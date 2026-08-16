@@ -52,7 +52,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test evals/test/",
+    "test": "node --test 'evals/test/*.test.mjs'",
     "check": "node evals/check.mjs",
     "measure": "node evals/measure.mjs"
   }
