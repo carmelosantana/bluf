@@ -854,7 +854,7 @@ git commit -m "feat: add per-case token comparison and reporting"
 
 **Interfaces:**
 - Consumes: `evals/prompts.jsonl` from Task 3.
-- Produces: `evals/lib/runner.mjs` exporting `CONDITIONS`, `MODELS`, `ENVIRONMENTS`, `FULL_ENV_CASES`, `buildArgs(prompt, styleName, model, environment)`, `parseUsage(payload)`, `loadCases(url)`, and `runCase(caseRow, condition, model, environment, trial)`. Task 6 calls `CONDITIONS`, `MODELS`, `ENVIRONMENTS`, `FULL_ENV_CASES`, `loadCases`, and `runCase`.
+- Produces: `evals/lib/runner.mjs` exporting `CONDITIONS`, `MODELS`, `ENVIRONMENTS`, `OVERHEAD_CASES`, `buildArgs(prompt, styleName, model, environment)`, `parseUsage(payload)`, `loadCases(url)`, and `runCase(caseRow, condition, model, environment, trial)`. Task 6 calls `CONDITIONS`, `MODELS`, `ENVIRONMENTS`, `OVERHEAD_CASES`, `loadCases`, and `runCase`.
 
 `ENVIRONMENTS` maps an environment name to the extra CLI flags it adds:
 
@@ -907,7 +907,7 @@ Create `evals/test/runner.test.mjs`:
 ```js
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CONDITIONS, MODELS, ENVIRONMENTS, FULL_ENV_CASES, buildArgs, parseUsage, loadCases } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, buildArgs, parseUsage, loadCases } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -934,10 +934,10 @@ test('buildArgs rejects an unknown environment', () => {
   assert.throws(() => buildArgs('hi', 'Less Chatty', 'claude-fable-5'), /environment/)
 })
 
-test('FULL_ENV_CASES names two real case ids', async () => {
+test('OVERHEAD_CASES names two real case ids', async () => {
   const ids = (await loadCases()).map(row => row.id)
-  assert.equal(FULL_ENV_CASES.length, 2)
-  for (const id of FULL_ENV_CASES) assert.ok(ids.includes(id), `${id} is not a real case`)
+  assert.equal(OVERHEAD_CASES.length, 2)
+  for (const id of OVERHEAD_CASES) assert.ok(ids.includes(id), `${id} is not a real case`)
 })
 
 test('ENVIRONMENTS defines exactly lean and full', () => {
@@ -1040,7 +1040,14 @@ export const ENVIRONMENTS = {
   full: []
 }
 
-export const FULL_ENV_CASES = ['port-default', 'docker-cache-miss']
+export const OVERHEAD_CASES = ['port-default', 'docker-cache-miss']
+
+export const MAIN_ENVIRONMENT = 'full'
+export const OVERHEAD_ENVIRONMENT = 'lean'
+
+// The lean flags force claude-opus-5 regardless of what --model requests, so pinning
+// it here is what holds the model constant and makes the overhead comparison valid.
+export const OVERHEAD_MODEL = 'claude-opus-5'
 
 export function buildArgs (prompt, styleName, model, environment) {
   if (!model) throw new Error('buildArgs requires an explicit model; an unpinned run is not reproducible')
