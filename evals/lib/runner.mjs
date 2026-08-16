@@ -19,7 +19,15 @@ export const ENVIRONMENTS = {
   full: []
 }
 
-export const FULL_ENV_CASES = ['port-default', 'docker-cache-miss']
+export const OVERHEAD_CASES = ['port-default', 'docker-cache-miss']
+
+export const MAIN_ENVIRONMENT = 'full'
+export const OVERHEAD_ENVIRONMENT = 'lean'
+// Pinned because the lean flags (--strict-mcp-config with an empty --mcp-config)
+// force the run onto claude-opus-5 regardless of what --model requests. Pinning
+// the same model here is what holds the model constant and keeps the overhead
+// comparison valid — do not "fix" this to a different model.
+export const OVERHEAD_MODEL = 'claude-opus-5'
 
 export function buildArgs (prompt, styleName, model, environment) {
   if (!model) throw new Error('buildArgs requires an explicit model; an unpinned run is not reproducible')

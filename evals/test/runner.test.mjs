@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CONDITIONS, MODELS, ENVIRONMENTS, FULL_ENV_CASES, buildArgs, parseUsage, loadCases } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -27,10 +27,20 @@ test('buildArgs rejects an unknown environment', () => {
   assert.throws(() => buildArgs('hi', 'Less Chatty', 'claude-fable-5'), /environment/)
 })
 
-test('FULL_ENV_CASES names two real case ids', async () => {
+test('OVERHEAD_CASES names two real case ids', async () => {
   const ids = (await loadCases()).map(row => row.id)
-  assert.equal(FULL_ENV_CASES.length, 2)
-  for (const id of FULL_ENV_CASES) assert.ok(ids.includes(id), `${id} is not a real case`)
+  assert.equal(OVERHEAD_CASES.length, 2)
+  for (const id of OVERHEAD_CASES) assert.ok(ids.includes(id), `${id} is not a real case`)
+})
+
+test('MAIN_ENVIRONMENT and OVERHEAD_ENVIRONMENT are distinct real environments', () => {
+  assert.ok(MAIN_ENVIRONMENT in ENVIRONMENTS)
+  assert.ok(OVERHEAD_ENVIRONMENT in ENVIRONMENTS)
+  assert.notEqual(MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT)
+})
+
+test('OVERHEAD_MODEL is one of the models under test', () => {
+  assert.ok(MODELS.includes(OVERHEAD_MODEL))
 })
 
 test('ENVIRONMENTS defines exactly lean and full', () => {
