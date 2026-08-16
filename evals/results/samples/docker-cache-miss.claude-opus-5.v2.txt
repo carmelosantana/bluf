@@ -1,0 +1,33 @@
+**Explicitly disabled**
+- `--no-cache` on the build command.
+- `--pull` forcing a fresh base image resolve every run.
+- Cleanup steps that wipe the cache: `docker builder prune`, `docker system prune -af`, BuildKit GC policy, GitHub Actions cache eviction at the 10 GB limit.
+
+**Cache never persists between runs**
+- Ephemeral CI runners with a fresh daemon and no `--cache-from` / `--cache-to`.
+- `docker buildx` on the default `docker-container` driver. That builder keeps its own cache, isolated from the daemon's.
+- `--cache-to mode=min` (the default). It exports only the final stage, so multi-stage intermediates always miss.
+- `BUILDKIT_INLINE_CACHE=1` not set when a pushed image is the cache source.
+- `--cache-from` pointing at an image that does not exist or that auth cannot pull. BuildKit ignores this silently.
+- Toggling `DOCKER_BUILDKIT` between 0 and 1. The two builders keep separate caches.
+- A different builder instance, host, or `DOCKER_HOST` each run.
+- Different target platform or architecture. Cache is per-platform.
+
+**Context changes every run**
+- No `.dockerignore`, plus an early `COPY . .`. Any touched file busts every layer after it, including `.git`, logs, `node_modules`, and build output.
+- A fresh CI `git clone` resets every file's mtime. The classic builder includes mtime in the COPY cache key, so this misses on every run. BuildKit hashes contents only and is not affected.
+- Copying generated artifacts that are not reproducible: tarballs with embedded timestamps, a lockfile rewritten by the install step, a version file stamped with the build time.
+
+**Dockerfile content changes every run**
+- A dynamic `ARG` or `ENV`: `BUILD_DATE`, `GIT_SHA`, `VERSION`, or a deliberate `CACHEBUST`. Everything from that instruction down misses.
+- `RUN` command strings containing a timestamp or a random value. The cache key is the literal string.
+- `ADD` from a remote URL or a git ref that resolves to new content.
+- Any edit to an earlier instruction, including a comment. Invalidation cascades to all following layers.
+
+**Base image changes**
+- A floating tag such as `:latest` or `:3-slim` that gets a new digest upstream. Pin by digest to stop this.
+- A rebuilt internal base image. It invalidates the entire chain below `FROM`.
+
+Note: `RUN --mount=type=secret` does not bust the cache; only the secret id is part of the key. `RUN --mount=type=cache` survives layer misses but does not prevent them.
+
+Next step: run `docker build --progress=plain . 2>&1 | grep -E 'CACHED|^#[0-9]+ \[' ` and find the first step that stops printing `CACHED`. That line is the cause.

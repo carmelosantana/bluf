@@ -1,0 +1,12 @@
+{"caseId":"port-default","category":"short-lookup","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":121952,"outputTokens":64,"totalTokens":122016,"chars":159}
+{"caseId":"git-no-ff","category":"short-lookup","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":121953,"outputTokens":234,"totalTokens":122187,"chars":726}
+{"caseId":"to-sorted","category":"short-lookup","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":121959,"outputTokens":231,"totalTokens":122190,"chars":512}
+{"caseId":"health-endpoint","category":"multi-step","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":121979,"outputTokens":1004,"totalTokens":122983,"chars":2115}
+{"caseId":"actions-workflow","category":"multi-step","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":244423,"outputTokens":822,"totalTokens":245245,"chars":828}
+{"caseId":"cjs-to-esm","category":"multi-step","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":121966,"outputTokens":1830,"totalTokens":123796,"chars":3907}
+{"caseId":"401-no-evidence","category":"debug-partial-evidence","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":121991,"outputTokens":1058,"totalTokens":123049,"chars":1809}
+{"caseId":"ci-exit-1","category":"debug-partial-evidence","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":121966,"outputTokens":1753,"totalTokens":123719,"chars":2142}
+{"caseId":"scheduled-jobs","category":"options","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":121960,"outputTokens":1021,"totalTokens":122981,"chars":2340}
+{"caseId":"shared-types","category":"options","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":121964,"outputTokens":1121,"totalTokens":123085,"chars":2792}
+{"caseId":"security-headers","category":"long-list","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":121957,"outputTokens":1262,"totalTokens":123219,"chars":3062}
+{"caseId":"docker-cache-miss","category":"long-list","trial":1,"condition":"baseline","model":"claude-fable-5","environment":"full","inputTokens":121960,"outputTokens":1680,"totalTokens":123640,"chars":4248}

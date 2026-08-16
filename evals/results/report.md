@@ -6,23 +6,23 @@ Measured over 1 trial per case.
 
 | Case | Category | Output (base) | Output (cand) | Δ output | Total (base) | Total (cand) | Δ total |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| port-default | short-lookup | 64 | 8 | -56 | 122016 | 123643 | +1627 |
-| git-no-ff | short-lookup | 234 | 123 | -111 | 122187 | 123769 | +1582 |
-| to-sorted | short-lookup | 231 | 45 | -186 | 122190 | 123700 | +1510 |
-| health-endpoint | multi-step | 1004 | 611 | -393 | 122983 | 124274 | +1291 |
-| actions-workflow | multi-step | 822 | 305 | -517 | 245245 | 123966 | -121279 |
-| cjs-to-esm | multi-step | 1830 | 1764 | -66 | 123796 | 125425 | +1629 |
-| 401-no-evidence | debug-partial-evidence | 1058 | 660 | -398 | 123049 | 124335 | +1286 |
-| ci-exit-1 | debug-partial-evidence | 1753 | 803 | -950 | 123719 | 124459 | +740 |
-| scheduled-jobs | options | 1021 | 659 | -362 | 122981 | 124307 | +1326 |
-| shared-types | options | 1121 | 741 | -380 | 123085 | 124395 | +1310 |
-| security-headers | long-list | 1262 | 1002 | -260 | 123219 | 124652 | +1433 |
-| docker-cache-miss | long-list | 1680 | 2622 | +942 | 123640 | 126267 | +2627 |
+| port-default | short-lookup | 86 | 5 | -81 | 122042 | 123998 | +1956 |
+| git-no-ff | short-lookup | 281 | 109 | -172 | 122241 | 124114 | +1873 |
+| to-sorted | short-lookup | 159 | 54 | -105 | 122122 | 124061 | +1939 |
+| health-endpoint | multi-step | 904 | 527 | -377 | 122885 | 124547 | +1662 |
+| actions-workflow | multi-step | 743 | 334 | -409 | 122722 | 124357 | +1635 |
+| cjs-to-esm | multi-step | 2226 | 1787 | -439 | 124192 | 125799 | +1607 |
+| 401-no-evidence | debug-partial-evidence | 1413 | 547 | -866 | 123404 | 124577 | +1173 |
+| ci-exit-1 | debug-partial-evidence | 1314 | 983 | -331 | 123280 | 124996 | +1716 |
+| scheduled-jobs | options | 1223 | 568 | -655 | 123181 | 124572 | +1391 |
+| shared-types | options | 1041 | 623 | -418 | 123012 | 124634 | +1622 |
+| security-headers | long-list | 1181 | 951 | -230 | 123138 | 124955 | +1817 |
+| docker-cache-miss | long-list | 2431 | 2215 | -216 | 124394 | 126216 | +1822 |
 
 ## Aggregate
 
-- Output tokens: 12080 to 9343 (-2737)
-- Total tokens: 1598110 to 1493192 (-104918)
+- Output tokens: 13002 to 8703 (-4299)
+- Total tokens: 1476613 to 1496826 (+20213)
 
 ## Net-negative cases
 
@@ -32,6 +32,7 @@ These cases cost MORE total tokens with the style on:
 - `git-no-ff`
 - `to-sorted`
 - `health-endpoint`
+- `actions-workflow`
 - `cjs-to-esm`
 - `401-no-evidence`
 - `ci-exit-1`
@@ -51,23 +52,23 @@ Measured over 1 trial per case.
 
 | Case | Category | Output (base) | Output (cand) | Δ output | Total (base) | Total (cand) | Δ total |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| port-default | short-lookup | 64 | 5 | -59 | 122016 | 123939 | +1923 |
-| git-no-ff | short-lookup | 234 | 83 | -151 | 122187 | 124014 | +1827 |
-| to-sorted | short-lookup | 231 | 65 | -166 | 122190 | 124006 | +1816 |
-| health-endpoint | multi-step | 1004 | 545 | -459 | 122983 | 124505 | +1522 |
-| actions-workflow | multi-step | 822 | 424 | -398 | 245245 | 124375 | -120870 |
-| cjs-to-esm | multi-step | 1830 | 1502 | -328 | 123796 | 125450 | +1654 |
-| 401-no-evidence | debug-partial-evidence | 1058 | 698 | -360 | 123049 | 124665 | +1616 |
-| ci-exit-1 | debug-partial-evidence | 1753 | 562 | -1191 | 123719 | 124514 | +795 |
-| scheduled-jobs | options | 1021 | 549 | -472 | 122981 | 124477 | +1496 |
-| shared-types | options | 1121 | 646 | -475 | 123085 | 124589 | +1504 |
-| security-headers | long-list | 1262 | 954 | -308 | 123219 | 124893 | +1674 |
-| docker-cache-miss | long-list | 1680 | 2456 | +776 | 123640 | 126400 | +2760 |
+| port-default | short-lookup | 86 | 5 | -81 | 122042 | 124290 | +2248 |
+| git-no-ff | short-lookup | 281 | 97 | -184 | 122241 | 124385 | +2144 |
+| to-sorted | short-lookup | 159 | 77 | -82 | 122122 | 124373 | +2251 |
+| health-endpoint | multi-step | 904 | 537 | -367 | 122885 | 124850 | +1965 |
+| actions-workflow | multi-step | 743 | 593 | -150 | 122722 | 249649 | +126927 |
+| cjs-to-esm | multi-step | 2226 | 1489 | -737 | 124192 | 125793 | +1601 |
+| 401-no-evidence | debug-partial-evidence | 1413 | 466 | -947 | 123404 | 124789 | +1385 |
+| ci-exit-1 | debug-partial-evidence | 1314 | 1209 | -105 | 123280 | 125515 | +2235 |
+| scheduled-jobs | options | 1223 | 575 | -648 | 123181 | 124864 | +1683 |
+| shared-types | options | 1041 | 550 | -491 | 123012 | 124848 | +1836 |
+| security-headers | long-list | 1181 | 797 | -384 | 123138 | 125094 | +1956 |
+| docker-cache-miss | long-list | 2431 | 1040 | -1391 | 124394 | 125332 | +938 |
 
 ## Aggregate
 
-- Output tokens: 12080 to 8489 (-3591)
-- Total tokens: 1598110 to 1495827 (-102283)
+- Output tokens: 13002 to 7435 (-5567)
+- Total tokens: 1476613 to 1623782 (+147169)
 
 ## Net-negative cases
 
@@ -77,6 +78,7 @@ These cases cost MORE total tokens with the style on:
 - `git-no-ff`
 - `to-sorted`
 - `health-endpoint`
+- `actions-workflow`
 - `cjs-to-esm`
 - `401-no-evidence`
 - `ci-exit-1`
@@ -96,23 +98,23 @@ Measured over 1 trial per case.
 
 | Case | Category | Output (base) | Output (cand) | Δ output | Total (base) | Total (cand) | Δ total |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| port-default | short-lookup | 5 | 66 | +61 | 121607 | 123353 | +1746 |
-| git-no-ff | short-lookup | 507 | 171 | -336 | 122117 | 123464 | +1347 |
-| to-sorted | short-lookup | 179 | 211 | +32 | 121791 | 123515 | +1724 |
-| health-endpoint | multi-step | 1048 | 772 | -276 | 122680 | 124095 | +1415 |
-| actions-workflow | multi-step | 731 | 907 | +176 | 122359 | 248057 | +125698 |
-| cjs-to-esm | multi-step | 3058 | 5923 | +2865 | 124672 | 129240 | +4568 |
-| 401-no-evidence | debug-partial-evidence | 743 | 830 | +87 | 122386 | 124155 | +1769 |
-| ci-exit-1 | debug-partial-evidence | 1133 | 1897 | +764 | 122755 | 125210 | +2455 |
-| scheduled-jobs | options | 1538 | 1752 | +214 | 123145 | 125050 | +1905 |
-| shared-types | options | 1434 | 1519 | +85 | 123049 | 124835 | +1786 |
-| security-headers | long-list | 1325 | 2125 | +800 | 122944 | 125426 | +2482 |
-| docker-cache-miss | long-list | 4213 | 4864 | +651 | 125822 | 128169 | +2347 |
+| port-default | short-lookup | 5 | 5 | 0 | 121610 | 123655 | +2045 |
+| git-no-ff | short-lookup | 495 | 162 | -333 | 122094 | 123814 | +1720 |
+| to-sorted | short-lookup | 139 | 40 | -99 | 121752 | 123697 | +1945 |
+| health-endpoint | multi-step | 1092 | 879 | -213 | 122727 | 124555 | +1828 |
+| actions-workflow | multi-step | 659 | 655 | -4 | 122289 | 124331 | +2042 |
+| cjs-to-esm | multi-step | 2386 | 2379 | -7 | 124006 | 126048 | +2042 |
+| 401-no-evidence | debug-partial-evidence | 898 | 507 | -391 | 122541 | 124192 | +1651 |
+| ci-exit-1 | debug-partial-evidence | 1081 | 786 | -295 | 122706 | 124455 | +1749 |
+| scheduled-jobs | options | 1123 | 655 | -468 | 122730 | 124308 | +1578 |
+| shared-types | options | 1404 | 1330 | -74 | 123024 | 124998 | +1974 |
+| security-headers | long-list | 1836 | 1649 | -187 | 123445 | 125307 | +1862 |
+| docker-cache-miss | long-list | 3473 | 4029 | +556 | 125085 | 127684 | +2599 |
 
 ## Aggregate
 
-- Output tokens: 15914 to 21037 (+5123)
-- Total tokens: 1475327 to 1624569 (+149242)
+- Output tokens: 14591 to 13076 (-1515)
+- Total tokens: 1474009 to 1497044 (+23035)
 
 ## Net-negative cases
 
@@ -142,23 +144,23 @@ Measured over 1 trial per case.
 
 | Case | Category | Output (base) | Output (cand) | Δ output | Total (base) | Total (cand) | Δ total |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| port-default | short-lookup | 5 | 51 | +46 | 121607 | 123639 | +2032 |
-| git-no-ff | short-lookup | 507 | 164 | -343 | 122117 | 123751 | +1634 |
-| to-sorted | short-lookup | 179 | 142 | -37 | 121791 | 123737 | +1946 |
-| health-endpoint | multi-step | 1048 | 620 | -428 | 122680 | 124233 | +1553 |
-| actions-workflow | multi-step | 731 | 712 | -19 | 122359 | 124323 | +1964 |
-| cjs-to-esm | multi-step | 3058 | 1733 | -1325 | 124672 | 125334 | +662 |
-| 401-no-evidence | debug-partial-evidence | 743 | 679 | -64 | 122386 | 124298 | +1912 |
-| ci-exit-1 | debug-partial-evidence | 1133 | 1066 | -67 | 122755 | 124673 | +1918 |
-| scheduled-jobs | options | 1538 | 1169 | -369 | 123145 | 124765 | +1620 |
-| shared-types | options | 1434 | 1092 | -342 | 123049 | 124691 | +1642 |
-| security-headers | long-list | 1325 | 1513 | +188 | 122944 | 125104 | +2160 |
-| docker-cache-miss | long-list | 4213 | 4226 | +13 | 125822 | 127817 | +1995 |
+| port-default | short-lookup | 5 | 5 | 0 | 121610 | 123940 | +2330 |
+| git-no-ff | short-lookup | 495 | 141 | -354 | 122094 | 124076 | +1982 |
+| to-sorted | short-lookup | 139 | 50 | -89 | 121752 | 123999 | +2247 |
+| health-endpoint | multi-step | 1092 | 555 | -537 | 122727 | 124523 | +1796 |
+| actions-workflow | multi-step | 659 | 505 | -154 | 122289 | 124467 | +2178 |
+| cjs-to-esm | multi-step | 2386 | 2346 | -40 | 124006 | 126299 | +2293 |
+| 401-no-evidence | debug-partial-evidence | 898 | 551 | -347 | 122541 | 124526 | +1985 |
+| ci-exit-1 | debug-partial-evidence | 1081 | 1288 | +207 | 122706 | 125239 | +2533 |
+| scheduled-jobs | options | 1123 | 601 | -522 | 122730 | 124542 | +1812 |
+| shared-types | options | 1404 | 737 | -667 | 123024 | 124688 | +1664 |
+| security-headers | long-list | 1836 | 995 | -841 | 123445 | 105497 | -17948 |
+| docker-cache-miss | long-list | 3473 | 3069 | -404 | 125085 | 127019 | +1934 |
 
 ## Aggregate
 
-- Output tokens: 15914 to 13167 (-2747)
-- Total tokens: 1475327 to 1496365 (+21038)
+- Output tokens: 14591 to 10843 (-3748)
+- Total tokens: 1474009 to 1478815 (+4806)
 
 ## Net-negative cases
 
@@ -174,7 +176,6 @@ These cases cost MORE total tokens with the style on:
 - `ci-exit-1`
 - `scheduled-jobs`
 - `shared-types`
-- `security-headers`
 - `docker-cache-miss`
 
 
@@ -188,13 +189,13 @@ Measured over 1 trial per case.
 
 | Case | Category | Output (base) | Output (cand) | Δ output | Total (base) | Total (cand) | Δ total |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| port-default | short-lookup | 5 | 5 | 0 | 4844 | 6538 | +1694 |
-| docker-cache-miss | long-list | 3474 | 4601 | +1127 | 8320 | 11140 | +2820 |
+| port-default | short-lookup | 5 | 5 | 0 | 4853 | 6893 | +2040 |
+| docker-cache-miss | long-list | 4273 | 3396 | -877 | 9123 | 10289 | +1166 |
 
 ## Aggregate
 
-- Output tokens: 3479 to 4606 (+1127)
-- Total tokens: 13164 to 17678 (+4514)
+- Output tokens: 4278 to 3401 (-877)
+- Total tokens: 13976 to 17182 (+3206)
 
 ## Net-negative cases
 
@@ -214,13 +215,13 @@ Measured over 1 trial per case.
 
 | Case | Category | Output (base) | Output (cand) | Δ output | Total (base) | Total (cand) | Δ total |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| port-default | short-lookup | 5 | 5 | 0 | 4844 | 6823 | +1979 |
-| docker-cache-miss | long-list | 3474 | 3573 | +99 | 8320 | 10400 | +2080 |
+| port-default | short-lookup | 5 | 5 | 0 | 4853 | 7180 | +2327 |
+| docker-cache-miss | long-list | 4273 | 3956 | -317 | 9123 | 11142 | +2019 |
 
 ## Aggregate
 
-- Output tokens: 3479 to 3578 (+99)
-- Total tokens: 13164 to 17223 (+4059)
+- Output tokens: 4278 to 3961 (-317)
+- Total tokens: 13976 to 18322 (+4346)
 
 ## Net-negative cases
 
