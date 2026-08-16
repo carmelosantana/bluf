@@ -1100,7 +1100,9 @@ console.log(report)
 - [ ] **Step 6: Verify `measure.mjs` parses and its imports resolve, without spending tokens**
 
 Run: `node --check evals/measure.mjs && node -e "import('./evals/lib/runner.mjs').then(m => console.log(Object.keys(m).join(',')))"`
-Expected: prints `CONDITIONS,buildArgs,parseUsage,loadCases,runCase`.
+Expected: prints `CONDITIONS,buildArgs,loadCases,parseUsage,runCase`.
+
+Module namespace keys are sorted alphabetically by the JavaScript specification, so this is the sorted order, not the declaration order in the source file.
 
 - [ ] **Step 7: Run the full test suite**
 
@@ -1247,7 +1249,7 @@ git commit -m "docs: add README with measured results and credits"
 git status --short && git log --oneline
 ```
 
-Expected: no output from `git status`, and 9 commits including the spec.
+Expected: no output from `git status`, and 10 commits: the spec, this plan, and one per implementation task (Tasks 1 through 8).
 
 - [ ] **Step 2: Confirm with Carmelo before creating the public repository**
 
