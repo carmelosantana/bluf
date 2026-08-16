@@ -1,9 +1,9 @@
 {"id":"port-default","category":"short-lookup","prompt":"What port does the Vite dev server use by default?"}
 {"id":"git-no-ff","category":"short-lookup","prompt":"In git, what does --no-ff do on a merge?"}
 {"id":"to-sorted","category":"short-lookup","prompt":"Does Array.prototype.toSorted mutate the array it is called on?"}
-{"id":"health-endpoint","category":"multi-step","prompt":"Add a health check endpoint to an Express app. It reports process uptime and returns 503 when a Postgres ping fails."}
+{"id":"health-endpoint","category":"multi-step","prompt":"Show me how to write a health check endpoint for an Express app. It reports process uptime and returns 503 when a Postgres ping fails."}
 {"id":"actions-workflow","category":"multi-step","prompt":"Write a GitHub Actions workflow that runs Node 22 tests on push and pull request, with dependency caching."}
-{"id":"cjs-to-esm","category":"multi-step","prompt":"Convert a CommonJS Node module to ESM, including its test file and its package.json."}
+{"id":"cjs-to-esm","category":"multi-step","prompt":"Show me how to convert a CommonJS Node module to ESM, including its test file and its package.json."}
 {"id":"401-no-evidence","category":"debug-partial-evidence","prompt":"My integration test fails with 'expected 200, got 401'. The only line I have is the assertion: assert.equal(res.status, 200). What is wrong?"}
 {"id":"ci-exit-1","category":"debug-partial-evidence","prompt":"The build passes locally and fails in CI with exit code 1 and no other output. What is wrong?"}
 {"id":"scheduled-jobs","category":"options","prompt":"What are my options for running scheduled jobs in a Node service?"}

@@ -20,6 +20,7 @@
 - **Nothing is pushed to GitHub until Task 9.** The repository stays local through Task 8.
 - The `baseline` eval condition MUST pin `outputStyle` to `"Default"` explicitly. It must never omit the setting and inherit the operator's global config.
 - Every eval invocation MUST pin `--model` explicitly. It must never inherit the operator's default model. A run with an unrecorded model is not reproducible.
+- Every eval invocation MUST pass `--tools ""` to disable all tools. A case that triggers a file search in the runner's empty temporary directory measures the search, not the response shape. Verified: `--tools ""` yields `num_turns: 1` with no tool use.
 - The measured run covers two models, by these exact ids: `claude-fable-5` and `claude-opus-5`. Results are reported per model, never pooled across models.
 - All reporting MUST show per-case rows before any aggregate, and MUST report total tokens alongside output tokens.
 
@@ -525,9 +526,9 @@ Every prompt must be answerable from general knowledge, with no repository state
 {"id":"port-default","category":"short-lookup","prompt":"What port does the Vite dev server use by default?"}
 {"id":"git-no-ff","category":"short-lookup","prompt":"In git, what does --no-ff do on a merge?"}
 {"id":"to-sorted","category":"short-lookup","prompt":"Does Array.prototype.toSorted mutate the array it is called on?"}
-{"id":"health-endpoint","category":"multi-step","prompt":"Add a health check endpoint to an Express app. It reports process uptime and returns 503 when a Postgres ping fails."}
+{"id":"health-endpoint","category":"multi-step","prompt":"Show me how to write a health check endpoint for an Express app. It reports process uptime and returns 503 when a Postgres ping fails."}
 {"id":"actions-workflow","category":"multi-step","prompt":"Write a GitHub Actions workflow that runs Node 22 tests on push and pull request, with dependency caching."}
-{"id":"cjs-to-esm","category":"multi-step","prompt":"Convert a CommonJS Node module to ESM, including its test file and its package.json."}
+{"id":"cjs-to-esm","category":"multi-step","prompt":"Show me how to convert a CommonJS Node module to ESM, including its test file and its package.json."}
 {"id":"401-no-evidence","category":"debug-partial-evidence","prompt":"My integration test fails with 'expected 200, got 401'. The only line I have is the assertion: assert.equal(res.status, 200). What is wrong?"}
 {"id":"ci-exit-1","category":"debug-partial-evidence","prompt":"The build passes locally and fails in CI with exit code 1 and no other output. What is wrong?"}
 {"id":"scheduled-jobs","category":"options","prompt":"What are my options for running scheduled jobs in a Node service?"}
@@ -957,6 +958,7 @@ export function buildArgs (prompt, styleName, model) {
     '-p', prompt,
     '--output-format', 'json',
     '--model', model,
+    '--tools', '',
     '--settings', JSON.stringify({ outputStyle: styleName })
   ]
 }
