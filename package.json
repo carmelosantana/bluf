@@ -1,0 +1,16 @@
+{
+  "name": "less-chatty",
+  "version": "0.1.0",
+  "description": "A Claude Code output style that leads with conclusions and puts depth below.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test 'evals/test/*.test.mjs'",
+    "check": "node evals/check.mjs",
+    "measure": "node evals/measure.mjs"
+  }
+}
