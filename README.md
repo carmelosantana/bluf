@@ -5,20 +5,47 @@ A Claude Code output style that leads with the conclusion and cuts filler — me
 - Cuts assistant output tokens: **−33.1%** on claude-fable-5 and **−10.4%** on claude-opus-5. The terse variant cuts **−42.8%** and **−25.7%**. Measured on 12 Claude Code-shaped prompts in a full ~122k-token environment, 1 trial per case.
 - Costs input tokens on every turn: **+2,040** (Less Chatty) or **+2,327** (terse). Prompt caching reduces that cost per session. It does not remove it.
 - Total tokens went **up** in every cleanly measured case. This style buys shorter, denser answers. In this harness it did not buy a smaller bill.
-- Every figure is single-trial. Two identical baseline runs differed by 7.6% (fable) and 8.3% (opus). Treat per-case numbers as noisy.
+- Every figure is single-trial. Two identical baseline runs drifted 7.1–7.6% (fable) and 8.3–9.1% (opus), depending on the denominator. The Opus −10.4% sits close to that band — read it as directional only. See [Variance](#variance).
 - An earlier version of this style made Opus 5 **more** verbose, by +32.2%. Measuring across models caught it. See [The v1 regression](#the-v1-regression-on-opus).
 
 All numbers come from [`evals/results/report.md`](evals/results/report.md) and the archived [`evals/results/report-v1.md`](evals/results/report-v1.md), committed in this repo.
 
 ## Before / after
 
-Prompt: *"What port does the Vite dev server use by default?"* — case `port-default`, on claude-opus-5. Both responses are captured verbatim in [`evals/results/samples/`](evals/results/samples/).
+Prompt: *"In git, what does `--no-ff` do on a merge?"* — claude-opus-5, tools disabled. **This pair is an illustrative capture taken separately, after the measured sweep. It is not a row from the results table.** The sweep's own `git-no-ff` opus row measured 495 → 162 output tokens. Both responses below are captured verbatim in [`evals/results/samples/`](evals/results/samples/).
 
-| v1 style (retracted) | v2 style (current) |
-| --- | --- |
-| 5173.<br><br>Vite serves on `http://localhost:5173` by default. If that port is taken, Vite increments to the next free port (5174, 5175, …). Override it with `--port 3000` on the CLI or `server.port` in `vite.config.js`. | 5173. |
+**Baseline (`outputStyle: Default`) — 586 output tokens** ([full text](evals/results/samples/git-no-ff.claude-opus-5.baseline.txt)), abridged:
 
-Nobody asked about port collisions or overrides. Opus without any style also answers this prompt in 5 output tokens, so the v1 style was a pure regression here — 66 tokens of unrequested context. On fable-5 the picture differs: the baseline answer was 86 output tokens, and the style cuts it to 5.
+> `--no-ff` forces git to create a merge commit even when a fast-forward would be possible.
+>
+> **Without it (default `--ff`):** if the target branch hasn't diverged — i.e. your current HEAD is a direct ancestor of the branch you're merging — git just moves the branch pointer forward. No merge commit, and the fact that a branch ever existed disappears from the graph.
+>
+> ```
+> before:  A---B---C main
+>               \
+>                D---E feature
+>
+> ff merge: A---B---C---D---E   main, feature
+> ```
+>
+> […]
+>
+> Related knobs:
+> - `git config merge.ff false` — make `--no-ff` the default for all merges.
+> - `git config --global pull.ff only` — refuse a pull that would need a merge.
+> - `--ff-only` — the opposite: abort rather than create a merge commit.
+>
+> […]
+
+**Less Chatty — 183 output tokens** ([full text](evals/results/samples/git-no-ff.claude-opus-5.v2.txt)), in full:
+
+> `--no-ff` forces git to create a merge commit even when the branch could fast-forward.
+>
+> Without it, if your current branch has no commits since the branch point, git just moves the pointer forward — no merge commit, and the branch's history looks like it was always linear. With `--no-ff`, you get an explicit merge commit with two parents, so the feature branch stays visible as a distinct set of commits.
+>
+> Common reasons to use it: keeping feature branches identifiable in the log, and making the whole feature revertable with a single `git revert -m 1 <merge-commit>`.
+
+The cut is not free. The styled answer drops both ASCII commit-graph diagrams and a "related knobs" list covering `merge.ff`, `pull.ff`, and `--ff-only`. That is real content, not only padding. If you wanted those knobs, you now have to ask.
 
 ## Install
 
@@ -40,7 +67,7 @@ Full text: [`output-styles/less-chatty.md`](output-styles/less-chatty.md). In su
 - No preamble. No recap. No closing pleasantries. End with one concrete next step when anything is open.
 - Errors: state what the evidence shows. Never supply a plausible cause in place of a confirmed one. Name the single check that identifies the cause.
 - Lists: group and rank. Never drop a relevant item to reach a count.
-- Sentence rules: 20–25 word cap per sentence, active voice, one instruction per sentence, plain words, no marketing adjectives, no hedge stacking — but keep a hedge that carries real uncertainty.
+- Sentence rules: a 20-word cap for an instruction, 25 for descriptive text, active voice, one instruction per sentence, plain words, no marketing adjectives, no hedge stacking — but keep a hedge that carries real uncertainty.
 - Never rewrite code, quoted material, or text where exact wording carries the meaning.
 - Explicit instructions from the user, the project, a skill, or the harness outrank all of this.
 - A pre-send check deletes announcements, recaps, sidebars, and any section that restates a bullet.
@@ -79,6 +106,8 @@ Output tokens per case, 1 trial each, full environment. Source: [`evals/results/
 
 The style loses on some rows even in v2. On opus, `docker-cache-miss` came out **+556** output tokens with Less Chatty, and `ci-exit-1` came out **+207** with terse. Those rows are in the table; they are not excluded from the aggregates.
 
+The aggregate percentages are token-weighted: they divide summed tokens, not per-case percentages. The opus −10.4% is therefore dominated by the two largest cases, `docker-cache-miss` and `cjs-to-esm`, rather than being an average across cases.
+
 ### Why output tokens are the headline, not totals
 
 The report's Δ total column is not trustworthy. Two v2 rows carry a cold-cache artifact where cache creation was billed in full at a cache boundary: `actions-workflow` under fable/terse shows a 249,649 candidate total against ~124–126k neighbours, and `security-headers` under opus/terse shows an impossible −17,948 total delta from an 841-token output cut. The same artifact appears in the archived v1 report as a ~245k baseline total against ~122k neighbours. Output tokens are reported by the API per response and carry no such artifact.
@@ -91,7 +120,9 @@ Measured by isolating `port-default` in the lean environment, where the output d
 
 ### Variance
 
-1 trial per case. Between the v1 and v2 runs, the identical baseline condition produced 12,080 vs 13,002 output tokens on fable (7.6% apart) and 15,914 vs 14,591 on opus (8.3% apart). Per-case single-trial figures sit inside that noise. The aggregate direction is consistent across both runs; individual row deltas are not precise.
+1 trial per case. Between the v1 and v2 runs, the identical baseline condition produced 12,080 vs 13,002 output tokens on fable and 15,914 vs 14,591 on opus. That drift is 922 tokens on fable (7.6% of the v1 run, 7.1% of the v2 run) and 1,323 tokens on opus (8.3% of v1, 9.1% of v2). Per-case single-trial figures sit inside that noise. The aggregate direction is consistent across both runs; individual row deltas are not precise.
+
+The consequence for the headline numbers: the fable results (−33.1%, −42.8%) clear the noise band comfortably. The opus Less Chatty result (−10.4%) is within roughly 1.2× of it and should be read as directional only, not as a precise effect size. The opus terse result (−25.7%) clears it.
 
 ## The v1 regression on Opus
 
@@ -110,6 +141,16 @@ Four v2 rule changes fixed it:
 2. A new contract rule: "The summary replaces the body. It does not introduce it." Saying anything twice is forbidden, and the pre-send check now deletes any section that restates a bullet.
 3. A new rule: "Answer what was asked, and stop."
 4. "Never truncate" is scoped: relevant means it bears on the question asked. It stops you dropping what the reader needs; it does not ask you to enumerate.
+
+### The regression fix, illustrated
+
+Prompt: *"What port does the Vite dev server use by default?"* — case `port-default`, on claude-opus-5. This compares v1 against v2 of the style; it shows the regression being fixed, not the product's value over no style. Both responses are captured verbatim in [`evals/results/samples/`](evals/results/samples/).
+
+| v1 style (retracted) | v2 style (current) |
+| --- | --- |
+| 5173.<br><br>Vite serves on `http://localhost:5173` by default. If that port is taken, Vite increments to the next free port (5174, 5175, …). Override it with `--port 3000` on the CLI or `server.port` in `vite.config.js`. | 5173. |
+
+Nobody asked about port collisions or overrides. Opus without any style also answers this prompt in 5 output tokens, so the v1 style was a pure regression here — 66 tokens of unrequested context. On fable-5 the picture differs: the baseline answer was 86 output tokens, and the style cuts it to 5.
 
 ## Known limitations
 
@@ -142,8 +183,8 @@ This style is assembled from prior art, and it exists because that prior art pub
 Four issue reporters found the failure modes this style's rules correct:
 
 - [i-have-adhd#99](https://github.com/ayghri/i-have-adhd/issues/99) — a rule that demands a cause pressures the model to invent one. Hence the Errors rule: never supply a plausible cause in place of a confirmed one.
-- [i-have-adhd#96](https://github.com/ayghri/i-have-adhd/issues/96) — "cap lists at 5" drops relevant findings. Hence: group and rank, never truncate.
-- [i-have-adhd#43](https://github.com/ayghri/i-have-adhd/issues/43) — style rules collide with the harness system prompt. Hence the precedence clause: the harness outranks the style.
+- [i-have-adhd#96](https://github.com/ayghri/i-have-adhd/issues/96), reported by `nbali` — "cap lists at 5" drops relevant findings. Hence: group and rank, never truncate.
+- [i-have-adhd#43](https://github.com/ayghri/i-have-adhd/issues/43), reported by `kuhlsnu` — style rules collide with the harness system prompt. Hence the precedence clause: the harness outranks the style.
 - [i-have-adhd#112](https://github.com/ayghri/i-have-adhd/issues/112) — over-adherence stalls tool use into "want me to?" loops. Hence: do the work instead of asking.
 
 ## License
