@@ -22,7 +22,19 @@
 - Every eval invocation MUST pin `--model` explicitly. It must never inherit the operator's default model. A run with an unrecorded model is not reproducible.
 - Every eval invocation MUST pass `--tools ""` to disable all tools. A case that triggers a file search in the runner's empty temporary directory measures the search, not the response shape. Verified: `--tools ""` yields `num_turns: 1` with no tool use.
 - The measured run covers two models, by these exact ids: `claude-fable-5` and `claude-opus-5`. Results are reported per model, never pooled across models.
+- The main sweep runs in the `lean` environment: `--strict-mcp-config --mcp-config '{"mcpServers":{}}'`. This isolates each invocation from the operator's MCP servers WITHOUT modifying any global configuration, so concurrent sessions are unaffected. Never disable MCP servers by editing a settings file.
+- A second, deliberately small sweep runs in the `full` environment (no isolation flags) over two designated cases, to quantify environment overhead. Results are reported per environment, never pooled across environments.
 - All reporting MUST show per-case rows before any aggregate, and MUST report total tokens alongside output tokens.
+
+**Measured environment cost, verified before implementation** (claude-fable-5, tools disabled, prompt `git-no-ff`):
+
+| Environment | cache_creation | cache_read | cost per call |
+| --- | ---: | ---: | ---: |
+| full, cold cache | 121,956 | 0 | $2.52 |
+| full, warm cache | 4,825 | 117,119 | $0.234 |
+| lean | 5,178 | 0 | $0.122 |
+
+The lean environment shrinks the harness system prompt about 23-fold. That matters for correctness, not only cost: against a 122k baseline the style's own ~1.5k system-prompt cost is unmeasurable noise, while against ~5.2k it is a visible fraction.
 
 ---
 
@@ -561,9 +573,9 @@ git commit -m "feat: add 12 eval cases covering wins and the four regression cla
 - Consumes: nothing.
 - Produces: `evals/lib/report.mjs` exporting `compare(baselineRows, candidateRows)` and `formatReport(comparison, options)`. Task 6 calls both.
 
-A **row** is `{ caseId, category, trial, condition, model, inputTokens, outputTokens, totalTokens, chars }`. Task 5 produces rows in exactly this shape.
+A **row** is `{ caseId, category, trial, condition, model, environment, inputTokens, outputTokens, totalTokens, chars }`. Task 5 produces rows in exactly this shape.
 
-`compare` is deliberately model-agnostic: it compares two row sets and does not inspect `model`. Task 6 partitions rows by model BEFORE calling `compare`, so results are never pooled across models. `formatReport` takes the model name only to label its output.
+`compare` is deliberately model-agnostic AND environment-agnostic: it compares two row sets and inspects neither field. Task 6 partitions rows by model and environment BEFORE calling `compare`, so results are never pooled across either. `formatReport` takes `model` and `environment` only to label its output.
 
 `compare` returns:
 
@@ -595,6 +607,7 @@ function row (caseId, condition, outputTokens, inputTokens = 100, trial = 1) {
     trial,
     condition,
     model: 'claude-fable-5',
+    environment: 'lean',
     inputTokens,
     outputTokens,
     totalTokens: inputTokens + outputTokens,
@@ -648,33 +661,39 @@ test('compare reports the trial count', () => {
 
 test('formatReport puts per-case rows before the aggregate', () => {
   const result = compare([row('a', 'baseline', 200)], [row('a', 'less-chatty', 100)])
-  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5' })
+  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5', environment: 'lean' })
   assert.ok(text.indexOf('| a |') < text.indexOf('## Aggregate'))
 })
 
 test('formatReport reports total tokens, not only output tokens', () => {
   const result = compare([row('a', 'baseline', 200)], [row('a', 'less-chatty', 100)])
-  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5' })
+  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5', environment: 'lean' })
   assert.match(text, /total/i)
 })
 
 test('formatReport names every net-negative case', () => {
   const result = compare([row('a', 'baseline', 40, 100)], [row('a', 'less-chatty', 35, 900)])
-  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5' })
+  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5', environment: 'lean' })
   assert.match(text, /Net-negative/)
   assert.match(text, /`a`/)
 })
 
 test('formatReport states the trial count', () => {
   const result = compare([row('a', 'baseline', 200)], [row('a', 'less-chatty', 100)])
-  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5' })
+  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5', environment: 'lean' })
   assert.match(text, /1 trial/)
 })
 
 test('formatReport names the model it measured', () => {
   const result = compare([row('a', 'baseline', 200)], [row('a', 'less-chatty', 100)])
-  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-opus-5' })
+  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-opus-5', environment: 'lean' })
   assert.match(text, /claude-opus-5/)
+})
+
+test('formatReport names the environment it measured', () => {
+  const result = compare([row('a', 'baseline', 200)], [row('a', 'less-chatty', 100)])
+  const text = formatReport(result, { condition: 'less-chatty', model: 'claude-fable-5', environment: 'full' })
+  assert.match(text, /full/)
 })
 ```
 
@@ -752,11 +771,11 @@ function signed (n) {
   return n > 0 ? `+${n}` : String(n)
 }
 
-export function formatReport (comparison, { condition, model }) {
+export function formatReport (comparison, { condition, model, environment }) {
   const { perCase, totals, trials } = comparison
   const lines = []
 
-  lines.push(`# ${condition} vs baseline on ${model}`)
+  lines.push(`# ${condition} vs baseline on ${model} (${environment} environment)`)
   lines.push('')
   lines.push(`Measured over ${trials} trial${trials === 1 ? '' : 's'} per case.`)
   lines.push('')
@@ -798,7 +817,7 @@ export function formatReport (comparison, { condition, model }) {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
-Expected: PASS, 28 tests.
+Expected: PASS, 29 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -817,7 +836,21 @@ git commit -m "feat: add per-case token comparison and reporting"
 
 **Interfaces:**
 - Consumes: `evals/prompts.jsonl` from Task 3.
-- Produces: `evals/lib/runner.mjs` exporting `CONDITIONS`, `MODELS`, `buildArgs(prompt, styleName, model)`, `parseUsage(payload)`, `loadCases(url)`, and `runCase(caseRow, condition, model, trial)`. Task 6 calls `CONDITIONS`, `MODELS`, `loadCases`, and `runCase`.
+- Produces: `evals/lib/runner.mjs` exporting `CONDITIONS`, `MODELS`, `ENVIRONMENTS`, `FULL_ENV_CASES`, `buildArgs(prompt, styleName, model, environment)`, `parseUsage(payload)`, `loadCases(url)`, and `runCase(caseRow, condition, model, environment, trial)`. Task 6 calls `CONDITIONS`, `MODELS`, `ENVIRONMENTS`, `FULL_ENV_CASES`, `loadCases`, and `runCase`.
+
+`ENVIRONMENTS` maps an environment name to the extra CLI flags it adds:
+
+```js
+{ lean: ['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'], full: [] }
+```
+
+`FULL_ENV_CASES` names the two case ids that also run in the `full` environment:
+
+```js
+['port-default', 'docker-cache-miss']
+```
+
+One is the shortest case and one is the longest, so the overhead comparison covers both ends.
 
 `CONDITIONS` maps a condition name to the exact `outputStyle` value it pins:
 
@@ -836,7 +869,7 @@ git commit -m "feat: add per-case token comparison and reporting"
 Do not guess the JSON shape. Capture it:
 
 ```bash
-cd "$(mktemp -d)" && claude -p "Reply with the single word: ok" --output-format json --model claude-fable-5 --settings '{"outputStyle":"Default"}' | tee /tmp/less-chatty-probe.json | head -60
+cd "$(mktemp -d)" && claude -p "Reply with the single word: ok" --output-format json --model claude-fable-5 --tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --settings '{"outputStyle":"Default"}' | tee /tmp/less-chatty-probe.json | head -60
 ```
 
 Confirm the response echoes back the model you pinned. If `--model claude-fable-5` is rejected, stop and report the exact error — do not silently fall back to the default model, because an unpinned run is not reproducible.
@@ -852,13 +885,41 @@ Create `evals/test/runner.test.mjs`:
 ```js
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CONDITIONS, MODELS, buildArgs, parseUsage, loadCases } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, FULL_ENV_CASES, buildArgs, parseUsage, loadCases } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
-  const args = buildArgs('hi', CONDITIONS.baseline, 'claude-fable-5')
+  const args = buildArgs('hi', CONDITIONS.baseline, 'claude-fable-5', 'lean')
   const settings = JSON.parse(args[args.indexOf('--settings') + 1])
   assert.equal(settings.outputStyle, 'Default')
+})
+
+test('the lean environment isolates MCP without touching global config', () => {
+  const args = buildArgs('hi', 'Less Chatty', 'claude-fable-5', 'lean')
+  assert.ok(args.includes('--strict-mcp-config'))
+  assert.deepEqual(args.slice(args.indexOf('--mcp-config'), args.indexOf('--mcp-config') + 2),
+    ['--mcp-config', '{"mcpServers":{}}'])
+})
+
+test('the full environment adds no isolation flags', () => {
+  const args = buildArgs('hi', 'Less Chatty', 'claude-fable-5', 'full')
+  assert.equal(args.includes('--strict-mcp-config'), false)
+  assert.equal(args.includes('--mcp-config'), false)
+})
+
+test('buildArgs rejects an unknown environment', () => {
+  assert.throws(() => buildArgs('hi', 'Less Chatty', 'claude-fable-5', 'nope'), /environment/)
+  assert.throws(() => buildArgs('hi', 'Less Chatty', 'claude-fable-5'), /environment/)
+})
+
+test('FULL_ENV_CASES names two real case ids', async () => {
+  const ids = (await loadCases()).map(row => row.id)
+  assert.equal(FULL_ENV_CASES.length, 2)
+  for (const id of FULL_ENV_CASES) assert.ok(ids.includes(id), `${id} is not a real case`)
+})
+
+test('ENVIRONMENTS defines exactly lean and full', () => {
+  assert.deepEqual(Object.keys(ENVIRONMENTS).sort(), ['full', 'lean'])
 })
 
 test('every condition pins an explicit output style', () => {
@@ -872,18 +933,18 @@ test('MODELS lists both models under test in order', () => {
 })
 
 test('buildArgs pins the model explicitly', () => {
-  const args = buildArgs('hi', 'Less Chatty', 'claude-opus-5')
+  const args = buildArgs('hi', 'Less Chatty', 'claude-opus-5', 'lean')
   assert.deepEqual(args.slice(args.indexOf('--model'), args.indexOf('--model') + 2),
     ['--model', 'claude-opus-5'])
 })
 
 test('buildArgs refuses to build without a model', () => {
-  assert.throws(() => buildArgs('hi', 'Less Chatty'), /model/)
-  assert.throws(() => buildArgs('hi', 'Less Chatty', ''), /model/)
+  assert.throws(() => buildArgs('hi', 'Less Chatty', undefined, 'lean'), /model/)
+  assert.throws(() => buildArgs('hi', 'Less Chatty', '', 'lean'), /model/)
 })
 
 test('buildArgs requests print mode and JSON output', () => {
-  const args = buildArgs('what is 2 + 2', 'Less Chatty', 'claude-fable-5')
+  const args = buildArgs('what is 2 + 2', 'Less Chatty', 'claude-fable-5', 'lean')
   assert.ok(args.includes('-p'))
   assert.deepEqual(args.slice(args.indexOf('--output-format'), args.indexOf('--output-format') + 2),
     ['--output-format', 'json'])
@@ -891,7 +952,7 @@ test('buildArgs requests print mode and JSON output', () => {
 })
 
 test('buildArgs passes the prompt as one argument, never through a shell', () => {
-  const args = buildArgs('rm -rf / ; echo pwned', 'Default', 'claude-fable-5')
+  const args = buildArgs('rm -rf / ; echo pwned', 'Default', 'claude-fable-5', 'lean')
   assert.ok(args.includes('rm -rf / ; echo pwned'))
 })
 
@@ -952,13 +1013,22 @@ export const CONDITIONS = {
 
 export const MODELS = ['claude-fable-5', 'claude-opus-5']
 
-export function buildArgs (prompt, styleName, model) {
+export const ENVIRONMENTS = {
+  lean: ['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'],
+  full: []
+}
+
+export const FULL_ENV_CASES = ['port-default', 'docker-cache-miss']
+
+export function buildArgs (prompt, styleName, model, environment) {
   if (!model) throw new Error('buildArgs requires an explicit model; an unpinned run is not reproducible')
+  if (!(environment in ENVIRONMENTS)) throw new Error(`unknown environment: ${environment}`)
   return [
     '-p', prompt,
     '--output-format', 'json',
     '--model', model,
     '--tools', '',
+    ...ENVIRONMENTS[environment],
     '--settings', JSON.stringify({ outputStyle: styleName })
   ]
 }
@@ -986,9 +1056,9 @@ export async function loadCases (url = new URL('../prompts.jsonl', import.meta.u
   return text.trim().split('\n').map(line => JSON.parse(line))
 }
 
-export async function runCase (caseRow, condition, model, trial = 1) {
+export async function runCase (caseRow, condition, model, environment, trial = 1) {
   const cwd = await mkdtemp(join(tmpdir(), 'less-chatty-eval-'))
-  const args = buildArgs(caseRow.prompt, CONDITIONS[condition], model)
+  const args = buildArgs(caseRow.prompt, CONDITIONS[condition], model, environment)
   const { stdout } = await run('claude', args, { cwd, maxBuffer: 32 * 1024 * 1024 })
   const usage = parseUsage(JSON.parse(stdout))
 
@@ -998,6 +1068,7 @@ export async function runCase (caseRow, condition, model, trial = 1) {
     trial,
     condition,
     model,
+    environment,
     ...usage
   }
 }
@@ -1008,7 +1079,7 @@ export async function runCase (caseRow, condition, model, trial = 1) {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npm test`
-Expected: PASS, 39 tests.
+Expected: PASS, 46 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1088,7 +1159,7 @@ An empty file. It keeps the directory in git before any run exists.
 
 ```js
 import { writeFile, mkdir, readFile } from 'node:fs/promises'
-import { CONDITIONS, MODELS, loadCases, runCase } from './lib/runner.mjs'
+import { CONDITIONS, MODELS, FULL_ENV_CASES, loadCases, runCase } from './lib/runner.mjs'
 import { compare, formatReport } from './lib/report.mjs'
 import { checkDrift } from './lib/drift.mjs'
 
@@ -1111,21 +1182,43 @@ const rows = {}
 
 await mkdir(RESULTS, { recursive: true })
 
+// Main sweep: every case, every condition, every model, lean environment.
 for (const model of MODELS) {
-  rows[model] = {}
+  rows[model] = { lean: {}, full: {} }
   for (const condition of Object.keys(CONDITIONS)) {
-    rows[model][condition] = []
+    rows[model].lean[condition] = []
     for (let trial = 1; trial <= TRIALS; trial += 1) {
       for (const caseRow of cases) {
-        process.stderr.write(`${model} ${condition} trial ${trial} ${caseRow.id}\n`)
-        rows[model][condition].push(await runCase(caseRow, condition, model, trial))
+        process.stderr.write(`lean ${model} ${condition} trial ${trial} ${caseRow.id}\n`)
+        rows[model].lean[condition].push(await runCase(caseRow, condition, model, 'lean', trial))
       }
     }
     await writeFile(
-      new URL(`./${model}-${condition}.jsonl`, RESULTS),
-      rows[model][condition].map(row => JSON.stringify(row)).join('\n') + '\n'
+      new URL(`./lean-${model}-${condition}.jsonl`, RESULTS),
+      rows[model].lean[condition].map(row => JSON.stringify(row)).join('\n') + '\n'
     )
   }
+}
+
+// Environment-overhead sweep: two designated cases, one model, full environment.
+const overheadModel = MODELS[0]
+const overheadCases = cases.filter(caseRow => FULL_ENV_CASES.includes(caseRow.id))
+if (overheadCases.length !== FULL_ENV_CASES.length) {
+  throw new Error('FULL_ENV_CASES names a case id that is not in prompts.jsonl')
+}
+
+for (const condition of Object.keys(CONDITIONS)) {
+  rows[overheadModel].full[condition] = []
+  for (let trial = 1; trial <= TRIALS; trial += 1) {
+    for (const caseRow of overheadCases) {
+      process.stderr.write(`full ${overheadModel} ${condition} trial ${trial} ${caseRow.id}\n`)
+      rows[overheadModel].full[condition].push(await runCase(caseRow, condition, overheadModel, 'full', trial))
+    }
+  }
+  await writeFile(
+    new URL(`./full-${overheadModel}-${condition}.jsonl`, RESULTS),
+    rows[overheadModel].full[condition].map(row => JSON.stringify(row)).join('\n') + '\n'
+  )
 }
 
 const reports = []
@@ -1133,10 +1226,18 @@ for (const model of MODELS) {
   for (const condition of Object.keys(CONDITIONS)) {
     if (condition === 'baseline') continue
     reports.push(formatReport(
-      compare(rows[model].baseline, rows[model][condition]),
-      { condition, model }
+      compare(rows[model].lean.baseline, rows[model].lean[condition]),
+      { condition, model, environment: 'lean' }
     ))
   }
+}
+
+for (const condition of Object.keys(CONDITIONS)) {
+  if (condition === 'baseline') continue
+  reports.push(formatReport(
+    compare(rows[overheadModel].full.baseline, rows[overheadModel].full[condition]),
+    { condition, model: overheadModel, environment: 'full' }
+  ))
 }
 
 const report = reports.join('\n\n---\n\n')
@@ -1144,21 +1245,21 @@ await writeFile(new URL('./report.md', RESULTS), report)
 console.log(report)
 ```
 
-Rows are partitioned by model before `compare` is called, so no comparison ever pools two models.
+Rows are partitioned by model AND environment before `compare` is called, so no comparison ever pools two models or two environments.
 
 `compare` throws when the condition sets do not match, so a partial run fails loudly instead of printing a number that looks like a measurement.
 
 - [ ] **Step 6: Verify `measure.mjs` parses and its imports resolve, without spending tokens**
 
 Run: `node --check evals/measure.mjs && node -e "import('./evals/lib/runner.mjs').then(m => console.log(Object.keys(m).join(',')))"`
-Expected: prints `CONDITIONS,MODELS,buildArgs,loadCases,parseUsage,runCase`.
+Expected: prints `CONDITIONS,ENVIRONMENTS,FULL_ENV_CASES,MODELS,buildArgs,loadCases,parseUsage,runCase`.
 
 Module namespace keys are sorted alphabetically by the JavaScript specification, so this is the sorted order, not the declaration order in the source file.
 
 - [ ] **Step 7: Run the full test suite**
 
 Run: `npm test`
-Expected: PASS, 39 tests.
+Expected: PASS, 46 tests.
 
 - [ ] **Step 8: Commit**
 
@@ -1183,7 +1284,7 @@ git commit -m "feat: add the check and measure entry points"
 - Consumes: everything from Tasks 1 through 6.
 - Produces: `evals/results/report.md`, whose numbers Task 8 quotes in the README.
 
-**Cost note:** this task makes 36 real Claude invocations at one trial per case (12 cases × 3 conditions). Confirm with Carmelo before running it if the plan is being executed unattended.
+**Cost note:** this task makes 78 real Claude invocations at one trial per case: 72 in the lean environment (12 cases × 3 conditions × 2 models) plus 6 in the full environment (2 cases × 3 conditions × 1 model). At the measured lean rate of about $0.12 per call, expect roughly $10 to $12 total. Confirm with Carmelo before running it if the plan is being executed unattended.
 
 - [ ] **Step 1: Install the style files where Claude Code reads them**
 
@@ -1194,7 +1295,7 @@ mkdir -p ~/.claude/output-styles && cp output-styles/less-chatty.md output-style
 - [ ] **Step 2: Verify Claude Code sees both styles**
 
 ```bash
-cd "$(mktemp -d)" && claude -p "Reply with the single word: ok" --output-format json --settings '{"outputStyle":"Less Chatty"}' | head -20
+cd "$(mktemp -d)" && claude -p "Reply with the single word: ok" --output-format json --model claude-fable-5 --tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --settings '{"outputStyle":"Less Chatty"}' | head -20
 ```
 
 Expected: valid JSON, no error about an unknown output style. An unknown style name is the failure this step catches.
@@ -1202,7 +1303,7 @@ Expected: valid JSON, no error about an unknown output style. An unknown style n
 - [ ] **Step 3: Run the measurement**
 
 Run: `npm run measure`
-Expected: progress lines on stderr for all 36 invocations, then the report on stdout. Writes four files into `evals/results/`.
+Expected: progress lines on stderr for all 78 invocations, then the report on stdout. Writes ten files into `evals/results/`: six lean JSONL files, three full JSONL files, and `report.md`.
 
 - [ ] **Step 4: Read the report and check the four regression cases by hand**
 
@@ -1274,7 +1375,7 @@ Cross-check each figure against `evals/results/report.md` by eye. A README numbe
 - [ ] **Step 3: Run the full test suite and the drift check**
 
 Run: `npm test && npm run check`
-Expected: PASS, 39 tests, then `shared bodies match`.
+Expected: PASS, 46 tests, then `shared bodies match`.
 
 - [ ] **Step 4: Commit**
 
