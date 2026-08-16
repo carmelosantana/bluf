@@ -32,6 +32,7 @@ export const OVERHEAD_MODEL = 'claude-opus-5'
 export function buildArgs (prompt, styleName, model, environment) {
   if (!model) throw new Error('buildArgs requires an explicit model; an unpinned run is not reproducible')
   if (!(environment in ENVIRONMENTS)) throw new Error(`unknown environment: ${environment}`)
+  if (!styleName) throw new Error('buildArgs requires an explicit output style; an unpinned output style would inherit the operator\'s global config')
   return [
     '-p', prompt,
     '--output-format', 'json',
@@ -46,17 +47,30 @@ export function parseUsage (payload) {
   const usage = payload?.usage
   if (!usage) throw new Error('response has no usage block')
 
+  const tokenField = (name) => {
+    const value = Number(usage[name] ?? 0)
+    if (!Number.isFinite(value)) {
+      throw new Error(`usage.${name} is not a finite number: ${JSON.stringify(usage[name])}`)
+    }
+    return value
+  }
+
   const inputTokens =
-    (usage.input_tokens ?? 0) +
-    (usage.cache_read_input_tokens ?? 0) +
-    (usage.cache_creation_input_tokens ?? 0)
-  const outputTokens = usage.output_tokens ?? 0
+    tokenField('input_tokens') +
+    tokenField('cache_read_input_tokens') +
+    tokenField('cache_creation_input_tokens')
+  const outputTokens = tokenField('output_tokens')
+
+  const result = payload.result ?? ''
+  if (typeof result !== 'string') {
+    throw new Error(`payload.result must be a string, got ${typeof result}`)
+  }
 
   return {
     inputTokens,
     outputTokens,
     totalTokens: inputTokens + outputTokens,
-    chars: (payload.result ?? '').length
+    chars: result.length
   }
 }
 
@@ -65,11 +79,23 @@ export async function loadCases (url = new URL('../prompts.jsonl', import.meta.u
   return text.trim().split('\n').map(line => JSON.parse(line))
 }
 
+export function assertNotErrored (payload, { caseId, condition } = {}) {
+  if (payload?.is_error) {
+    const detail = [payload.subtype, payload.api_error_status].filter(v => v != null && v !== '').join(', ') || 'no error detail in payload'
+    throw new Error(`claude returned an errored response for case ${caseId} (condition: ${condition}): ${detail}`)
+  }
+}
+
 export async function runCase (caseRow, condition, model, environment, trial = 1) {
+  if (!(condition in CONDITIONS)) {
+    throw new Error(`unknown condition: ${condition}; valid conditions are: ${Object.keys(CONDITIONS).join(', ')}`)
+  }
   const cwd = await mkdtemp(join(tmpdir(), 'less-chatty-eval-'))
   const args = buildArgs(caseRow.prompt, CONDITIONS[condition], model, environment)
   const { stdout } = await run('claude', args, { cwd, maxBuffer: 32 * 1024 * 1024 })
-  const usage = parseUsage(JSON.parse(stdout))
+  const payload = JSON.parse(stdout)
+  assertNotErrored(payload, { caseId: caseRow.id, condition })
+  const usage = parseUsage(payload)
 
   return {
     caseId: caseRow.id,
