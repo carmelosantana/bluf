@@ -704,6 +704,10 @@ Expected: FAIL, cannot resolve `../lib/report.mjs`.
 
 - [ ] **Step 3: Create `evals/lib/report.mjs`**
 
+> **Corrected during execution.** The code below shipped, then review found a Critical defect in it: the mismatch guard compared key SETS, not multisets, so a `(caseId, trial)` row duplicated in one condition and not the other passed as a clean measurement. Two Important defects came with it: `compare([], [])` returned a clean zero-delta report, and `trials` counted distinct trial numbers across all rows while the report labeled the figure "per case".
+>
+> The shipped file `evals/lib/report.mjs` is the authoritative version and fixes all three, plus replaces the lossy `${caseId}#${trial}` key with `JSON.stringify([caseId, trial])`. Read that file rather than the block below if you are re-running this plan. Six tests were added to pin the fixes; the suite ends at 35, not 29.
+
 ```js
 function key (row) {
   return `${row.caseId}#${row.trial}`
