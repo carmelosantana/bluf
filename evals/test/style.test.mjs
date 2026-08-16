@@ -59,3 +59,20 @@ test('precedence is the first block, before any rule', async () => {
     'precedence must outrank the rules it governs, and must be read first'
   )
 })
+
+const TERSE = new URL('../../output-styles/less-chatty-terse.md', import.meta.url)
+
+test('terse style declares the required frontmatter', async () => {
+  const text = await readFile(TERSE, 'utf8')
+  const fields = frontmatter(text)
+  assert.equal(fields.name, 'Less Chatty (terse)')
+  assert.equal(fields['keep-coding-instructions'], 'true')
+})
+
+test('terse style appends compression after the shared body', async () => {
+  const text = await readFile(TERSE, 'utf8')
+  assert.ok(
+    text.indexOf('<!-- LESS-CHATTY:SHARED-BODY:END -->') < text.indexOf('## Compression'),
+    'compression must sit outside the shared body'
+  )
+})
