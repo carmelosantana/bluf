@@ -58,6 +58,14 @@ if (!MODELS.includes(OVERHEAD_MODEL)) {
     'so OVERHEAD_MODEL must be one of the models the main sweep runs.'
   )
 }
+for (const [label, environment] of [['MAIN_ENVIRONMENT', MAIN_ENVIRONMENT], ['OVERHEAD_ENVIRONMENT', OVERHEAD_ENVIRONMENT]]) {
+  if (!(environment in ENVIRONMENTS)) {
+    throw new Error(
+      `${label}=${environment} is not a key of ENVIRONMENTS [${Object.keys(ENVIRONMENTS).join(', ')}]. ` +
+      'Without this check an invalid OVERHEAD_ENVIRONMENT would only fail after the whole main sweep had run.'
+    )
+  }
+}
 
 const rows = {}
 
