@@ -22,8 +22,22 @@
 - Every eval invocation MUST pin `--model` explicitly. It must never inherit the operator's default model. A run with an unrecorded model is not reproducible.
 - Every eval invocation MUST pass `--tools ""` to disable all tools. A case that triggers a file search in the runner's empty temporary directory measures the search, not the response shape. Verified: `--tools ""` yields `num_turns: 1` with no tool use.
 - The measured run covers two models, by these exact ids: `claude-fable-5` and `claude-opus-5`. Results are reported per model, never pooled across models.
-- The main sweep runs in the `lean` environment: `--strict-mcp-config --mcp-config '{"mcpServers":{}}'`. This isolates each invocation from the operator's MCP servers WITHOUT modifying any global configuration, so concurrent sessions are unaffected. Never disable MCP servers by editing a settings file.
-- A second, deliberately small sweep runs in the `full` environment (no isolation flags) over two designated cases, to quantify environment overhead. Results are reported per environment, never pooled across environments.
+- The main sweep runs in the `full` environment (no isolation flags), across both models. See the blocking finding below for why the lean environment cannot carry the main sweep.
+- A second, deliberately small sweep runs in the `lean` environment over two designated cases, to quantify environment overhead. It runs on `claude-opus-5` ONLY, because the lean flags force that model regardless of what is requested. Holding the model constant is what makes the overhead comparison valid. Results are reported per environment, never pooled across environments.
+- Isolation, where used, is CLI-flag-only. Never disable MCP servers by editing a settings file or anything under `~/.claude`. Other sessions run concurrently on this machine and must not be affected.
+
+**BLOCKING FINDING — `--strict-mcp-config` silently changes the model.** Verified by direct probe:
+
+| Flags | Model actually run | System prompt | cost/call |
+| --- | --- | ---: | ---: |
+| full environment, `--model claude-fable-5` | `claude-fable-5` (correct) | 117,119 read + 4,822 created | $0.214 |
+| `--strict-mcp-config`, `--model claude-fable-5` | **`claude-opus-5` (wrong)** | 5,169 created | $0.032 |
+| `--strict-mcp-config`, `--model fable` (alias) | **`claude-opus-5` (wrong)** | — | $0.032 |
+| `--mcp-config '{"mcpServers":{}}'` alone, `--model claude-fable-5` | `claude-fable-5` (correct) | 117,119 read + 4,822 created | $0.214 |
+
+`--strict-mcp-config` is the sole cause; `--mcp-config` alone does not trigger it, but also does not shrink the prompt. The lean environment and the two-model comparison are therefore mutually exclusive. Carmelo chose the two-model comparison, because a rule that works on one model and breaks on another is the specific failure this project exists to catch.
+
+The lean environment's original justification — making the style's own input cost visible against a smaller baseline — does not survive scrutiny either. `cache_read_input_tokens` is deterministic at 117,119 across runs, so it cancels exactly in a baseline-versus-candidate delta. The style's input cost is measurable in the full environment.
 - All reporting MUST show per-case rows before any aggregate, and MUST report total tokens alongside output tokens.
 
 **Measured environment cost, verified before implementation** (claude-fable-5, tools disabled, prompt `git-no-ff`):
@@ -848,13 +862,17 @@ git commit -m "feat: add per-case token comparison and reporting"
 { lean: ['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'], full: [] }
 ```
 
-`FULL_ENV_CASES` names the two case ids that also run in the `full` environment:
+`OVERHEAD_CASES` names the two case ids that also run in the `lean` environment, to quantify environment overhead:
 
 ```js
 ['port-default', 'docker-cache-miss']
 ```
 
 One is the shortest case and one is the longest, so the overhead comparison covers both ends.
+
+`MAIN_ENVIRONMENT` is `'full'` and `OVERHEAD_ENVIRONMENT` is `'lean'`.
+
+`OVERHEAD_MODEL` is `'claude-opus-5'`. The lean flags force that model regardless of what `--model` requests, so the overhead sweep must pin it explicitly. Pinning it is what holds the model constant and makes the lean-versus-full comparison mean something.
 
 `CONDITIONS` maps a condition name to the exact `outputStyle` value it pins:
 
@@ -1083,7 +1101,7 @@ export async function runCase (caseRow, condition, model, environment, trial = 1
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npm test`
-Expected: PASS, 46 tests.
+Expected: PASS, 51 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1163,7 +1181,10 @@ An empty file. It keeps the directory in git before any run exists.
 
 ```js
 import { writeFile, mkdir, readFile } from 'node:fs/promises'
-import { CONDITIONS, MODELS, FULL_ENV_CASES, loadCases, runCase } from './lib/runner.mjs'
+import {
+  CONDITIONS, MODELS, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, OVERHEAD_CASES,
+  loadCases, runCase
+} from './lib/runner.mjs'
 import { compare, formatReport } from './lib/report.mjs'
 import { checkDrift } from './lib/drift.mjs'
 
@@ -1186,42 +1207,47 @@ const rows = {}
 
 await mkdir(RESULTS, { recursive: true })
 
-// Main sweep: every case, every condition, every model, lean environment.
+// Main sweep: every case, every condition, every model, full environment.
 for (const model of MODELS) {
-  rows[model] = { lean: {}, full: {} }
+  rows[model] = { full: {}, lean: {} }
   for (const condition of Object.keys(CONDITIONS)) {
-    rows[model].lean[condition] = []
+    rows[model][MAIN_ENVIRONMENT][condition] = []
     for (let trial = 1; trial <= TRIALS; trial += 1) {
       for (const caseRow of cases) {
-        process.stderr.write(`lean ${model} ${condition} trial ${trial} ${caseRow.id}\n`)
-        rows[model].lean[condition].push(await runCase(caseRow, condition, model, 'lean', trial))
+        process.stderr.write(`${MAIN_ENVIRONMENT} ${model} ${condition} trial ${trial} ${caseRow.id}\n`)
+        rows[model][MAIN_ENVIRONMENT][condition].push(
+          await runCase(caseRow, condition, model, MAIN_ENVIRONMENT, trial)
+        )
       }
     }
     await writeFile(
-      new URL(`./lean-${model}-${condition}.jsonl`, RESULTS),
-      rows[model].lean[condition].map(row => JSON.stringify(row)).join('\n') + '\n'
+      new URL(`./${MAIN_ENVIRONMENT}-${model}-${condition}.jsonl`, RESULTS),
+      rows[model][MAIN_ENVIRONMENT][condition].map(row => JSON.stringify(row)).join('\n') + '\n'
     )
   }
 }
 
-// Environment-overhead sweep: two designated cases, one model, full environment.
-const overheadModel = MODELS[0]
-const overheadCases = cases.filter(caseRow => FULL_ENV_CASES.includes(caseRow.id))
-if (overheadCases.length !== FULL_ENV_CASES.length) {
-  throw new Error('FULL_ENV_CASES names a case id that is not in prompts.jsonl')
+// Environment-overhead sweep: two designated cases, lean environment, one pinned model.
+// OVERHEAD_MODEL must be claude-opus-5: the lean flags force that model regardless of
+// what --model requests, so pinning it is what holds the model constant.
+const overheadCases = cases.filter(caseRow => OVERHEAD_CASES.includes(caseRow.id))
+if (overheadCases.length !== OVERHEAD_CASES.length) {
+  throw new Error('OVERHEAD_CASES names a case id that is not in prompts.jsonl')
 }
 
 for (const condition of Object.keys(CONDITIONS)) {
-  rows[overheadModel].full[condition] = []
+  rows[OVERHEAD_MODEL][OVERHEAD_ENVIRONMENT][condition] = []
   for (let trial = 1; trial <= TRIALS; trial += 1) {
     for (const caseRow of overheadCases) {
-      process.stderr.write(`full ${overheadModel} ${condition} trial ${trial} ${caseRow.id}\n`)
-      rows[overheadModel].full[condition].push(await runCase(caseRow, condition, overheadModel, 'full', trial))
+      process.stderr.write(`${OVERHEAD_ENVIRONMENT} ${OVERHEAD_MODEL} ${condition} trial ${trial} ${caseRow.id}\n`)
+      rows[OVERHEAD_MODEL][OVERHEAD_ENVIRONMENT][condition].push(
+        await runCase(caseRow, condition, OVERHEAD_MODEL, OVERHEAD_ENVIRONMENT, trial)
+      )
     }
   }
   await writeFile(
-    new URL(`./full-${overheadModel}-${condition}.jsonl`, RESULTS),
-    rows[overheadModel].full[condition].map(row => JSON.stringify(row)).join('\n') + '\n'
+    new URL(`./${OVERHEAD_ENVIRONMENT}-${OVERHEAD_MODEL}-${condition}.jsonl`, RESULTS),
+    rows[OVERHEAD_MODEL][OVERHEAD_ENVIRONMENT][condition].map(row => JSON.stringify(row)).join('\n') + '\n'
   )
 }
 
@@ -1230,8 +1256,8 @@ for (const model of MODELS) {
   for (const condition of Object.keys(CONDITIONS)) {
     if (condition === 'baseline') continue
     reports.push(formatReport(
-      compare(rows[model].lean.baseline, rows[model].lean[condition]),
-      { condition, model, environment: 'lean' }
+      compare(rows[model][MAIN_ENVIRONMENT].baseline, rows[model][MAIN_ENVIRONMENT][condition]),
+      { condition, model, environment: MAIN_ENVIRONMENT }
     ))
   }
 }
@@ -1239,8 +1265,11 @@ for (const model of MODELS) {
 for (const condition of Object.keys(CONDITIONS)) {
   if (condition === 'baseline') continue
   reports.push(formatReport(
-    compare(rows[overheadModel].full.baseline, rows[overheadModel].full[condition]),
-    { condition, model: overheadModel, environment: 'full' }
+    compare(
+      rows[OVERHEAD_MODEL][OVERHEAD_ENVIRONMENT].baseline,
+      rows[OVERHEAD_MODEL][OVERHEAD_ENVIRONMENT][condition]
+    ),
+    { condition, model: OVERHEAD_MODEL, environment: OVERHEAD_ENVIRONMENT }
   ))
 }
 
@@ -1256,14 +1285,14 @@ Rows are partitioned by model AND environment before `compare` is called, so no 
 - [ ] **Step 6: Verify `measure.mjs` parses and its imports resolve, without spending tokens**
 
 Run: `node --check evals/measure.mjs && node -e "import('./evals/lib/runner.mjs').then(m => console.log(Object.keys(m).join(',')))"`
-Expected: prints `CONDITIONS,ENVIRONMENTS,FULL_ENV_CASES,MODELS,buildArgs,loadCases,parseUsage,runCase`.
+Expected: prints `CONDITIONS,ENVIRONMENTS,MAIN_ENVIRONMENT,MODELS,OVERHEAD_CASES,OVERHEAD_ENVIRONMENT,OVERHEAD_MODEL,buildArgs,loadCases,parseUsage,runCase`.
 
 Module namespace keys are sorted alphabetically by the JavaScript specification, so this is the sorted order, not the declaration order in the source file.
 
 - [ ] **Step 7: Run the full test suite**
 
 Run: `npm test`
-Expected: PASS, 46 tests.
+Expected: PASS, 51 tests.
 
 - [ ] **Step 8: Commit**
 
@@ -1288,7 +1317,7 @@ git commit -m "feat: add the check and measure entry points"
 - Consumes: everything from Tasks 1 through 6.
 - Produces: `evals/results/report.md`, whose numbers Task 8 quotes in the README.
 
-**Cost note:** this task makes 78 real Claude invocations at one trial per case: 72 in the lean environment (12 cases × 3 conditions × 2 models) plus 6 in the full environment (2 cases × 3 conditions × 1 model). At the measured lean rate of about $0.12 per call, expect roughly $10 to $12 total. Confirm with Carmelo before running it if the plan is being executed unattended.
+**Cost note:** this task makes 78 real Claude invocations at one trial per case: 72 in the full environment (12 cases × 3 conditions × 2 models) plus 6 in the lean environment (2 cases × 3 conditions, claude-opus-5 only). 72 full-environment calls at about $0.21 plus 6 lean calls at about $0.03 comes to roughly $16 to $18 total. Confirm with Carmelo before running it if the plan is being executed unattended.
 
 - [ ] **Step 1: Install the style files where Claude Code reads them**
 
@@ -1307,7 +1336,7 @@ Expected: valid JSON, no error about an unknown output style. An unknown style n
 - [ ] **Step 3: Run the measurement**
 
 Run: `npm run measure`
-Expected: progress lines on stderr for all 78 invocations, then the report on stdout. Writes ten files into `evals/results/`: six lean JSONL files, three full JSONL files, and `report.md`.
+Expected: progress lines on stderr for all 78 invocations, then the report on stdout. Writes ten files into `evals/results/`: six full-environment JSONL files, three lean JSONL files, and `report.md`.
 
 - [ ] **Step 4: Read the report and check the four regression cases by hand**
 
@@ -1379,7 +1408,7 @@ Cross-check each figure against `evals/results/report.md` by eye. A README numbe
 - [ ] **Step 3: Run the full test suite and the drift check**
 
 Run: `npm test && npm run check`
-Expected: PASS, 46 tests, then `shared bodies match`.
+Expected: PASS, 51 tests, then `shared bodies match`.
 
 - [ ] **Step 4: Commit**
 
