@@ -12,7 +12,7 @@ All numbers come from [`evals/results/report.md`](evals/results/report.md) and t
 
 ## Before / after
 
-Prompt: *"In git, what does `--no-ff` do on a merge?"* — claude-opus-5, tools disabled. **This pair is an illustrative capture taken separately, after the measured sweep. It is not a row from the results table.** The sweep's own `git-no-ff` opus row measured 495 → 162 output tokens. Both responses below are captured verbatim in [`evals/results/samples/`](evals/results/samples/).
+Prompt: *"In git, what does `--no-ff` do on a merge?"* — claude-opus-5, tools disabled. **This pair is an illustrative capture taken separately, after the measured sweep. It is not a row from the results table.** The sweep's own `git-no-ff` opus row measured 495 → 162 output tokens. Both responses below are captured verbatim in [`evals/results/samples/`](evals/results/samples/). The two token counts come from the `usage.output_tokens` field of each capture; the exact commands are recorded in [`samples/CAPTURE.md`](evals/results/samples/CAPTURE.md).
 
 **Baseline (`outputStyle: Default`) — 586 output tokens** ([full text](evals/results/samples/git-no-ff.claude-opus-5.baseline.txt)), abridged:
 
@@ -51,6 +51,7 @@ The cut is not free. The styled answer drops both ASCII commit-graph diagrams an
 
 ```bash
 git clone https://github.com/carmelosantana/less-chatty.git
+mkdir -p ~/.claude/output-styles
 cp less-chatty/output-styles/*.md ~/.claude/output-styles/
 ```
 
@@ -170,6 +171,8 @@ npm run measure   # re-runs the eval sweep
 ```
 
 **`npm run measure` makes 78 live API calls and costs roughly $16–18.** It is not part of `npm test` and nothing runs it by accident. It rewrites `evals/results/`.
+
+**Install the styles before measuring.** The sweep selects each condition by style name. If the two files are not in `~/.claude/output-styles/`, every condition silently resolves to the default and you measure Default against Default. Run the install step above first.
 
 ## Credits
 
