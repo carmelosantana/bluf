@@ -55,9 +55,62 @@ test('compare refuses mismatched trial coverage', () => {
   assert.throws(() => compare(base, cand), /trial/i)
 })
 
+test('compare refuses a duplicated (caseId, trial) row present in only one condition', () => {
+  const base = [row('a', 'baseline', 200), row('a', 'baseline', 200)]
+  const cand = [row('a', 'less-chatty', 100)]
+  assert.throws(() => compare(base, cand), /trial/i)
+})
+
+test('compare accepts identical duplication in both conditions', () => {
+  const base = [row('a', 'baseline', 200), row('a', 'baseline', 200)]
+  const cand = [row('a', 'less-chatty', 100), row('a', 'less-chatty', 100)]
+  const result = compare(base, cand)
+  assert.equal(result.perCase[0].baselineOutput, 400)
+  assert.equal(result.perCase[0].candidateOutput, 200)
+})
+
+test('compare refuses an empty run', () => {
+  assert.throws(() => compare([], []), /nothing to compare/i)
+})
+
+test('compare refuses an empty candidate against a non-empty baseline', () => {
+  assert.throws(() => compare([row('a', 'baseline', 200)], []))
+})
+
 test('compare reports the trial count', () => {
   const base = [row('a', 'baseline', 200, 100, 1), row('a', 'baseline', 210, 100, 2)]
   const cand = [row('a', 'less-chatty', 100, 100, 1), row('a', 'less-chatty', 110, 100, 2)]
+  assert.equal(compare(base, cand).trials, 2)
+})
+
+test('compare refuses uneven trial coverage across cases and names the case', () => {
+  const base = [
+    row('a', 'baseline', 200, 100, 1),
+    row('b', 'baseline', 200, 100, 1),
+    row('b', 'baseline', 200, 100, 2)
+  ]
+  const cand = [
+    row('a', 'less-chatty', 100, 100, 1),
+    row('b', 'less-chatty', 100, 100, 1),
+    row('b', 'less-chatty', 100, 100, 2)
+  ]
+  assert.throws(() => compare(base, cand), /case "b"|case "a"/)
+  assert.throws(() => compare(base, cand), /trial/i)
+})
+
+test('compare accepts uniform multi-trial coverage and reports the shared count', () => {
+  const base = [
+    row('a', 'baseline', 200, 100, 1),
+    row('a', 'baseline', 210, 100, 2),
+    row('b', 'baseline', 400, 100, 1),
+    row('b', 'baseline', 410, 100, 2)
+  ]
+  const cand = [
+    row('a', 'less-chatty', 100, 100, 1),
+    row('a', 'less-chatty', 110, 100, 2),
+    row('b', 'less-chatty', 300, 100, 1),
+    row('b', 'less-chatty', 310, 100, 2)
+  ]
   assert.equal(compare(base, cand).trials, 2)
 })
 

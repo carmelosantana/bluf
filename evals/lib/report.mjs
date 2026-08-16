@@ -1,5 +1,14 @@
 function key (row) {
-  return `${row.caseId}#${row.trial}`
+  return JSON.stringify([row.caseId, row.trial])
+}
+
+function countByKey (rows) {
+  const counts = new Map()
+  for (const row of rows) {
+    const k = key(row)
+    counts.set(k, (counts.get(k) ?? 0) + 1)
+  }
+  return counts
 }
 
 function sum (rows, field) {
@@ -7,21 +16,53 @@ function sum (rows, field) {
 }
 
 export function compare (baselineRows, candidateRows) {
-  const baseKeys = baselineRows.map(key)
-  const candKeys = candidateRows.map(key)
-  const missing = baseKeys.filter(k => !candKeys.includes(k))
-  const extra = candKeys.filter(k => !baseKeys.includes(k))
+  if (baselineRows.length === 0) {
+    throw new Error('refusing to compare: baseline has no rows, so there is nothing to compare')
+  }
 
-  if (missing.length > 0 || extra.length > 0) {
+  const baseCounts = countByKey(baselineRows)
+  const candCounts = countByKey(candidateRows)
+  const mismatches = []
+  for (const [k, baseCount] of baseCounts) {
+    const candCount = candCounts.get(k) ?? 0
+    if (candCount !== baseCount) {
+      mismatches.push(`${k} appears ${baseCount}x in baseline but ${candCount}x in candidate`)
+    }
+  }
+  for (const [k, candCount] of candCounts) {
+    if (!baseCounts.has(k)) {
+      mismatches.push(`${k} appears 0x in baseline but ${candCount}x in candidate`)
+    }
+  }
+
+  if (mismatches.length > 0) {
     throw new Error(
-      'refusing to compare: conditions do not cover identical (case, trial) sets. ' +
-      `missing from candidate: [${missing.join(', ')}]; ` +
-      `absent from baseline: [${extra.join(', ')}]`
+      'refusing to compare: conditions do not cover identical (case, trial) multisets. ' +
+      mismatches.join('; ')
     )
   }
 
-  const caseIds = [...new Set(baselineRows.map(row => row.caseId))]
-  const trials = new Set(baselineRows.map(row => row.trial)).size
+  const trialsByCase = new Map()
+  for (const row of baselineRows) {
+    if (!trialsByCase.has(row.caseId)) trialsByCase.set(row.caseId, new Set())
+    trialsByCase.get(row.caseId).add(row.trial)
+  }
+
+  const caseIds = [...trialsByCase.keys()]
+  const [firstCaseId] = caseIds
+  const expectedTrials = trialsByCase.get(firstCaseId)
+  const describe = set => `[${[...set].sort().join(', ')}]`
+  for (const [caseId, trialSet] of trialsByCase) {
+    const uniform = trialSet.size === expectedTrials.size &&
+      [...trialSet].every(t => expectedTrials.has(t))
+    if (!uniform) {
+      throw new Error(
+        'refusing to compare: trial coverage is not uniform across cases. ' +
+        `case "${caseId}" has trials ${describe(trialSet)} but case "${firstCaseId}" has ${describe(expectedTrials)}`
+      )
+    }
+  }
+  const trials = expectedTrials.size
 
   const perCase = caseIds.map(caseId => {
     const base = baselineRows.filter(row => row.caseId === caseId)
