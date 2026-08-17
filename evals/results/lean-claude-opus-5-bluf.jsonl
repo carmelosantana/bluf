@@ -1,0 +1,6 @@
+{"caseId":"port-default","category":"short-lookup","trial":1,"condition":"bluf","model":"claude-opus-5","environment":"lean","inputTokens":6867,"outputTokens":5,"totalTokens":6872,"chars":5}
+{"caseId":"port-default","category":"short-lookup","trial":2,"condition":"bluf","model":"claude-opus-5","environment":"lean","inputTokens":6865,"outputTokens":5,"totalTokens":6870,"chars":5}
+{"caseId":"port-default","category":"short-lookup","trial":3,"condition":"bluf","model":"claude-opus-5","environment":"lean","inputTokens":6872,"outputTokens":5,"totalTokens":6877,"chars":5}
+{"caseId":"docker-cache-miss","category":"long-list","trial":1,"condition":"bluf","model":"claude-opus-5","environment":"lean","inputTokens":6881,"outputTokens":5910,"totalTokens":12791,"chars":3040}
+{"caseId":"docker-cache-miss","category":"long-list","trial":2,"condition":"bluf","model":"claude-opus-5","environment":"lean","inputTokens":6877,"outputTokens":4818,"totalTokens":11695,"chars":3975}
+{"caseId":"docker-cache-miss","category":"long-list","trial":3,"condition":"bluf","model":"claude-opus-5","environment":"lean","inputTokens":6875,"outputTokens":3488,"totalTokens":10363,"chars":3452}
