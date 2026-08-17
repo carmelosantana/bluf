@@ -3,7 +3,7 @@
 *Bottom Line Up Front.* A Claude Code output style that leads with the conclusion, written to cut filler — with the output-token reduction measured, including what it costs.
 
 - Cuts assistant output tokens by a median of **35.0%** on claude-fable-5 and **30.9%** on claude-opus-5. Measured on 12 Claude Code-shaped prompts, 3 trials per case, in a full ~124k-token environment.
-- **Every one of the 12 trial-level measurements came out negative.** On this suite, in this run, the direction was consistent; the size varied. Per-trial ranges are −44.0% to −30.7% (fable) and −32.7% to −29.0% (opus). See [Variance](#variance).
+- **Every one of the 6 trial-level measurements came out negative.** On this suite, in this run, the direction was consistent; the size varied. Per-trial ranges are −44.0% to −30.7% (fable) and −32.7% to −29.0% (opus). See [Variance](#variance).
 - Costs input tokens: **+2,030** per turn — the median of the per-trial paired differences, the same statistic used for the output-savings figures. The per-trial differences were 2,029–2,037 across the amortization run's trials. On the first turn of a session that is a cache **write**; from the second turn on it is a cache **read** of the same size.
 - **At published cache pricing, costs money on turn 1 and saves money on every turn after.** Break-even is 7.2×–10.6× output:input for a one-turn session and 0.36×–0.53× in steady state. No prices are quoted here — multiply by your own and see [What it costs](#what-it-costs).
 - 4 of the 24 per-case measurements have trial ranges that straddle zero, meaning the style's effect on those cases is not distinguishable from run-to-run noise even at 3 trials.
@@ -229,10 +229,12 @@ and context-budget** number, because that is what raw token counts govern. It is
 proxy: it adds four differently-priced quantities as though they were interchangeable. Use the
 break-even table above for anything involving money.
 
-The total figures are medians rather than sums because 2 of the 216 measured turns carry a
-cold-cache artifact where cache creation was billed in full at a cache boundary — 248,344 and
-245,184 input tokens against a 123,917 median. Interleaving the conditions was expected to
-reduce this and did not. Medians ignore it; sums do not.
+The total figures are medians rather than sums because of a cold-cache artifact, where cache
+creation was billed in full at a cache boundary. Across the 144 turns backing the figures above,
+1 carries it — 245,184 input tokens against a 123,631 median. The original run measured 2 such
+turns in 216, but the second (248,344) fell in the retired terse arm and no longer participates
+in any published figure. Interleaving the conditions was expected to reduce this and did not.
+Medians ignore it; sums do not.
 
 ### Variance
 

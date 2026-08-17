@@ -8,9 +8,18 @@ the short synonym, never invent an abbreviation, no arrows, and never compress c
 quotes, exact strings, or caveats.
 
 It was evaluated in full — the same 12-case sweep, three trials per case, on both models,
-plus the amortization slice — and it is preserved here, not deleted, because it is the
-artifact that produced committed result files. Deleting it would leave those results
-unexplainable.
+plus the amortization slice — and it is preserved here, not deleted, because it is very
+nearly the artifact that produced committed result files. Deleting it would leave those
+results unexplainable.
+
+**"Very nearly" is exact, and matters.** This file is **207 bytes larger** than the one
+that was measured. After the sweep, commit `c0e0fd6` changed two things: the frontmatter
+`description:`, and the Compression block, which previously said only that its rules
+"apply on top of everything above" — an instruction that contradicted the shared body's
+rule to keep articles explicit. The override is now stated outright. Neither edit was
+re-measured, so the committed terse figures slightly understate this file's input
+overhead: its published +2,320 per turn describes the smaller, pre-edit version. If the
+variant is ever revived, that is the first thing to re-measure.
 
 **Why it was retired.** It saved more output tokens than base BLUF, but it hurt
 consistency and skimmability: its per-case results were less uniform (it lost to base
