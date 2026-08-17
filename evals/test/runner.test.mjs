@@ -1,9 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile, chmod } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
-import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS } from '../lib/runner.mjs'
+import { createHash } from 'node:crypto'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256 } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -1696,4 +1697,69 @@ test('the clean environment does not change full or lean', () => {
   assert.deepEqual(ENVIRONMENTS.lean, ['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'])
   assert.ok(!ENVIRONMENTS.full.includes('--setting-sources'))
   assert.ok(!ENVIRONMENTS.lean.includes('--setting-sources'))
+})
+
+test('installProjectStyle writes the shipped style where a project-scoped session finds it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bluf-install-test-'))
+  const written = await installProjectStyle(dir)
+
+  assert.equal(written, join(dir, '.claude', 'output-styles', 'bluf.md'))
+
+  const installed = await readFile(written, 'utf8')
+  const shipped = await readFile(new URL('../../output-styles/bluf.md', import.meta.url), 'utf8')
+  assert.equal(installed, shipped, 'the installed style must be byte-identical to the shipped one')
+})
+
+test('assertProjectStyleInstalled accepts a correct install', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bluf-install-test-'))
+  await installProjectStyle(dir)
+
+  assert.equal(await assertProjectStyleInstalled(dir), undefined)
+})
+
+test('assertProjectStyleInstalled throws when the style is absent', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bluf-install-test-'))
+
+  await assert.rejects(() => assertProjectStyleInstalled(dir), /no project-level style/)
+  await assert.rejects(() => assertProjectStyleInstalled(dir), /Default against Default/)
+})
+
+test('assertProjectStyleInstalled throws when the installed style has been altered', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bluf-install-test-'))
+  const written = await installProjectStyle(dir)
+  await writeFile(written, 'name: BLUF\n')
+
+  await assert.rejects(() => assertProjectStyleInstalled(dir), /does not match the shipped style/)
+})
+
+test('STYLE_SHA256 matches the shipped style file', async () => {
+  // If this fails, output-styles/bluf.md was edited. Every published figure measures that
+  // exact file, so an edit invalidates them all rather than merely breaking this test.
+  const shipped = await readFile(new URL('../../output-styles/bluf.md', import.meta.url))
+  assert.equal(createHash('sha256').update(shipped).digest('hex'), STYLE_SHA256)
+})
+
+test('runCase installs the style before spending, in the clean environment only', async () => {
+  const seen = []
+  const fakeRun = async (args, cwd) => {
+    const styled = await readFile(join(cwd, '.claude', 'output-styles', 'bluf.md'), 'utf8').catch(() => null)
+    seen.push({ environment: args[args.indexOf('--setting-sources') + 1] ?? 'none', hasStyle: styled !== null })
+    return {
+      usage: {
+        input_tokens: 10,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 5000,
+        cache_creation: { ephemeral_1h_input_tokens: 5000, ephemeral_5m_input_tokens: 0 },
+        output_tokens: 5
+      },
+      result: 'x'
+    }
+  }
+  const caseRow = { id: 'port-default', category: 'short-lookup', prompt: 'what port?' }
+
+  await runCase(caseRow, 'bluf', 'claude-opus-5', 'clean', 1, { execute: fakeRun })
+  await runCase(caseRow, 'bluf', 'claude-opus-5', 'lean', 1, { execute: fakeRun })
+
+  assert.equal(seen[0].hasStyle, true, 'clean must install the style; without it the run measures Default')
+  assert.equal(seen[1].hasStyle, false, 'lean must not install it — that would change what the 0.2.0 rows mean')
 })

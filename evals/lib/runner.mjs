@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { readFile, mkdtemp } from 'node:fs/promises'
+import { randomUUID, createHash } from 'node:crypto'
+import { readFile, mkdtemp, mkdir, copyFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -50,6 +50,7 @@ export const PROMPTS_SHA256 = '84cb69746c89478090ff7923388c7eadbd66997f4193f9370
 
 export const MAIN_ENVIRONMENT = 'full'
 export const OVERHEAD_ENVIRONMENT = 'lean'
+export const CLEAN_ENVIRONMENT = 'clean'
 // Pinned because the lean flags (--strict-mcp-config with an empty --mcp-config)
 // force the run onto claude-opus-5 regardless of what --model requests. Pinning
 // the same model here is what holds the model constant and keeps the overhead
@@ -161,14 +162,59 @@ export function assertNotErrored (payload, { caseId, condition } = {}) {
   }
 }
 
-export async function runCase (caseRow, condition, model, environment, trial = 1) {
+export const STYLE_FILE = new URL('../../output-styles/bluf.md', import.meta.url)
+
+// Pinned so an edit to the shipped style fails a test rather than silently invalidating
+// every published figure, all of which measure this exact file.
+export const STYLE_SHA256 = 'a018355897a6b4d49cce7cb424d4ff2aa08e7930969e95dd74d2513b3c0d9d21'
+
+// The clean environment passes --setting-sources project, which excludes the operator's
+// user settings. Output styles live in ~/.claude/output-styles, a USER source, so the
+// style becomes unloadable unless it is also present at project level. Installing it here
+// is what makes the clean environment measure the style rather than Default.
+export async function installProjectStyle (cwd) {
+  const dir = join(cwd, '.claude', 'output-styles')
+  await mkdir(dir, { recursive: true })
+  const target = join(dir, 'bluf.md')
+  await copyFile(STYLE_FILE, target)
+  return target
+}
+
+// Without this, a failed or skipped install produces a full sweep of Default-against-Default
+// rows that look like a clean measurement and report success. That costs a paid sweep to
+// discover, so the check runs before every clean-environment call rather than once.
+export async function assertProjectStyleInstalled (cwd) {
+  const target = join(cwd, '.claude', 'output-styles', 'bluf.md')
+  let installed
+  try {
+    installed = await readFile(target)
+  } catch {
+    throw new Error(
+      `no project-level style at ${target}. The clean environment passes --setting-sources project, ` +
+      'which excludes the user-level output-styles directory, so without this file claude falls back ' +
+      'to Default and the run measures Default against Default while reporting success.'
+    )
+  }
+  const digest = createHash('sha256').update(installed).digest('hex')
+  if (digest !== STYLE_SHA256) {
+    throw new Error(
+      `the installed style at ${target} does not match the shipped style (${digest} vs ${STYLE_SHA256}). ` +
+      'Measuring an altered style would attribute its behaviour to the published rule set.'
+    )
+  }
+}
+
+export async function runCase (caseRow, condition, model, environment, trial = 1, { execute = defaultExecute } = {}) {
   if (!(condition in CONDITIONS)) {
     throw new Error(`unknown condition: ${condition}; valid conditions are: ${Object.keys(CONDITIONS).join(', ')}`)
   }
   const cwd = await mkdtemp(join(tmpdir(), 'bluf-eval-'))
+  if (environment === CLEAN_ENVIRONMENT) {
+    await installProjectStyle(cwd)
+    await assertProjectStyleInstalled(cwd)
+  }
   const args = buildArgs(caseRow.prompt, CONDITIONS[condition], model, environment)
-  const { stdout } = await run('claude', args, { cwd, maxBuffer: 32 * 1024 * 1024 })
-  const payload = JSON.parse(stdout)
+  const payload = await execute(args, cwd)
   assertNotErrored(payload, { caseId: caseRow.id, condition })
   const usage = parseUsage(payload)
 
@@ -272,7 +318,13 @@ export async function runAmortizationPair (caseRow, condition, model, environmen
   const sessionId = newSessionId()
   // Both turns MUST run in the same cwd. claude stores session transcripts per project
   // directory, so a fresh mkdtemp on turn 2 makes the session unfindable and --resume fails.
+  // It also shares one directory across both turns, so the clean environment's
+  // project-level style is installed once, before either turn spends.
   const cwd = await mkdtemp(join(tmpdir(), 'bluf-amort-'))
+  if (environment === CLEAN_ENVIRONMENT) {
+    await installProjectStyle(cwd)
+    await assertProjectStyleInstalled(cwd)
+  }
   const rows = []
 
   try {
