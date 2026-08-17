@@ -320,7 +320,10 @@ export async function runAmortizationPair (caseRow, condition, model, environmen
   // Both turns MUST run in the same cwd. claude stores session transcripts per project
   // directory, so a fresh mkdtemp on turn 2 makes the session unfindable and --resume fails.
   // It also shares one directory across both turns, so the clean environment's
-  // project-level style is installed once, before either turn spends.
+  // project-level style is installed once, before either turn spends. Note this branch is
+  // currently unreachable: the calibration guard above throws for any environment other
+  // than OVERHEAD_ENVIRONMENT (lean), so the install below has never executed and is
+  // untested — widen that guard and this block needs real verification first.
   const cwd = await mkdtemp(join(tmpdir(), 'bluf-amort-'))
   if (environment === CLEAN_ENVIRONMENT) {
     await installProjectStyle(cwd)

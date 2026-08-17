@@ -1,7 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-import { assertStyleChangedInput } from '../preflight.mjs'
+import { copyFile, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { assertStyleChangedInput, isMainEntry } from '../preflight.mjs'
 import { MIN_STYLE_OVERHEAD_TOKENS } from '../lib/runner.mjs'
 
 const row = (inputTokens, outputTokens = 5) => ({ inputTokens, outputTokens })
@@ -38,6 +41,39 @@ test('preflight validates the style install above its first paid call', async ()
   assert.ok(guard > -1, 'preflight must assert the style is installed')
   assert.ok(spend > -1, 'preflight must actually make the paid calls')
   assert.ok(guard < spend, 'the free check must sit above the first paid call, as evals/measure.mjs does')
+})
+
+test('the main-module guard matches a path containing a space', async () => {
+  // The guard once compared import.meta.url (percent-encoded) against process.argv[1]
+  // (a raw filesystem path), so a clone under a directory like "My Projects" made
+  // `npm run preflight` exit 0 with no output — a vacuous pass in the one file whose
+  // job is preventing one. Reproduce the shape for real rather than asserting source
+  // text: put a copy of preflight.mjs at a spaced path, import it, and check its own
+  // guard predicate against that raw path. Nothing here spends — importing the module
+  // runs no paid code unless the guard itself matches this process's argv[1], which is
+  // the test runner.
+  const dir = await mkdtemp(join(tmpdir(), 'bluf spaced preflight-'))
+  try {
+    const evalsDir = fileURLToPath(new URL('..', import.meta.url))
+    // The copy's `./lib/runner.mjs` import must still resolve from the spaced directory.
+    await symlink(join(evalsDir, 'lib'), join(dir, 'lib'))
+    const spacedEntry = join(dir, 'preflight.mjs')
+    await copyFile(join(evalsDir, 'preflight.mjs'), spacedEntry)
+
+    const spaced = await import(pathToFileURL(spacedEntry).href)
+    assert.equal(spaced.isMainEntry(spacedEntry), true,
+      'the guard must recognise its own file when the path contains a space')
+    assert.equal(spaced.isMainEntry(join(dir, 'other.mjs')), false,
+      'the guard must not match a different entry path')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('importing preflight as a module never fires the main-module guard', () => {
+  // In this process argv[1] is the test runner, not preflight.mjs, so the guard must be
+  // false — the property that keeps npm test free of API calls.
+  assert.equal(isMainEntry(), false)
 })
 
 test('assertStyleChangedInput refuses a vacuous comparison', () => {

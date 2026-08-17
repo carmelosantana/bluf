@@ -301,11 +301,13 @@ TRIALS=3 npm run measure
 npm run measure:amortization
 ```
 
-`npm test` runs 192 tests with zero dependencies on Node 22+.
+`npm test` runs 209 tests with zero dependencies on Node 22+.
 
 **`TRIALS=3 npm run measure` makes 156 live API calls and costs real money** — the last full run, which still carried a third condition at 234 calls, cost roughly $48–54. It is not part of `npm test` and nothing runs it by accident. It rewrites `evals/results/`. Omit `TRIALS` for a single-trial run of 52 calls, which is cheaper and correspondingly less trustworthy.
 
 **`npm run measure:amortization` makes 12 live API calls** — 2 conditions × 3 trials × 2 turns, on claude-opus-5 — and also spends real money, though far less than the sweep. It regenerates the input half of the break-even table: the per-tier cache write/read splits in `evals/results/amortization-*.jsonl`. It, too, runs only when you invoke it.
+
+**`npm run preflight` makes 2 live API calls** — one baseline, one styled, on claude-opus-5 — and verifies the output style actually reached the model before a sweep spends anything on it. It, too, runs only when you invoke it.
 
 **Install the style before measuring.** The sweep selects each condition by style name. If `bluf.md` is not in `~/.claude/output-styles/`, the styled condition silently resolves to the default and you measure Default against Default. Run the install step above first. The prompt set is pinned by SHA-256 and the sweep refuses to run if it has been edited.
 

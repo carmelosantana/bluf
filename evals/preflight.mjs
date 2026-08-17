@@ -32,7 +32,16 @@ export function assertStyleChangedInput (baselineRow, styledRow, { minOverhead =
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Main-module guard. Compare decoded path against decoded path: import.meta.url is
+// percent-encoded while process.argv[1] is a raw filesystem path, so the once-obvious
+// `import.meta.url === \`file://\${process.argv[1]}\`` silently no-ops on any path
+// containing a space — the whole file exits 0 without running, which reads as a pass.
+// Exported so the test suite can exercise the spaced-path case without spending.
+export function isMainEntry (entryPath = process.argv[1]) {
+  return import.meta.filename === entryPath
+}
+
+if (isMainEntry()) {
   const cases = await loadCases()
   const caseRow = cases.find(row => row.id === AMORTIZATION_CASE)
   if (!caseRow) throw new Error(`preflight case ${AMORTIZATION_CASE} is not in prompts.jsonl`)

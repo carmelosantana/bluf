@@ -1702,6 +1702,15 @@ test('the clean environment does not change full or lean', () => {
   assert.ok(!ENVIRONMENTS.lean.includes('--setting-sources'))
 })
 
+test('the clean environment is pinned byte-exactly', () => {
+  // The includes checks above pass even if a flag is dropped — losing
+  // --mcp-config '{"mcpServers":{}}' would leak the operator's MCP servers into
+  // "clean" rows undetected. Pin the whole argument list, as full and lean are.
+  assert.deepEqual(ENVIRONMENTS.clean, [
+    '--setting-sources', 'project', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'
+  ])
+})
+
 test('installProjectStyle writes the shipped style where a project-scoped session finds it', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'bluf-install-test-'))
   const written = await installProjectStyle(dir)

@@ -105,27 +105,34 @@ and the distinction matters for reading any absolute figure.
   settings entirely, and installs the style at project level inside the run's temp
   directory so it remains loadable.
 
-One provenance note before the numbers. Except for the preflight figure marked below, the
-figures in this section are design-time exploratory measurements taken on the author's
-machine, and their raw rows are **not committed to this repository** — unlike every figure
-in `report.md`, they cannot be reproduced from the files here. They are kept as
-orientation, not as evidence at this directory's usual bar.
+One provenance note before the numbers. Every figure in this section, the preflight figure
+included, is an exploratory measurement taken on the author's machine, and their raw rows
+are **not committed to this repository** — unlike every figure in `report.md`, none of them
+can be reproduced from the files here. They are kept as orientation, not as evidence at
+this directory's usual bar.
 
 **Every row committed before the `clean` environment existed carries the operator's user
 settings**, measured at 1,248 input tokens on the author's machine — plugin and MCP
-configuration present in every arm. Because it is present in both arms, paired deltas cancel
-it and the published output-reduction figures are unaffected; a clean-room replication during
-design produced a median of −36.5% on claude-opus-5, with the published −30.9% inside its
-range, and reproduced the input overhead at a median of 2,033 tokens across 29 observations.
+configuration present in every arm.
+Because it is present in both arms, it is an additive constant on the **input** side and paired
+input deltas cancel it. That argument does not transfer to output tokens, which are generated
+behaviour rather than an additive term — this harness's own notes record leaked plugin config
+making one arm invoke a tool call the other did not. What supports the published
+output-reduction figures against this is weaker and worth stating as such: a design-time
+clean-room replication on claude-opus-5 produced a median of −36.5%, larger than the published
+−30.9% and in the same direction, across trials measuring −13.2%, −36.5% and −41.0%. The same
+probes reproduced the input overhead at a median of 2,033 tokens across 29 observations. None of
+those rows are committed here.
 
 What those rows cannot support is an **absolute** figure that transfers to another machine.
 Read `full` and `lean` input totals as specific to the machine that produced them.
 
-One clean-environment figure **is** re-derivable from this repository, and it is the only one
-here that is. The paid preflight (`npm run preflight`) was run against the commit that added
-it and measured a **+2,034-token** input overhead in the clean environment, with output
-collapsing from 349 to 5 tokens on the `port-default` case with `claude-opus-5`. Anyone can
-re-run it for the cost of two calls.
+The preflight figure's rows are not committed either — `evals/preflight.mjs` writes no rows,
+it only prints. What sets it apart is not traceability but that anyone can re-run it for the
+cost of two calls and watch the check pass or fail for themselves. The paid preflight
+(`npm run preflight`) was run against the commit that added it and measured a **+2,034-token**
+input overhead in the clean environment, with output collapsing from 349 to 5 tokens on the
+`port-default` case with `claude-opus-5`.
 
 Two limits on that figure, so it is not read for more than it is worth. It is a **single
 observation**, not a median — the design-time probes put the clean-environment overhead
