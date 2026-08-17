@@ -79,6 +79,22 @@ test('measure-amortization checks the input tier of turn 2 after the money is sp
   )
 })
 
+test('measure-amortization asserts every turn 1 was a cold cache write', async () => {
+  const source = await readFile(new URL('../measure-amortization.mjs', import.meta.url), 'utf8')
+
+  const coldCheckIndex = source.indexOf('assertTurn1WasCold(')
+  assert.ok(
+    coldCheckIndex > -1,
+    'the driver must verify every turn 1 was a cold cache write; the published cache-write column and ' +
+    'the one-turn break-even are cold-write figures, and no other guard inspects the turn-1 tiers — ' +
+    'assertStyleOverheadPresent compares summed inputTokens, which is identical warm or cold'
+  )
+  assert.ok(
+    coldCheckIndex > source.indexOf('allRows.length !== totalCalls'),
+    'the cold-turn-1 check belongs with the post-payment validity checks, after the row-count pin'
+  )
+})
+
 test('measure-amortization pairs each turn 2 against its turn 1 to catch a forked resume', async () => {
   const source = await readFile(new URL('../measure-amortization.mjs', import.meta.url), 'utf8')
 

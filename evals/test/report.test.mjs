@@ -451,21 +451,118 @@ test('breakEven rejects non-finite inputs', () => {
   assert.throws(() => breakEven({}), /finite/)
 })
 
-test('the published input-overhead constants trace to the committed lean measurements', async () => {
-  // 2030 (bluf) and 2320 (bluf-terse) are quoted in every published break-even ratio.
-  // They are the median inputTokens overhead on the single-turn port-default case in
-  // the lean environment, relative to the lean baseline. This test recomputes both
-  // from the committed result files so the constants cannot silently drift from the
-  // evidence. Read-only: it must never write under evals/results/.
-  const read = async file => (await readFile(new URL(`../results/${file}`, import.meta.url), 'utf8'))
+// Shared by the traceability tests below. Read-only: nothing in this file may ever
+// write under evals/results/ — the committed rows are the evidence for every
+// published figure.
+const readResultRows = async file =>
+  (await readFile(new URL(`../results/${file}`, import.meta.url), 'utf8'))
     .trim().split('\n').map(line => JSON.parse(line))
+
+test('the published input-overhead figures are the amortization run\'s paired-difference medians', async () => {
+  // The README (line 7) publishes +2,030 (BLUF) and +2,320 (terse) as "the median of
+  // the per-trial paired differences" from the amortization run — the same statistic
+  // the output-savings figures use — with per-trial spans of 2,029-2,037 and
+  // 2,319-2,327. It also publishes the -263 turn-2 write saving as a paired-difference
+  // median. This test recomputes all of them from the committed amortization rows, so
+  // a re-measure that shifts any of them fails here instead of leaving the README
+  // silently stale. Every row passes through requireTiers first: rows without the
+  // tier split cannot back a figure that is priced by tier.
+  const byCondition = {}
+  for (const condition of ['baseline', 'bluf', 'bluf-terse']) {
+    byCondition[condition] = (await readResultRows(`amortization-claude-opus-5-${condition}.jsonl`))
+      .map(row => requireTiers(row))
+  }
+  const rowAt = (condition, turn, trial) =>
+    byCondition[condition].find(row => row.turn === turn && row.trial === trial)
+  const pairedDiffs = (condition, turn, field) => [1, 2, 3].map(trial =>
+    rowAt(condition, turn, trial)[field] - rowAt('baseline', turn, trial)[field]
+  )
+
+  // Turn-1 input overhead, paired per trial against the baseline trial.
+  const blufDiffs = pairedDiffs('bluf', 1, 'inputTokens')
+  const terseDiffs = pairedDiffs('bluf-terse', 1, 'inputTokens')
+  assert.equal(median(blufDiffs), 2030)
+  assert.equal(median(terseDiffs), 2320)
+  // The per-trial spans the README quotes alongside the medians.
+  assert.deepEqual([Math.min(...blufDiffs), Math.max(...blufDiffs)], [2029, 2037])
+  assert.deepEqual([Math.min(...terseDiffs), Math.max(...terseDiffs)], [2319, 2327])
+
+  // The turn-2 write saving: -263 at the median for both variants, because every
+  // styled turn 2 wrote the same 21-token block.
+  assert.equal(median(pairedDiffs('bluf', 2, 'inputCacheWrite')), -263)
+  assert.equal(median(pairedDiffs('bluf-terse', 2, 'inputCacheWrite')), -263)
+})
+
+test('every published output-saved median and break-even ratio traces through the shipped functions', async () => {
+  // The README's "What it costs" section publishes four output-saved medians (rounded
+  // 384/445/565/707, unrounded 383.9167/444.5/564.5833/706.75) and eight break-even
+  // ratios (one-turn 10.58/10.44/7.19/6.57, steady-state 0.53/0.52/0.36/0.33). This
+  // test recomputes every one of them from the committed 12-case sweep through
+  // perTrialMedianOutputSaved and breakEven — the functions that pin the statistic —
+  // at the multipliers the README discloses: a 1-hour cache write bills at 2x base
+  // input and a cache read at 0.1x, per Anthropic's published pricing structure. A
+  // re-measure that moves any figure fails this test instead of leaving the README
+  // quoting numbers nothing in the repo computes.
+  const INPUT_OVERHEAD = { bluf: 2030, 'bluf-terse': 2320 }
+  const WRITE_MULTIPLIER_1H = 2
+  const READ_MULTIPLIER = 0.1
+
+  const published = {
+    'claude-fable-5': {
+      bluf: { savedUnrounded: 383.9167, savedRounded: 384, oneTurn: '10.58', steadyState: '0.53' },
+      'bluf-terse': { savedUnrounded: 444.5, savedRounded: 445, oneTurn: '10.44', steadyState: '0.52' }
+    },
+    'claude-opus-5': {
+      bluf: { savedUnrounded: 564.5833, savedRounded: 565, oneTurn: '7.19', steadyState: '0.36' },
+      'bluf-terse': { savedUnrounded: 706.75, savedRounded: 707, oneTurn: '6.57', steadyState: '0.33' }
+    }
+  }
+
+  for (const [model, variants] of Object.entries(published)) {
+    const baseline = await readResultRows(`full-${model}-baseline.jsonl`)
+    for (const [condition, expected] of Object.entries(variants)) {
+      const candidate = await readResultRows(`full-${model}-${condition}.jsonl`)
+      const saved = perTrialMedianOutputSaved(baseline, candidate)
+
+      assert.equal(Number(saved.toFixed(4)), expected.savedUnrounded,
+        `${model} ${condition}: unrounded output-saved median must match the README`)
+      assert.equal(Math.round(saved), expected.savedRounded,
+        `${model} ${condition}: rounded output-saved figure must match the README table`)
+
+      // One-turn session: the overhead bills once, as a 1-hour cache write at 2x.
+      const oneTurn = breakEven({
+        outputSaved: saved,
+        inputAdded: WRITE_MULTIPLIER_1H * INPUT_OVERHEAD[condition]
+      })
+      assert.equal(oneTurn.toFixed(2), expected.oneTurn,
+        `${model} ${condition}: one-turn break-even must match the README`)
+
+      // Steady state (turn 2+): the same tokens re-bill as a cache read at 0.1x.
+      // Deliberately ignores the -263 write saving, as the README's table does.
+      const steadyState = breakEven({
+        outputSaved: saved,
+        inputAdded: READ_MULTIPLIER * INPUT_OVERHEAD[condition]
+      })
+      assert.equal(steadyState.toFixed(2), expected.steadyState,
+        `${model} ${condition}: steady-state break-even must match the README`)
+    }
+  }
+})
+
+test('the lean single-shot sweep independently corroborates the amortization-derived overhead', async () => {
+  // NOT the source of the published +2,030/+2,320 — those are the per-trial
+  // paired-difference medians from the amortization run, asserted above. This is a
+  // different statistic (a difference of medians) over a different dataset (the
+  // superseded single-shot lean sweep), and the two agree to the token. Two
+  // independent measurements landing on the same numbers is worth pinning — but only
+  // as the corroboration it is, not as the derivation it is not.
   const medianInput = rows => median(
     rows.filter(r => r.caseId === 'port-default').map(r => r.inputTokens)
   )
 
-  const baseline = medianInput(await read('lean-claude-opus-5-baseline.jsonl'))
-  const bluf = medianInput(await read('lean-claude-opus-5-bluf.jsonl'))
-  const terse = medianInput(await read('lean-claude-opus-5-bluf-terse.jsonl'))
+  const baseline = medianInput(await readResultRows('lean-claude-opus-5-baseline.jsonl'))
+  const bluf = medianInput(await readResultRows('lean-claude-opus-5-bluf.jsonl'))
+  const terse = medianInput(await readResultRows('lean-claude-opus-5-bluf-terse.jsonl'))
 
   assert.equal(baseline, 4837)
   assert.equal(bluf - baseline, 2030)

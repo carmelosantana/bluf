@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
-import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -1461,6 +1461,95 @@ test('assertTurn2CarriedTurn1 throws rather than passes on a missing inputTokens
   assert.throws(() => assertTurn2CarriedTurn1(rows), /bluf/)
 })
 
+test('assertTurn1WasCold passes when every turn 1 is a cold cache write', () => {
+  // The healthy shape from the committed slice: all 9 turn-1 rows measured
+  // inputCacheRead 0 with a positive write. Turn 2 rows must be ignored — they
+  // read the prefix back by design.
+  const rows = [
+    tierRow('baseline', 1, 1), tierRow('baseline', 2, 1),
+    tierRow('bluf', 1, 1), tierRow('bluf', 2, 1),
+    tierRow('bluf-terse', 1, 1), tierRow('bluf-terse', 2, 1)
+  ]
+  assert.equal(assertTurn1WasCold(rows), undefined)
+})
+
+test('assertTurn1WasCold refuses to pass vacuously when there are no turn 1 rows', () => {
+  assert.throws(() => assertTurn1WasCold([]), /no turn 1 rows/)
+  assert.throws(
+    () => assertTurn1WasCold([tierRow('baseline', 2), tierRow('bluf', 2)]),
+    /no turn 1 rows/
+  )
+})
+
+test('assertTurn1WasCold throws when a turn 1 read from the cache, naming the figures and the consequence', () => {
+  // A warm turn 1: a prior session's byte-identical prefix served part of the write
+  // back as a read. Every published turn-1 figure assumes a cold write, so this must
+  // abort, not pass.
+  const rows = [
+    tierRow('baseline', 1, 1),
+    tierRow('bluf', 1, 2, { inputCacheRead: 4800, inputCacheWrite: 2064 })
+  ]
+  assert.throws(
+    () => assertTurn1WasCold(rows),
+    (err) => {
+      assert.match(err.message, /bluf/, 'must name the offending condition')
+      assert.match(err.message, /trial 2/, 'must name the offending trial')
+      assert.match(err.message, /inputCacheRead 4800/, 'must state the actual read')
+      assert.match(err.message, /inputCacheWrite 2064/, 'must state the actual write')
+      assert.match(err.message, /warm/, 'must state the mechanism: the turn was warm, not cold')
+      assert.match(err.message, /cold-write figure/, 'must state the consequence for the cache-write column')
+      assert.match(err.message, /one-turn break-even/, 'must state the consequence for the one-turn ratio')
+      return true
+    }
+  )
+})
+
+test('assertTurn1WasCold throws when a turn 1 wrote nothing to the cache', () => {
+  // A zero write with a zero read means the turn was not cached at all, and the
+  // "cache write" column would be a fabricated zero — the silent-zero defect again.
+  const rows = [tierRow('bluf', 1, 3, { inputCacheRead: 0, inputCacheWrite: 0 })]
+  assert.throws(
+    () => assertTurn1WasCold(rows),
+    (err) => {
+      assert.match(err.message, /bluf/, 'must name the offending condition')
+      assert.match(err.message, /trial 3/, 'must name the offending trial')
+      assert.match(err.message, /wrote nothing/, 'must state the mechanism')
+      return true
+    }
+  )
+})
+
+test('assertTurn1WasCold throws rather than passes on missing tier fields', () => {
+  // The comparisons must turn a missing field into a loud failure, not a silent pass:
+  // undefined !== 0 for the read, and !(undefined > 0) for the write.
+  const missingRead = [tierRow('bluf', 1)]
+  delete missingRead[0].inputCacheRead
+  assert.throws(() => assertTurn1WasCold(missingRead), /bluf/)
+
+  const missingWrite = [tierRow('bluf', 1)]
+  delete missingWrite[0].inputCacheWrite
+  assert.throws(() => assertTurn1WasCold(missingWrite), /bluf/)
+})
+
+test('assertTurn1WasCold flags a single warm row among many cold ones', () => {
+  const rows = [
+    tierRow('baseline', 1, 1),
+    tierRow('baseline', 1, 2),
+    tierRow('bluf', 1, 1),
+    tierRow('bluf', 1, 2, { inputCacheRead: 6800, inputCacheWrite: 21 }),
+    tierRow('bluf-terse', 1, 1),
+    tierRow('bluf-terse', 1, 2)
+  ]
+  assert.throws(
+    () => assertTurn1WasCold(rows),
+    (err) => {
+      assert.match(err.message, /bluf/, 'must name the offending condition')
+      assert.match(err.message, /trial 2/, 'must name the offending trial')
+      return true
+    }
+  )
+})
+
 // Must-not-regress: the intended paid run, simulated end to end with an injected
 // executor and zero API calls. 3 conditions x 3 trials through runAmortizationPair
 // with a realistic tier shape — turn 1 writes the prefix to cache, turn 2 reads it
@@ -1532,6 +1621,7 @@ test('the real measured 3x3x2 slice passes the row-count pin and every check the
   assert.equal(allRows.length, 18, 'the intended slice is 3 conditions x 3 trials x 2 turns')
   assert.equal(assertTurn2ReadFromCache(allRows), undefined)
   assert.equal(assertTurn2CarriedTurn1(allRows), undefined)
+  assert.equal(assertTurn1WasCold(allRows), undefined)
   assert.equal(assertStyleOverheadPresent(allRows), undefined)
 })
 

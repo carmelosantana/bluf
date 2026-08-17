@@ -355,6 +355,51 @@ export function assertTurn2ReadFromCache (rows) {
   }
 }
 
+// The turn-1 precondition check: was every turn 1 actually a COLD cache write? The
+// published turn-1 figures assume it — the "Cache write +2,030 / Cache read 0" column
+// and the one-turn break-even ratios are cold-write figures, derived from turn-1 rows
+// whose overhead billed entirely as a fresh write. None of the sibling checks enforce
+// that: assertStyleOverheadPresent compares summed inputTokens, which is identical
+// whether the tokens were written or read, and the turn-2 checks never look at turn 1's
+// tiers. A warm turn 1 — a prior session's byte-identical prefix served back as a
+// read — would sail through all of them and quietly change what the column measures.
+// Like its siblings, this runs after the money is spent: its job is to stop the
+// conclusion, not the payment.
+export function assertTurn1WasCold (rows) {
+  const turnOne = rows.filter(row => row.turn === 1)
+  if (turnOne.length === 0) {
+    throw new Error(
+      'assertTurn1WasCold found no turn 1 rows to check; a vacuous pass here would wave through ' +
+      'the exact failure this check exists to catch — warm first turns whose cache-write figures ' +
+      'do not describe a cold write'
+    )
+  }
+
+  for (const row of turnOne) {
+    const detail = `condition ${row.condition} trial ${row.trial}: inputCacheRead ${row.inputCacheRead}, inputCacheWrite ${row.inputCacheWrite}`
+    const consequence =
+      'A warm turn 1 means the published cache-write column is not a cold-write figure and the ' +
+      'one-turn break-even does not describe a first turn, so the rows cannot back either.'
+    // Strict equality, deliberately: a missing or non-numeric read is not equal to 0
+    // and therefore throws, instead of passing on undefined or NaN.
+    if (row.inputCacheRead !== 0) {
+      throw new Error(
+        `turn 1 read from the cache instead of writing it cold — the session prefix was warm, ` +
+        `most likely served from a prior session's byte-identical prefix (${detail}). ${consequence}`
+      )
+    }
+    // Negated comparison, as in the sibling checks: a missing or non-numeric write
+    // makes this false and throws, instead of passing on NaN.
+    if (!(row.inputCacheWrite > 0)) {
+      throw new Error(
+        `turn 1 wrote nothing to the cache (${detail}). A zero write with a zero read means the ` +
+        `turn was not cached at all, and recording it under the cache-write column would be a ` +
+        `fabricated zero. ${consequence}`
+      )
+    }
+  }
+}
+
 // The companion input-growth check: did each turn 2 actually CARRY turn 1's exchange?
 // assertTurn2ReadFromCache alone misses the likeliest silent failure. A --resume that
 // forks a fresh session re-sends a byte-identical system prefix; the API serves that

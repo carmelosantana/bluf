@@ -5,8 +5,10 @@ Two things, kept apart on purpose.
 ## The current measurement
 
 `report.md` and the `bluf`-named `.jsonl` files are the 0.2.0 rules, measured at three
-trials per case with conditions interleaved. Every figure quoted in the project README
-traces to these files.
+trials per case with conditions interleaved. The project README's output-side figures —
+the headline percentages, the results table, the variance ranges — trace to these files.
+Its input-cost and break-even figures trace to the amortization slice below, and its
+0.1.0 regression figures to the archive below.
 
 ## The 0.1.0 archive
 
@@ -50,11 +52,13 @@ This slice exists because every other measurement here is single-shot, and singl
 observe the thing that decides the cost question: whether the style's input overhead is a cache
 write paid once per session or a cache read paid every turn. It is the latter from turn 2 on.
 
-Three post-payment checks in `evals/lib/runner.mjs` gate the result — that every turn-2 row read
+Four post-payment checks in `evals/lib/runner.mjs` gate the result — that every turn-2 row read
 from cache, that each turn-2 row's input strictly exceeds its turn-1 partner's (a forked session
-would send an identical prefix and pass the first check), and that the styled arms' turn-1 input
-exceeds baseline by the style's own token count. None of them can save money. They exist so a run
-that measured the wrong thing aborts loudly instead of printing a plausible number.
+would send an identical prefix and pass the first check), that every turn-1 row was a cold cache
+write (`inputCacheRead` 0, positive write — the precondition that makes the turn-1 figures
+cold-write figures), and that the styled arms' turn-1 input exceeds baseline by the style's own
+token count. None of them can save money. They exist so a run that measured the wrong thing
+aborts loudly instead of printing a plausible number.
 
 **Output tokens in this slice are not a style measurement.** Turn 2 re-asks a question just
 answered, so its length is noise — the unstyled arm measured 181, 33, and 194 across three

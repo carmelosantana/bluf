@@ -9,7 +9,7 @@
 - 6 of the 48 per-case measurements have trial ranges that straddle zero, meaning the style's effect on those cases is not distinguishable from run-to-run noise even at 3 trials.
 - Version **0.1.0** of these rules made Opus **32.2% more verbose**. Measuring across models caught it. See [The 0.1.0 regression](#the-010-regression-on-opus).
 
-All numbers come from [`evals/results/`](evals/results/), committed in this repo — the 12-case sweep from [`report.md`](evals/results/report.md), and the session-amortization slice (the cache write/read splits behind the input-cost and break-even figures) from the `amortization-*.jsonl` files. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
+All numbers come from [`evals/results/`](evals/results/), committed in this repo — [`report.md`](evals/results/report.md) (four sections for the 12-case full-environment sweep, two for a 2-case lean-environment sweep), and the session-amortization slice (the cache write/read splits behind the input-cost and break-even figures) from the `amortization-*.jsonl` files. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
 
 ## Before / after
 
@@ -90,7 +90,7 @@ It adds grammar compression on top of the base style:
 
 ## Measured results
 
-Median output tokens per case across 3 trials, full environment. Source: [`evals/results/report.md`](evals/results/report.md), which also carries the per-case delta ranges.
+Median output tokens per case across 3 trials, full environment. Source: [`evals/results/report.md`](evals/results/report.md), which also carries the per-case delta ranges. That file's own aggregate lines quote −37.1%, −42.0%, −30.9%, and −41.1% — a different statistic again, the pooled token-weighted percentage (all trials' styled output summed over all trials' baseline output), which weights the longest cases most heavily. The headline figures are per-trial medians instead; the two statistics are computed from the same rows and agree in direction on every condition.
 
 | Case | Category | fable base | fable BLUF | fable terse | opus base | opus BLUF | opus terse |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -110,7 +110,9 @@ Median output tokens per case across 3 trials, full environment. Source: [`evals
 
 The bottom row sums the per-case medians. It does not exactly reproduce the headline percentages, because a sum of medians is not the median of sums — it gives −34.8% and −40.8% on fable and −32.9% and −38.1% on opus, against the per-trial medians of −35.0%, −39.2%, −30.9% and −38.5%. The [Variance](#variance) figures are the ones to quote, since they are computed per trial and carry a range.
 
-The style loses on some rows. On fable, `docker-cache-miss` came out **+457** output tokens with BLUF at the median; on opus, `cjs-to-esm` came out **+438**. Those rows are in the table and in the aggregates.
+The style loses on some rows. On fable, `docker-cache-miss` came out **+457** output tokens with BLUF — the median of the per-trial paired deltas, the pinned statistic, which here reads worse than the +305 a reader gets by differencing the table's two medians (2,038 → 2,343). On opus, `cjs-to-esm` came out **+438**, where the two statistics agree. Those rows are in the table and in the aggregates.
+
+`report.md` also carries the one committed aggregate that points the other way. Its 2-case lean-environment sweep — the environment-overhead measurement, not part of the headline claim — measured BLUF on opus at **+13.4% output** (+560 tokens per sweep), driven by `docker-cache-miss`: +299 at the median, with a −637 to +2,315 trial range. Two cases, one model, in an environment the headline figures do not cover — but it is the aggregate a skeptic will find first, and it is the same `docker-cache-miss` failure the full-environment fable row shows above.
 
 ### Where the effect is not distinguishable from noise
 
@@ -145,7 +147,10 @@ four ratios. `perTrialMedianOutputSaved` returns the raw value for that reason.
 The statistic is the median of the per-trial means, matching the [Variance](#variance) section.
 The pooled mean and the pooled median disagree with it, and with each other, by enough to
 change a model's verdict — so `perTrialMedianOutputSaved` in `evals/lib/report.mjs` pins it
-rather than leaving the choice to each call site.
+rather than leaving the choice to each call site, and a traceability test in
+`evals/test/report.test.mjs` recomputes every figure in this section — the four medians and
+all eight break-even ratios — through the shipped functions from the committed result files,
+so a re-measure that moves any of them fails a test instead of leaving this README stale.
 
 **Input added, split by how it bills.** From `npm run measure:amortization` — 18 calls, two
 turns of one session per condition, on `port-default` in the lean environment, on
@@ -158,7 +163,10 @@ turns of one session per condition, on `port-default` in the lean environment, o
 | terse | 1 | **+2,320** | 0 | +2,320 |
 | terse | 2+ | −263 | **+2,320** | +2,057 |
 
-Every write measured 1-hour TTL; the 5-minute figure was 0 in all 18 rows.
+Every write measured 1-hour TTL; the 5-minute figure was 0 in all 18 rows. And every
+measured turn 1 was **cold** — `inputCacheRead` 0 with a positive cache write in all 9
+turn-1 rows — which is what makes the turn-1 row a cold-write figure at all;
+`assertTurn1WasCold` in `evals/lib/runner.mjs` now enforces that precondition on any re-run.
 
 The **Total input added** column is a raw token count, not a cost figure: the turn-2 rows sum
 a cache write and a cache read, which bill at different rates. Read it as a rate-limit and
@@ -195,8 +203,9 @@ the cache TTL; a gap longer than the TTL re-pays the write. Every measured write
 
 Above the ratio the style saves money; below it, it costs money. So a **single-turn** session is
 a loss unless output costs you more than 6.6×–10.6× input, while **every turn after the first**
-is a win unless output costs you *less* than 0.33×–0.53× of input — and no published pricing
-prices output below input.
+is a win unless output costs you *less* than 0.33×–0.53× of input. On Anthropic's published
+price list — the same source as the cache multipliers below — every model prices output
+above input; if you buy through another provider, that comparison is yours to check.
 
 One asymmetry in the table's provenance: the output half is measured per model, but the input
 half comes from the opus-only amortization run — there is no fable input measurement in this

@@ -4,7 +4,7 @@ import {
   AMORTIZATION_CASE, CONDITIONS, ENVIRONMENTS, MODELS,
   OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, PROMPTS_SHA256,
   loadCases, runAmortizationPair, assertStyleOverheadPresent,
-  assertTurn2ReadFromCache, assertTurn2CarriedTurn1
+  assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold
 } from './lib/runner.mjs'
 
 // This slice spends real money. Every check below is free and runs before the first
@@ -146,7 +146,13 @@ try {
   // only the input-growth comparison against its own turn 1 catches it.
   assertTurn2CarriedTurn1(allRows)
 
-  // Third: was the style actually in the system prompt? Verified on the INPUT side —
+  // Third: was every turn 1 a COLD cache write? The published turn-1 column and the
+  // one-turn break-even are cold-write figures, and no other check enforces that
+  // precondition — the style-overhead check below compares summed inputTokens, which
+  // is identical whether the prefix was written or read.
+  assertTurn1WasCold(allRows)
+
+  // Fourth: was the style actually in the system prompt? Verified on the INPUT side —
   // each styled arm's turn-1 input median must exceed the baseline's by the measured
   // style overhead. Output length cannot answer this question: the paid run measured
   // an unstyled turn 1 at 5 output tokens (the styled figure) and a valid styled
