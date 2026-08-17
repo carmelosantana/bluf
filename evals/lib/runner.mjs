@@ -4,7 +4,7 @@ import { readFile, mkdtemp } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { median } from './report.mjs'
+import { median, assertHomogeneous } from './report.mjs'
 
 const run = promisify(execFile)
 
@@ -180,7 +180,9 @@ export const AMORTIZATION_CASE = 'port-default'
 //     full-claude-opus-5-baseline-v1.jsonl each record an UNSTYLED answer at 5 output
 //     tokens, which this ceiling would pass;
 //   - evals/results/full-claude-opus-5-bluf-terse.jsonl trial 2 records a STYLED answer
-//     at 52 output tokens, which this ceiling would abort.
+//     at 52 output tokens, which this ceiling would abort — but that row is from the
+//     full environment, outside the lean slice this ceiling is calibrated for, so it
+//     is weaker evidence than the in-slice v1 rows above.
 // Those v1 rows come from an archived, retracted run and may reflect a defect in it, but
 // they cannot be dismissed, so the ceiling has a known miss rate in both directions. It
 // is calibrated ONLY for port-default on claude-opus-5 in the lean environment.
@@ -210,9 +212,13 @@ export function assertTurnLooksStyled ({ condition, turn, outputTokens }) {
     throw new Error(
       `condition ${condition}: turn ${turn} produced ${outputTokens} output tokens, above the ` +
       `${STYLED_MAX_OUTPUT_TOKENS}-token ceiling for a styled ${AMORTIZATION_CASE} answer. ` +
-      'Either the output style may not have applied to this turn, or the case, model or ' +
-      `environment is not the one this ceiling was calibrated for (${AMORTIZATION_CASE}, ` +
-      `${OVERHEAD_MODEL}, ${OVERHEAD_ENVIRONMENT}). Aborting rather than emitting data.` +
+      'Either the output style may not have applied to this turn, or this is the ceiling\'s ' +
+      'known false positive: a correctly styled port-default answer has been measured at 52 ' +
+      'output tokens (in the full environment), above this ceiling. If this function was ' +
+      'called directly rather than through runAmortizationPair, the case, model or ' +
+      `environment may also not be the one this ceiling was calibrated for (${AMORTIZATION_CASE}, ` +
+      `${OVERHEAD_MODEL}, ${OVERHEAD_ENVIRONMENT}); runAmortizationPair rejects those before ` +
+      'spending. Aborting rather than emitting data.' +
       (turn === 2
         ? ' If the style held on turn 1 but not here, fall back to single-shot measurement and scope the claim to it.'
         : '')
@@ -277,8 +283,28 @@ export async function runAmortizationPair (caseRow, condition, model, environmen
   } catch (error) {
     // A failure after turn 1 has already been paid for must not discard the row it
     // bought. Attach what was collected so the caller can report it, and rethrow.
-    error.rows = rows
-    throw error
+    // The attachment must be best-effort, never destructive: an injected execute may
+    // reject with a primitive, or a frozen or sealed object, and this module is strict
+    // mode, so a bare `error.rows = rows` on such a value throws — losing the paid row
+    // AND replacing the original error with a meaningless assignment failure, the
+    // exact double loss this block exists to prevent.
+    let attached = false
+    try {
+      error.rows = rows
+      attached = error.rows === rows
+    } catch {}
+    if (attached) throw error
+    // The value cannot carry the rows, so throw an Error that can, with the original
+    // preserved unchanged as its cause. This is the only path that both surfaces the
+    // paid rows and keeps the real failure intact.
+    const wrapper = new Error(
+      `runAmortizationPair failed after ${rows.length} paid row(s), and the rows could not ` +
+      'be attached to the thrown value (a primitive or non-extensible object); the original ' +
+      'failure is preserved unchanged as this error\'s cause',
+      { cause: error }
+    )
+    wrapper.rows = rows
+    throw wrapper
   }
 
   return rows
@@ -301,11 +327,23 @@ export function assertStyledBelowBaseline (rows, { maxStyledFraction = MAX_STYLE
   if (turnTwo.length === 0) {
     throw new Error('assertStyledBelowBaseline found no turn 2 rows; there is nothing to compare, and passing an empty comparison would defeat the check')
   }
-  const baselineTokens = turnTwo.filter(row => row.condition === 'baseline').map(row => row.outputTokens)
-  if (baselineTokens.length === 0) {
+
+  // A plausible caller is a driver reading the per-model JSONL result files back in,
+  // so the rows cannot be trusted to come from one slice. A baseline from another
+  // case, model or environment produces a fraction that measures the mix, not the
+  // style — and both of those mixes have been shown to pass the unguarded check.
+  const caseIds = [...new Set(turnTwo.map(row => row.caseId))].sort()
+  if (caseIds.length > 1) {
+    throw new Error(
+      `refusing to compare: turn 2 rows mix caseIds [${caseIds.join(', ')}]. ` +
+      'A styled arm can only be validated against a baseline measured on the same case.'
+    )
+  }
+
+  const baselineRows = turnTwo.filter(row => row.condition === 'baseline')
+  if (baselineRows.length === 0) {
     throw new Error('assertStyledBelowBaseline found no baseline rows on turn 2; without a measured baseline the styled arms cannot be validated')
   }
-  const baselineMedian = median(baselineTokens)
 
   // "Styled" is every condition present that is not baseline, never a hardcoded list,
   // so a future condition is covered automatically.
@@ -313,8 +351,81 @@ export function assertStyledBelowBaseline (rows, { maxStyledFraction = MAX_STYLE
   if (styledConditions.length === 0) {
     throw new Error(`assertStyledBelowBaseline found no styled arm on turn 2 to compare against the baseline (conditions present: ${[...new Set(turnTwo.map(row => row.condition))].join(', ')}); a comparison with nothing on one side would pass vacuously, which is the failure this check exists to prevent`)
   }
+
+  // Same guard compare() uses: no side may mix models or environments, and the two
+  // sides must agree on both. Reused from report.mjs rather than reimplemented.
   for (const styled of styledConditions) {
-    const styledMedian = median(turnTwo.filter(row => row.condition === styled).map(row => row.outputTokens))
+    assertHomogeneous(baselineRows, turnTwo.filter(row => row.condition === styled))
+  }
+
+  // Duplicate (condition, trial) rows are rejected for the same reason report.mjs
+  // compares multisets: this repo has already shipped a set-based guard that accepted
+  // a duplicated row as a clean measurement.
+  const trialsByCondition = new Map()
+  for (const row of turnTwo) {
+    if (!trialsByCondition.has(row.condition)) trialsByCondition.set(row.condition, [])
+    trialsByCondition.get(row.condition).push(row.trial)
+  }
+  for (const [condition, trials] of trialsByCondition) {
+    const seen = new Set()
+    for (const trial of trials) {
+      if (seen.has(trial)) {
+        throw new Error(
+          `condition ${condition} has more than one turn 2 row for trial ${trial}; ` +
+          'a duplicated row is not two independent observations and would silently skew the median'
+        )
+      }
+      seen.add(trial)
+    }
+  }
+
+  // Survivor-bias guard: a pair that aborts mid-flight (at assertTurnLooksStyled or a
+  // CLI failure) leaves via the error path and contributes no turn 2 row, so an arm
+  // can arrive silently short of trials — its median then summarises only the
+  // survivors. Every condition present must cover exactly the trials the baseline
+  // covers, mirroring report.mjs's uniform-coverage rule.
+  const describe = set => `[${[...set].sort((a, b) => a - b).join(', ')}]`
+  const baselineTrials = new Set(trialsByCondition.get('baseline'))
+  for (const [condition, trials] of trialsByCondition) {
+    if (condition === 'baseline') continue
+    const trialSet = new Set(trials)
+    const missing = [...baselineTrials].filter(trial => !trialSet.has(trial))
+    const extra = [...trialSet].filter(trial => !baselineTrials.has(trial))
+    if (missing.length > 0 || extra.length > 0) {
+      const parts = []
+      if (missing.length > 0) parts.push(`is missing trials ${describe(missing)} that the baseline covers`)
+      if (extra.length > 0) parts.push(`carries trials ${describe(extra)} the baseline lacks`)
+      throw new Error(
+        `refusing to compare: condition ${condition} covers turn 2 trials ${describe(trialSet)} but the ` +
+        `baseline covers ${describe(baselineTrials)} — it ${parts.join(' and ')}. An arm short of trials ` +
+        'is usually the survivor of aborted pairs, and a median of the survivors is not a measurement.'
+      )
+    }
+  }
+
+  // A degenerate median must be diagnosed by name, not surfaced as "a fraction of
+  // NaN": a missing outputTokens makes a median of undefined, and a zero baseline
+  // makes every fraction Infinity or NaN.
+  const medianOf = (condition, conditionRows) => {
+    const value = median(conditionRows.map(row => row.outputTokens))
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `the ${condition} turn 2 output median is ${value} and cannot be compared; ` +
+        'a row is missing outputTokens or carries a non-numeric one'
+      )
+    }
+    return value
+  }
+  const baselineMedian = medianOf('baseline', baselineRows)
+  if (baselineMedian <= 0) {
+    throw new Error(
+      `the baseline turn 2 output median is ${baselineMedian}; every styled fraction of it is ` +
+      'meaningless, so the styled arms cannot be validated against this baseline'
+    )
+  }
+
+  for (const styled of styledConditions) {
+    const styledMedian = medianOf(styled, turnTwo.filter(row => row.condition === styled))
     const fraction = styledMedian / baselineMedian
     if (!(fraction < maxStyledFraction)) {
       throw new Error(

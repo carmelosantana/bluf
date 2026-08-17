@@ -36,8 +36,10 @@ export function median (values) {
 // One value per side for model and environment, and the two sides must agree on both:
 // pairing a fable baseline against an opus candidate would produce a cross-model "saving"
 // that measures the models, not the style. `condition` is checked within each side only —
-// differing across the sides IS the comparison.
-function assertHomogeneous (baselineRows, candidateRows) {
+// differing across the sides IS the comparison. Exported because runner.mjs's
+// assertStyledBelowBaseline needs the identical guard — a parallel implementation
+// would drift.
+export function assertHomogeneous (baselineRows, candidateRows) {
   const distinct = (rows, field) => [...new Set(rows.map(row => row[field]))].sort()
   for (const field of ['model', 'environment', 'condition']) {
     for (const [side, rows] of [['baseline', baselineRows], ['candidate', candidateRows]]) {
