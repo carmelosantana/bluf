@@ -4,11 +4,15 @@ Two things, kept apart on purpose — plus one retired experiment, labelled belo
 
 ## The current measurement
 
-`report.md` and the `bluf`-named `.jsonl` files are the 0.2.0 rules, measured at three
-trials per case with conditions interleaved. The project README's output-side figures —
-the headline percentages, the results table, the variance ranges — trace to these files.
-Its input-cost and break-even figures trace to the amortization slice below, and its
+The `bluf`-named `.jsonl` files are the 0.2.0 rules, measured at three trials per case
+with conditions interleaved. The project README's output-side figures — the headline
+percentages, the results table, the variance ranges — trace to these files. Its
+input-cost and break-even figures trace to the amortization slice below, and its
 0.1.0 regression figures to the archive below.
+
+`report-0.2.0.md` is the three-trial `full`-environment report those files produced. It is kept
+under a versioned name because `npm run measure` writes `report.md` unconditionally, and the
+0.2.0 measurement is evidence for claims the README still makes.
 
 ## Schedule versions
 
