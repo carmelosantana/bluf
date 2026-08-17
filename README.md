@@ -9,7 +9,7 @@
 - 6 of the 48 per-case measurements have trial ranges that straddle zero, meaning the style's effect on those cases is not distinguishable from run-to-run noise even at 3 trials.
 - Version **0.1.0** of these rules made Opus **32.2% more verbose**. Measuring across models caught it. See [The 0.1.0 regression](#the-010-regression-on-opus).
 
-All numbers come from [`evals/results/report.md`](evals/results/report.md), committed in this repo. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
+All numbers come from [`evals/results/`](evals/results/), committed in this repo — the 12-case sweep from [`report.md`](evals/results/report.md), and the session-amortization slice (the cache write/read splits behind the input-cost and break-even figures) from the `amortization-*.jsonl` files. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
 
 ## Before / after
 
@@ -129,7 +129,7 @@ The pattern is that the largest, most open-ended cases are the least predictable
 
 ### What it costs
 
-**Output saved per turn.** Per-trial medians, from the 12-case sweep:
+**Output saved per turn.** The median of the per-trial means, from the 12-case sweep:
 
 | Model | Variant | Output tokens saved |
 | --- | --- | ---: |
@@ -163,7 +163,10 @@ Every write measured 1-hour TTL; the 5-minute figure was 0 in all 18 rows.
 The **Total input added** column is a raw token count, not a cost figure: the turn-2 rows sum
 a cache write and a cache read, which bill at different rates. Read it as a rate-limit and
 context-budget number, like the total-tokens figure below; for anything involving money, use
-the per-tier columns and the break-even table.
+the per-tier columns and the break-even table. The turn-2+ totals are **row sums of the two
+median columns beside them**, not independently computed medians — the pinned statistic, the
+median of the per-trial paired input totals, gives +1,774 (BLUF) and +2,064 (terse), 7 tokens
+higher, because a sum of medians is not the median of sums.
 
 **This split is the whole reason the earlier claim was wrong.** Uncached input, cache reads, and
 cache writes bill at different rates, and 1-hour and 5-minute writes differ again. The harness
@@ -191,7 +194,7 @@ the cache TTL; a gap longer than the TTL re-pays the write. Every measured write
 | claude-opus-5 | terse | 6.57× | 0.33× |
 
 Above the ratio the style saves money; below it, it costs money. So a **single-turn** session is
-a loss unless output costs you more than about 7–11× input, while **every turn after the first**
+a loss unless output costs you more than 6.6×–10.6× input, while **every turn after the first**
 is a win unless output costs you *less* than 0.33×–0.53× of input — and no published pricing
 prices output below input.
 
@@ -223,8 +226,10 @@ net loss is recovered after **0.34 to 1.25 further turns** depending on model an
 soonest on opus terse, longest on fable BLUF. Every measured combination is ahead by the end of
 its third turn.
 
-**Total tokens, which is not a cost figure.** Median total-token change per turn: +1,673 (fable
-BLUF), +1,886 (fable terse), +1,583 (opus BLUF), +1,674 (opus terse). Read this as a **rate-limit
+**Total tokens, which is not a cost figure.** Pooled median total-token change per turn — the
+median over all 36 per-case paired differences in each condition, not the per-trial statistic
+the output-savings figures use: +1,673 (fable BLUF), +1,886 (fable terse), +1,583 (opus BLUF),
++1,674 (opus terse). The direction is the same under either statistic. Read this as a **rate-limit
 and context-budget** number, because that is what raw token counts govern. It is **not** a cost
 proxy: it adds four differently-priced quantities as though they were interchangeable. Use the
 break-even table above for anything involving money.
@@ -247,7 +252,7 @@ reduce this and did not. Medians ignore it; sums do not.
 
 **The baseline itself is unstable, and much more so on fable.** Summed across the 12 cases, the unstyled baseline measured 13,592 / 16,670 / 13,147 output tokens on three consecutive fable trials — a 25.9% spread within a single run. On opus the same figure was 21,741 / 21,911 / 22,434, a 3.2% spread. Any fable number here should be read with that in mind; the opus numbers are considerably firmer despite opus being the model this style used to struggle with.
 
-**The effect size depends on how verbose the baseline currently is, and that moves.** An earlier single-trial run of the same 12 cases measured the opus baseline at 14,591 output tokens; this run measured about 22,000. The rules did not change between those runs. A chattier baseline gives the style more to cut, which is most of why the opus figure moved from −10.4% to −30.9%. Treat these percentages as measured against the models as they behaved in August 2026, not as constants.
+**The effect size depends on how verbose the baseline currently is, and that moves.** The archived v1 run of the same 12 cases measured the opus baseline at 15,914 output tokens summed across the cases ([`full-claude-opus-5-baseline-v1.jsonl`](evals/results/full-claude-opus-5-baseline-v1.jsonl)); this run's three baseline trials measured 21,741–22,434, per the summed figures above. The baseline is unstyled, so the rules cannot explain that move. A chattier baseline gives the style more to cut, and that — not a better rule set — is most of why the opus reduction is as large as −30.9% here: an earlier single-trial run against a leaner baseline measured a substantially smaller reduction. That run's result data was superseded and is not in this repository, which is why no figure is quoted for it. Treat these percentages as measured against the models as they behaved in August 2026, not as constants.
 
 ## The 0.1.0 regression on Opus
 
