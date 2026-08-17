@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { readFile, mkdtemp } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
@@ -164,4 +165,84 @@ export async function runCase (caseRow, condition, model, environment, trial = 1
     environment,
     ...usage
   }
+}
+
+// port-default is the amortization case because it has the widest styled/unstyled gap of
+// any prompt in the set: 5 output tokens styled against 101-106 unstyled on claude-opus-5.
+// That gap is what makes the guard below able to detect an unstyled turn at all.
+export const AMORTIZATION_CASE = 'port-default'
+
+// A styled port-default answer measured 5 output tokens across every trial; unstyled
+// measured 101-106. 40 sits an order of magnitude above the styled figure and well below
+// the unstyled one, so it separates them without being sensitive to normal variation.
+export const STYLED_MAX_OUTPUT_TOKENS = 40
+
+export function buildAmortizationArgs (prompt, styleName, model, environment, { sessionId, resume = false } = {}) {
+  if (!sessionId) {
+    throw new Error('buildAmortizationArgs requires a sessionId; without one the two turns cannot share a session and there is no amortization to measure')
+  }
+  const base = buildArgs(prompt, styleName, model, environment)
+  return resume ? [...base, '--resume', sessionId] : [...base, '--session-id', sessionId]
+}
+
+// An output style is read at session start. A resumed session SHOULD retain it, but that is
+// an assumption this project has not verified. If it does not hold, turn 2 is an unstyled
+// turn and every amortization figure derived from it describes the wrong thing while looking
+// entirely plausible. This guard is the difference between measuring amortization and
+// measuring nothing while believing otherwise.
+export function assertStyleSurvived ({ condition, turn, outputTokens }) {
+  if (condition === 'baseline') return
+  if (outputTokens > STYLED_MAX_OUTPUT_TOKENS) {
+    throw new Error(
+      `condition ${condition} produced ${outputTokens} output tokens on turn ${turn}, above the ` +
+      `${STYLED_MAX_OUTPUT_TOKENS}-token ceiling for a styled ${AMORTIZATION_CASE} answer. The output ` +
+      'style did not apply to this turn, so the amortization figures would describe an unstyled turn. ' +
+      'Aborting rather than emitting data. Fall back to single-shot measurement and scope the claim to it.'
+    )
+  }
+}
+
+async function defaultExecute (args, cwd) {
+  const { stdout } = await run('claude', args, { cwd, maxBuffer: 32 * 1024 * 1024 })
+  return JSON.parse(stdout)
+}
+
+export async function runAmortizationPair (caseRow, condition, model, environment, trial = 1, {
+  execute = defaultExecute,
+  newSessionId = randomUUID
+} = {}) {
+  if (!(condition in CONDITIONS)) {
+    throw new Error(`unknown condition: ${condition}; valid conditions are: ${Object.keys(CONDITIONS).join(', ')}`)
+  }
+
+  const sessionId = newSessionId()
+  // Both turns MUST run in the same cwd. claude stores session transcripts per project
+  // directory, so a fresh mkdtemp on turn 2 makes the session unfindable and --resume fails.
+  const cwd = await mkdtemp(join(tmpdir(), 'bluf-amort-'))
+  const rows = []
+
+  for (const turn of [1, 2]) {
+    const args = buildAmortizationArgs(caseRow.prompt, CONDITIONS[condition], model, environment, {
+      sessionId,
+      resume: turn === 2
+    })
+    const payload = await execute(args, cwd)
+    assertNotErrored(payload, { caseId: caseRow.id, condition })
+    const usage = parseUsage(payload)
+    assertStyleSurvived({ condition, turn, outputTokens: usage.outputTokens })
+
+    rows.push({
+      caseId: caseRow.id,
+      category: caseRow.category,
+      trial,
+      turn,
+      sessionId,
+      condition,
+      model,
+      environment,
+      ...usage
+    })
+  }
+
+  return rows
 }

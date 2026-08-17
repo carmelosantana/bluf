@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
-import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256 } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertStyleSurvived, runAmortizationPair } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -437,5 +437,129 @@ test('parseUsage throws when cache_creation is absent but the flat total shows a
   assert.throws(
     () => parseUsage({ result: 'x', usage }),
     /cache_creation/
+  )
+})
+
+test('buildAmortizationArgs opens a pinned session on turn 1', () => {
+  const args = buildAmortizationArgs('why?', 'BLUF', 'claude-opus-5', 'lean', {
+    sessionId: '11111111-2222-3333-4444-555555555555'
+  })
+
+  assert.ok(args.includes('--session-id'))
+  assert.equal(args[args.indexOf('--session-id') + 1], '11111111-2222-3333-4444-555555555555')
+  assert.ok(!args.includes('--resume'))
+  assert.ok(args.includes('--strict-mcp-config'), 'lean environment flags must still be applied')
+})
+
+test('buildAmortizationArgs resumes that same session on turn 2', () => {
+  const args = buildAmortizationArgs('why?', 'BLUF', 'claude-opus-5', 'lean', {
+    sessionId: '11111111-2222-3333-4444-555555555555',
+    resume: true
+  })
+
+  assert.ok(args.includes('--resume'))
+  assert.equal(args[args.indexOf('--resume') + 1], '11111111-2222-3333-4444-555555555555')
+  assert.ok(!args.includes('--session-id'))
+})
+
+test('buildAmortizationArgs requires a session id', () => {
+  assert.throws(
+    () => buildAmortizationArgs('why?', 'BLUF', 'claude-opus-5', 'lean', {}),
+    /requires a sessionId/
+  )
+})
+
+test('assertStyleSurvived passes a styled turn and ignores baseline', () => {
+  assert.equal(assertStyleSurvived({ condition: 'bluf', turn: 2, outputTokens: 5 }), undefined)
+  assert.equal(assertStyleSurvived({ condition: 'baseline', turn: 2, outputTokens: 104 }), undefined)
+})
+
+test('assertStyleSurvived aborts when a styled turn comes back at baseline length', () => {
+  assert.throws(
+    () => assertStyleSurvived({ condition: 'bluf', turn: 2, outputTokens: 104 }),
+    /did not apply to this turn/
+  )
+  assert.throws(
+    () => assertStyleSurvived({ condition: 'bluf-terse', turn: 2, outputTokens: 104 }),
+    /turn 2/
+  )
+})
+
+test('runAmortizationPair shares one session across both turns and tags each turn', async () => {
+  const seen = []
+  const rows = await runAmortizationPair(
+    { id: 'port-default', category: 'short-lookup', prompt: 'what port?' },
+    'bluf', 'claude-opus-5', 'lean', 1,
+    {
+      newSessionId: () => 'fixed-session-id',
+      execute: async (args, cwd) => {
+        seen.push({ args, cwd })
+        // Turn 1 writes the prefix to cache; turn 2 reads it back. parseUsage requires the
+        // cache_creation object whenever cache_creation_input_tokens is non-zero, because a
+        // write that cannot be attributed to a TTL cannot be priced.
+        const isFirstTurn = seen.length === 1
+        return {
+          usage: {
+            input_tokens: 10,
+            cache_read_input_tokens: isFirstTurn ? 0 : 6800,
+            cache_creation_input_tokens: isFirstTurn ? 6800 : 0,
+            cache_creation: {
+              ephemeral_1h_input_tokens: isFirstTurn ? 6800 : 0,
+              ephemeral_5m_input_tokens: 0
+            },
+            output_tokens: 5
+          },
+          result: 'x'
+        }
+      }
+    }
+  )
+
+  assert.equal(rows.length, 2)
+  assert.deepEqual(rows.map(r => r.turn), [1, 2])
+  assert.deepEqual(rows.map(r => r.sessionId), ['fixed-session-id', 'fixed-session-id'])
+  assert.equal(rows[0].inputCacheWrite, 6800, 'turn 1 should show the cache being written')
+  assert.equal(rows[1].inputCacheRead, 6800, 'turn 2 should show the cache being read')
+
+  assert.equal(seen[0].cwd, seen[1].cwd,
+    'both turns must run in one cwd; claude stores session transcripts per project directory')
+  assert.ok(seen[0].args.includes('--session-id'))
+  assert.ok(seen[1].args.includes('--resume'))
+})
+
+test('runAmortizationPair aborts mid-pair when the style stops applying', async () => {
+  await assert.rejects(
+    () => runAmortizationPair(
+      { id: 'port-default', category: 'short-lookup', prompt: 'what port?' },
+      'bluf', 'claude-opus-5', 'lean', 1,
+      {
+        newSessionId: () => 'fixed-session-id',
+        execute: async () => ({
+          usage: {
+            input_tokens: 10,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 6800,
+            cache_creation: {
+              ephemeral_1h_input_tokens: 6800,
+              ephemeral_5m_input_tokens: 0
+            },
+            output_tokens: 104
+          },
+          result: 'a much longer unstyled answer'
+        })
+      }
+    ),
+    /did not apply to this turn/
+  )
+})
+
+test('runAmortizationPair rejects an unknown condition before spending anything', async () => {
+  await assert.rejects(
+    () => runAmortizationPair(
+      { id: 'port-default', category: 'short-lookup', prompt: 'what port?' },
+      'nonexistent', 'claude-opus-5', 'lean', 1,
+      { execute: async () => { throw new Error('must not be called') } }
+    ),
+    /unknown condition: nonexistent/
   )
 })
