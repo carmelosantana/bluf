@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
-import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, MAX_STYLED_FRACTION_OF_BASELINE } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -469,16 +469,26 @@ test('buildAmortizationArgs requires a session id', () => {
   )
 })
 
-test('assertTurnLooksStyled passes a styled-looking turn and ignores baseline', () => {
-  assert.equal(assertTurnLooksStyled({ condition: 'bluf', turn: 2, outputTokens: 5 }), undefined)
-  assert.equal(assertTurnLooksStyled({ condition: 'baseline', turn: 2, outputTokens: 104 }), undefined)
+test('assertTurnLooksStyled passes a styled-looking turn 1 and ignores baseline', () => {
+  assert.equal(assertTurnLooksStyled({ condition: 'bluf', turn: 1, outputTokens: 5 }), undefined)
+  assert.equal(assertTurnLooksStyled({ condition: 'baseline', turn: 1, outputTokens: 104 }), undefined)
+})
+
+test('assertTurnLooksStyled ignores turn 2 entirely: a re-asked question\'s output length is noise', () => {
+  // The paid run: baseline turn 2 measured 15, 207 and 174 output tokens, and a VALID
+  // styled turn 2 measured 162 — which the old turn-2 ceiling aborted as a false
+  // positive. Turn-2 output length carries no information about whether the style
+  // applied, so the ceiling must not run there at any value.
+  assert.equal(assertTurnLooksStyled({ condition: 'bluf', turn: 2, outputTokens: 162 }), undefined)
+  assert.equal(assertTurnLooksStyled({ condition: 'bluf', turn: 2, outputTokens: 207 }), undefined)
+  assert.equal(assertTurnLooksStyled({ condition: 'bluf-terse', turn: 2, outputTokens: 104 }), undefined)
 })
 
 test('assertTurnLooksStyled reports the observation and candidate causes, not a single verdict', () => {
   assert.throws(
-    () => assertTurnLooksStyled({ condition: 'bluf', turn: 2, outputTokens: 104 }),
+    () => assertTurnLooksStyled({ condition: 'bluf', turn: 1, outputTokens: 104 }),
     (err) => {
-      assert.match(err.message, /turn 2 produced 104 output tokens/, 'must state the observation')
+      assert.match(err.message, /turn 1 produced 104 output tokens/, 'must state the observation')
       assert.match(err.message, /ceiling/, 'must name the ceiling')
       assert.match(err.message, /may not have applied|did not apply/, 'must list style failure as a candidate cause')
       assert.match(err.message, /calibrated/, 'must list miscalibrated case/environment as a candidate cause')
@@ -487,33 +497,32 @@ test('assertTurnLooksStyled reports the observation and candidate causes, not a 
     }
   )
   assert.throws(
-    () => assertTurnLooksStyled({ condition: 'bluf-terse', turn: 2, outputTokens: 104 }),
-    /turn 2/
+    () => assertTurnLooksStyled({ condition: 'bluf-terse', turn: 1, outputTokens: 104 }),
+    /turn 1/
   )
 })
 
-test('assertTurnLooksStyled offers the single-shot fallback only on turn 2, where it is valid', () => {
+test('assertTurnLooksStyled admits it cannot verify the style and defers to the input-side check', () => {
+  // An unstyled turn 1 has been measured at 5 output tokens (paid baseline, trial 3),
+  // identical to a styled answer, so the ceiling has no separating power. Its throw
+  // message must say so and name assertStyleOverheadPresent as the check that does.
   assert.throws(
     () => assertTurnLooksStyled({ condition: 'bluf', turn: 1, outputTokens: 104 }),
     (err) => {
-      assert.doesNotMatch(err.message, /single-shot/,
-        'a style failure on a fresh session fails single-shot identically, so that advice is wrong on turn 1')
+      assert.match(err.message, /cannot verify|cannot prove/, 'must not claim to verify the style')
+      assert.match(err.message, /assertStyleOverheadPresent/, 'must name the check that actually verifies the style')
       return true
     }
   )
-  assert.throws(
-    () => assertTurnLooksStyled({ condition: 'bluf', turn: 2, outputTokens: 104 }),
-    /single-shot/
-  )
 })
 
-test('assertTurnLooksStyled names the known in-slice false positive: a correctly styled answer above the ceiling', () => {
+test('assertTurnLooksStyled names the known false positive: a correctly styled answer above the ceiling', () => {
   // On the only path that spends money, runAmortizationPair has already rejected any
   // case/model/environment mismatch, so the cause an operator actually needs is the
   // ceiling's documented miss: a correctly styled port-default answer measured at 52
   // output tokens, above the 40-token ceiling.
   assert.throws(
-    () => assertTurnLooksStyled({ condition: 'bluf', turn: 2, outputTokens: 104 }),
+    () => assertTurnLooksStyled({ condition: 'bluf', turn: 1, outputTokens: 104 }),
     (err) => {
       assert.match(err.message, /52/, 'must cite the measured 52-token styled answer')
       assert.match(err.message, /correctly styled/, 'must present it as a false positive of the ceiling, not a style failure')
@@ -632,27 +641,35 @@ test('runAmortizationPair attaches the paid turn 1 row when turn 2 throws', asyn
   )
 })
 
-test('runAmortizationPair attaches turn 1 when the turn 2 ceiling check aborts', async () => {
+test('runAmortizationPair completes the pair when turn 2 runs long: turn-2 output length is noise', async () => {
+  // The regression the paid run bought: a valid styled turn 2 measured 162 output
+  // tokens and the old turn-2 ceiling aborted the run as a false positive. Turn 2
+  // re-asks a question the model just answered, so its output length carries no
+  // information about the style; the pair must complete and return both rows.
   let calls = 0
-  await assert.rejects(
-    () => runAmortizationPair(
-      { id: 'port-default', category: 'short-lookup', prompt: 'what port?' },
-      'bluf', 'claude-opus-5', 'lean', 1,
-      {
-        newSessionId: () => 'fixed-session-id',
-        execute: async () => {
-          calls += 1
-          return styledTurnPayload(calls === 1 ? 5 : 104)
+  const rows = await runAmortizationPair(
+    { id: 'port-default', category: 'short-lookup', prompt: 'what port?' },
+    'bluf', 'claude-opus-5', 'lean', 1,
+    {
+      newSessionId: () => 'fixed-session-id',
+      execute: async () => {
+        calls += 1
+        if (calls === 1) return styledTurnPayload(5)
+        return {
+          usage: {
+            input_tokens: 2,
+            cache_read_input_tokens: 6862,
+            cache_creation_input_tokens: 21,
+            cache_creation: { ephemeral_1h_input_tokens: 21, ephemeral_5m_input_tokens: 0 },
+            output_tokens: 162
+          },
+          result: 'x'
         }
       }
-    ),
-    (err) => {
-      assert.match(err.message, /turn 2 produced 104 output tokens/)
-      assert.equal(err.rows.length, 1)
-      assert.equal(err.rows[0].turn, 1)
-      return true
     }
   )
+  assert.equal(rows.length, 2, 'both paid turns must be returned, not aborted')
+  assert.equal(rows[1].outputTokens, 162)
 })
 
 // Finding: the diagnostic-preserving `error.rows = rows` is itself destructive when
@@ -1077,6 +1094,166 @@ test('MAX_STYLED_FRACTION_OF_BASELINE leaves an order of magnitude of headroom o
   assert.equal(MAX_STYLED_FRACTION_OF_BASELINE, 0.5)
 })
 
+// A turn row with the input-side fields assertStyleOverheadPresent reads. Defaults
+// model the real paid shape: baseline turn-1 input about 4830, styled about 6865.
+function inputRow (condition, turn, inputTokens, trial = 1, overrides = {}) {
+  return amortRow(condition, turn, condition === 'baseline' ? 104 : 5, trial, {
+    inputTokens,
+    ...overrides
+  })
+}
+
+test('MIN_STYLE_OVERHEAD_TOKENS sits far below the measured overhead and far above zero', () => {
+  // Measured turn-1 style overhead: about 2,030 tokens for BLUF and about 2,320 for
+  // the terse variant, against a baseline whose turn-1 input varies by 6 tokens.
+  assert.equal(MIN_STYLE_OVERHEAD_TOKENS, 1500)
+})
+
+test('assertStyleOverheadPresent passes the real measured shape: styled input far above baseline', () => {
+  const rows = [
+    // Turn 2 rows must be ignored: turn 2's input carries the turn-1 exchange, so
+    // its overhead is not a clean cache write against a clean baseline.
+    inputRow('baseline', 2, 4952, 1),
+    inputRow('bluf', 2, 6885, 1),
+    // The real paid turn-1 figures.
+    inputRow('baseline', 1, 4829, 1),
+    inputRow('baseline', 1, 4835, 2),
+    inputRow('baseline', 1, 4835, 3),
+    inputRow('bluf', 1, 6867, 1),
+    inputRow('bluf', 1, 6864, 2),
+    inputRow('bluf', 1, 6867, 3),
+    inputRow('bluf-terse', 1, 7152, 1),
+    inputRow('bluf-terse', 1, 7148, 2),
+    inputRow('bluf-terse', 1, 7152, 3)
+  ]
+  assert.equal(assertStyleOverheadPresent(rows), undefined)
+})
+
+test('assertStyleOverheadPresent throws when a styled arm shows no overhead, naming the figures and the consequence', () => {
+  const rows = [
+    inputRow('baseline', 1, 4829, 1),
+    inputRow('baseline', 1, 4835, 2),
+    inputRow('baseline', 1, 4835, 3),
+    // Style absent: the styled arm's input matches baseline.
+    inputRow('bluf', 1, 4829, 1),
+    inputRow('bluf', 1, 4835, 2),
+    inputRow('bluf', 1, 4835, 3)
+  ]
+  assert.throws(
+    () => assertStyleOverheadPresent(rows),
+    (err) => {
+      assert.match(err.message, /bluf/, 'must name the failing condition')
+      assert.match(err.message, /4835/, 'must give both medians')
+      assert.match(err.message, /\b0\b/, 'must give the computed overhead')
+      assert.match(err.message, /1500/, 'must give the threshold')
+      assert.match(err.message, /system prompt/, 'must state the consequence: the style was not in the system prompt')
+      assert.match(err.message, /meaningless/, 'must state that the slice\'s figures for the condition are meaningless')
+      return true
+    }
+  )
+})
+
+test('assertStyleOverheadPresent flags the one styled condition missing its style when the other has it', () => {
+  const rows = [
+    inputRow('baseline', 1, 4835, 1),
+    inputRow('bluf', 1, 6867, 1),
+    inputRow('bluf-terse', 1, 4835, 1)
+  ]
+  assert.throws(() => assertStyleOverheadPresent(rows), /bluf-terse/)
+})
+
+test('assertStyleOverheadPresent requires the full threshold, not merely some overhead', () => {
+  const rows = [
+    inputRow('baseline', 1, 4835, 1),
+    inputRow('bluf', 1, 4835 + 1499, 1)
+  ]
+  assert.throws(() => assertStyleOverheadPresent(rows), /1500/)
+  assert.equal(assertStyleOverheadPresent(rows, { minOverhead: 1499 }), undefined)
+})
+
+test('assertStyleOverheadPresent refuses to pass vacuously: no turn 1 rows', () => {
+  assert.throws(() => assertStyleOverheadPresent([]), /turn 1/)
+  assert.throws(
+    () => assertStyleOverheadPresent([inputRow('baseline', 2, 4952), inputRow('bluf', 2, 6885)]),
+    /turn 1/
+  )
+})
+
+test('assertStyleOverheadPresent refuses to pass vacuously: no baseline rows on turn 1', () => {
+  assert.throws(
+    () => assertStyleOverheadPresent([inputRow('bluf', 1, 6867), inputRow('baseline', 2, 4952)]),
+    /baseline/
+  )
+})
+
+test('assertStyleOverheadPresent refuses to pass vacuously: no styled conditions on turn 1', () => {
+  assert.throws(
+    () => assertStyleOverheadPresent([inputRow('baseline', 1, 4829, 1), inputRow('baseline', 1, 4835, 2)]),
+    (err) => {
+      assert.match(err.message, /no styled/, 'must say no styled arm was found')
+      return true
+    }
+  )
+})
+
+test('assertStyleOverheadPresent refuses rows that mix models or environments', () => {
+  assert.throws(
+    () => assertStyleOverheadPresent([
+      inputRow('baseline', 1, 4829, 1, { model: 'claude-fable-5' }),
+      inputRow('baseline', 1, 4835, 2),
+      inputRow('bluf', 1, 6867, 1)
+    ]),
+    /model/
+  )
+  assert.throws(
+    () => assertStyleOverheadPresent([
+      inputRow('baseline', 1, 4829, 1),
+      inputRow('bluf', 1, 6867, 1, { environment: 'full' }),
+      inputRow('bluf', 1, 6867, 2)
+    ]),
+    /environment/
+  )
+})
+
+test('assertStyleOverheadPresent refuses rows that mix cases', () => {
+  assert.throws(
+    () => assertStyleOverheadPresent([
+      inputRow('baseline', 1, 4829, 1, { caseId: 'docker-cache-miss' }),
+      inputRow('bluf', 1, 6867, 1)
+    ]),
+    /caseId/
+  )
+})
+
+test('assertStyleOverheadPresent rejects duplicate (condition, trial) turn 1 rows', () => {
+  assert.throws(
+    () => assertStyleOverheadPresent([
+      inputRow('baseline', 1, 4829, 1),
+      inputRow('baseline', 1, 4835, 1),
+      inputRow('bluf', 1, 6867, 1)
+    ]),
+    (err) => {
+      assert.match(err.message, /baseline/, 'must name the duplicated condition')
+      assert.match(err.message, /trial 1/, 'must name the duplicated trial')
+      return true
+    }
+  )
+})
+
+test('assertStyleOverheadPresent names the median made unusable by a missing inputTokens', () => {
+  assert.throws(
+    () => assertStyleOverheadPresent([
+      inputRow('baseline', 1, undefined, 1),
+      inputRow('bluf', 1, 6867, 1)
+    ]),
+    (err) => {
+      assert.match(err.message, /baseline/, 'must name which median is unusable')
+      assert.match(err.message, /inputTokens/, 'must say why')
+      return true
+    }
+  )
+})
+
 // A turn row with the input-tier fields assertTurn2ReadFromCache reads. Defaults model
 // the healthy shape: turn 1 writes the prefix, turn 2 reads it back and writes only a
 // small block for the appended turn-1 exchange.
@@ -1292,14 +1469,37 @@ test('assertTurn2CarriedTurn1 throws rather than passes on a missing inputTokens
 // + 120 written for the appended exchange = 6930) is strictly larger than turn 1's
 // (10 uncached + 6800 written = 6810), as a genuinely resumed turn's must be — a fork
 // would re-send the same prefix and land at roughly turn 1's total.
-test('the intended 3x3x2 slice passes the row-count pin and every validity check', async () => {
-  const turnTwoOutput = {
-    baseline: [101, 104, 106],
-    bluf: [5, 5, 5],
-    'bluf-terse': [5, 7, 5]
+test('the real measured 3x3x2 slice passes the row-count pin and every check the driver now runs', async () => {
+  // The paid run's own shape, row for row where it exists. Baseline turn 1 is the
+  // committed evals/results/amortization-claude-opus-5-baseline.jsonl: input about
+  // 4830 with outputs including the 5-token case that proved the output ceiling
+  // cannot distinguish styled from unstyled. Styled turn 1 is the observed 6865-ish
+  // input (the ~2,030-token overhead this slice measures). Turn 2 is read-dominant
+  // with input strictly greater than turn 1, and includes the valid styled turn 2
+  // at 162 output tokens that the old turn-2 ceiling aborted as a false positive.
+  const shape = {
+    baseline: {
+      turn1Write: [4827, 4833, 4833],
+      turn1Output: [107, 159, 5],
+      turn2Write: [123, 175, 21],
+      turn2Output: [15, 207, 174]
+    },
+    bluf: {
+      turn1Write: [6865, 6862, 6865],
+      turn1Output: [5, 5, 5],
+      turn2Write: [21, 21, 21],
+      turn2Output: [21, 162, 21]
+    },
+    'bluf-terse': {
+      turn1Write: [7150, 7146, 7150],
+      turn1Output: [5, 5, 5],
+      turn2Write: [21, 21, 21],
+      turn2Output: [30, 21, 25]
+    }
   }
   const allRows = []
   for (const condition of Object.keys(CONDITIONS)) {
+    const arm = shape[condition]
     for (const trial of [1, 2, 3]) {
       let turn = 0
       const pair = await runAmortizationPair(
@@ -1311,16 +1511,14 @@ test('the intended 3x3x2 slice passes the row-count pin and every validity check
             const isFirstTurn = turn === 1
             return {
               usage: {
-                input_tokens: 10,
-                cache_read_input_tokens: isFirstTurn ? 0 : 6800,
-                cache_creation_input_tokens: isFirstTurn ? 6800 : 120,
+                input_tokens: 2,
+                cache_read_input_tokens: isFirstTurn ? 0 : arm.turn1Write[trial - 1],
+                cache_creation_input_tokens: isFirstTurn ? arm.turn1Write[trial - 1] : arm.turn2Write[trial - 1],
                 cache_creation: {
-                  ephemeral_1h_input_tokens: isFirstTurn ? 6800 : 120,
+                  ephemeral_1h_input_tokens: isFirstTurn ? arm.turn1Write[trial - 1] : arm.turn2Write[trial - 1],
                   ephemeral_5m_input_tokens: 0
                 },
-                output_tokens: isFirstTurn
-                  ? (condition === 'baseline' ? 104 : 5)
-                  : turnTwoOutput[condition][trial - 1]
+                output_tokens: isFirstTurn ? arm.turn1Output[trial - 1] : arm.turn2Output[trial - 1]
               },
               result: 'x'
             }
@@ -1334,7 +1532,57 @@ test('the intended 3x3x2 slice passes the row-count pin and every validity check
   assert.equal(allRows.length, 18, 'the intended slice is 3 conditions x 3 trials x 2 turns')
   assert.equal(assertTurn2ReadFromCache(allRows), undefined)
   assert.equal(assertTurn2CarriedTurn1(allRows), undefined)
-  assert.equal(assertStyledBelowBaseline(allRows), undefined)
+  assert.equal(assertStyleOverheadPresent(allRows), undefined)
+})
+
+test('a slice whose styled arm shows baseline-sized input — style absent — must throw', async () => {
+  // The inverse of the test above: everything about the run looks healthy on the
+  // output side and the cache side, but the styled arm's turn-1 input matches the
+  // baseline, meaning the output style never reached the system prompt. The input
+  // check is the only guard that can catch this, and it must.
+  const allRows = []
+  for (const condition of Object.keys(CONDITIONS)) {
+    for (const trial of [1, 2, 3]) {
+      let turn = 0
+      const pair = await runAmortizationPair(
+        { id: 'port-default', category: 'short-lookup', prompt: 'what port?' },
+        condition, 'claude-opus-5', 'lean', trial,
+        {
+          execute: async () => {
+            turn += 1
+            const isFirstTurn = turn === 1
+            return {
+              usage: {
+                input_tokens: 2,
+                cache_read_input_tokens: isFirstTurn ? 0 : 4827,
+                cache_creation_input_tokens: isFirstTurn ? 4827 : 21,
+                cache_creation: {
+                  ephemeral_1h_input_tokens: isFirstTurn ? 4827 : 21,
+                  ephemeral_5m_input_tokens: 0
+                },
+                output_tokens: isFirstTurn ? (condition === 'baseline' ? 107 : 5) : 21
+              },
+              result: 'x'
+            }
+          }
+        }
+      )
+      allRows.push(...pair)
+    }
+  }
+
+  assert.equal(allRows.length, 18)
+  // The cache-side checks cannot see the missing style; they pass.
+  assert.equal(assertTurn2ReadFromCache(allRows), undefined)
+  assert.equal(assertTurn2CarriedTurn1(allRows), undefined)
+  assert.throws(
+    () => assertStyleOverheadPresent(allRows),
+    (err) => {
+      assert.match(err.message, /bluf/, 'must name a styled condition whose overhead is missing')
+      assert.match(err.message, /system prompt/, 'must state what a zero overhead means')
+      return true
+    }
+  )
 })
 
 test('runAmortizationPair rejects an unknown condition before spending anything', async () => {

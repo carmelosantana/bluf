@@ -41,8 +41,14 @@ test('measure-amortization pins the expected row count and runs the validity che
   const source = await readFile(new URL('../measure-amortization.mjs', import.meta.url), 'utf8')
 
   assert.ok(
-    source.includes('assertStyledBelowBaseline('),
-    'the driver must run the measured-baseline validity check, not just collect rows'
+    source.includes('assertStyleOverheadPresent('),
+    'the driver must run the input-side style-presence check, not just collect rows'
+  )
+  assert.ok(
+    !source.includes('assertStyledBelowBaseline'),
+    'the driver must NOT compare turn-2 output medians: turn 2 re-asks an answered question, so its ' +
+    'output length is noise — the paid run measured baseline turn 2 at 15/207/174 and a VALID styled ' +
+    'turn 2 at 162, which that check would abort as a false positive'
   )
   assert.ok(
     source.includes('allRows.length !== totalCalls'),
@@ -68,8 +74,8 @@ test('measure-amortization checks the input tier of turn 2 after the money is sp
     'the cache-read check belongs with the post-run validity checks, after the row-count pin'
   )
   assert.ok(
-    source.includes('assertStyledBelowBaseline('),
-    'the cache-read check complements the styled-output check; both must run'
+    source.includes('assertStyleOverheadPresent('),
+    'the cache-read check complements the input-side style-presence check; both must run'
   )
 })
 
@@ -93,7 +99,7 @@ test('a validity failure names the complete-looking files it leaves on disk', as
 
   const invalidIndex = source.indexOf('INVALID SLICE')
   const cacheCheckIndex = source.indexOf('assertTurn2ReadFromCache(allRows)')
-  const styledCheckIndex = source.indexOf('assertStyledBelowBaseline(allRows)')
+  const styledCheckIndex = source.indexOf('assertStyleOverheadPresent(allRows)')
   assert.ok(cacheCheckIndex > -1 && styledCheckIndex > -1, 'both validity checks must run')
   assert.ok(
     invalidIndex > -1,

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import {
   AMORTIZATION_CASE, CONDITIONS, ENVIRONMENTS, MODELS,
   OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, PROMPTS_SHA256,
-  loadCases, runAmortizationPair, assertStyledBelowBaseline,
+  loadCases, runAmortizationPair, assertStyleOverheadPresent,
   assertTurn2ReadFromCache, assertTurn2CarriedTurn1
 } from './lib/runner.mjs'
 
@@ -146,9 +146,13 @@ try {
   // only the input-growth comparison against its own turn 1 catches it.
   assertTurn2CarriedTurn1(allRows)
 
-  // Third: styled turn-2 output measured against the baseline arm this slice just
-  // bought, rather than against a hardcoded ceiling.
-  assertStyledBelowBaseline(allRows)
+  // Third: was the style actually in the system prompt? Verified on the INPUT side —
+  // each styled arm's turn-1 input median must exceed the baseline's by the measured
+  // style overhead. Output length cannot answer this question: the paid run measured
+  // an unstyled turn 1 at 5 output tokens (the styled figure) and a valid styled
+  // turn 2 at 162 (baseline territory), so output-side comparisons either pass a
+  // missing style or abort a valid run.
+  assertStyleOverheadPresent(allRows)
 } catch (error) {
   // On this path every result file is on disk with its full row count — a slice that
   // looks finished and is not. Nothing inside the files marks them invalid, so the

@@ -173,19 +173,20 @@ export async function runCase (caseRow, condition, model, environment, trial = 1
 // in the lean environment. That gap is what gives the ceiling below any separating power.
 export const AMORTIZATION_CASE = 'port-default'
 
-// Ceiling for a plausibly styled port-default answer. On current-generation lean+opus
-// data the separation is wide — styled measured 5 output tokens in all six observations,
-// unstyled 101, 104 and 106 — but the repo's own results show it is not clean:
+// Ceiling for a plausibly styled port-default answer. The paid amortization run put
+// the final nail in this ceiling's separating power: the committed baseline rows in
+// evals/results/amortization-claude-opus-5-baseline.jsonl include an UNSTYLED turn 1
+// at 5 output tokens (trial 3) — identical to a styled answer — alongside unstyled
+// turns at 107 and 159. The earlier evidence pointed the same way:
 //   - evals/results/lean-claude-opus-5-baseline-v1.jsonl and
 //     full-claude-opus-5-baseline-v1.jsonl each record an UNSTYLED answer at 5 output
 //     tokens, which this ceiling would pass;
 //   - evals/results/full-claude-opus-5-bluf-terse.jsonl trial 2 records a STYLED answer
-//     at 52 output tokens, which this ceiling would abort — but that row is from the
-//     full environment, outside the lean slice this ceiling is calibrated for, so it
-//     is weaker evidence than the in-slice v1 rows above.
-// Those v1 rows come from an archived, retracted run and may reflect a defect in it, but
-// they cannot be dismissed, so the ceiling has a known miss rate in both directions. It
-// is calibrated ONLY for port-default on claude-opus-5 in the lean environment.
+//     at 52 output tokens, which this ceiling would abort.
+// So the ceiling CANNOT verify the style applied; it survives only as a turn-1 smoke
+// signal for a grossly wrong run, and assertStyleOverheadPresent — on the input side,
+// where the style overhead is directly and stably visible — is the check that verifies
+// the style. Calibrated ONLY for port-default on claude-opus-5 in the lean environment.
 export const STYLED_MAX_OUTPUT_TOKENS = 40
 
 export function buildAmortizationArgs (prompt, styleName, model, environment, { sessionId, resume = false } = {}) {
@@ -196,32 +197,34 @@ export function buildAmortizationArgs (prompt, styleName, model, environment, { 
   return resume ? [...base, '--resume', sessionId] : [...base, '--session-id', sessionId]
 }
 
-// A cheap one-sided sanity check that catches a grossly unstyled turn. It CANNOT prove
-// the style applied, for two reasons. First, the ceiling has a known miss rate in both
-// directions — see the evidence on STYLED_MAX_OUTPUT_TOKENS above — and is calibrated
-// only for port-default on claude-opus-5 in the lean environment. Second, turn 2
-// re-passes --settings {"outputStyle": ...} alongside --resume, so a styled turn 2 may
-// be styled by the flag rather than by the session. The flag stays deliberately: in a
-// real interactive session the style is in effect on every turn, so re-passing it
-// models reality, and removing it would turn a paid run into a CLI-semantics
-// experiment. The honest test of "did the style apply on turn 2" is
-// assertStyledBelowBaseline, which compares against the measured baseline arm.
+// A cheap one-sided smoke check for TURN 1 ONLY, kept because turn 1 fails before
+// turn 2 is paid for, so it can still abort a grossly wrong run at half price. It
+// CANNOT verify the style applied: the paid baseline rows committed in
+// evals/results/amortization-claude-opus-5-baseline.jsonl measured an UNSTYLED
+// turn 1 at 5 output tokens — identical to a styled answer — so output length has no
+// separating power, and assertStyleOverheadPresent, which reads the input side where
+// the ~2,000-token style overhead is directly visible, is the check that verifies the
+// style. On turn 2 this ceiling must not run at all: turn 2 re-asks a question the
+// model just answered, and its output length is noise — the same paid run measured
+// baseline turn 2 at 15, 207 and 174 output tokens and a VALID styled turn 2 at 162,
+// which this ceiling aborted as a false positive.
 export function assertTurnLooksStyled ({ condition, turn, outputTokens }) {
   if (condition === 'baseline') return
+  if (turn !== 1) return
   if (outputTokens > STYLED_MAX_OUTPUT_TOKENS) {
     throw new Error(
       `condition ${condition}: turn ${turn} produced ${outputTokens} output tokens, above the ` +
       `${STYLED_MAX_OUTPUT_TOKENS}-token ceiling for a styled ${AMORTIZATION_CASE} answer. ` +
+      'This ceiling is a smoke signal only and cannot verify the style either way — an ' +
+      'unstyled turn 1 has been measured at 5 output tokens — so assertStyleOverheadPresent ' +
+      'on the input side is the check that verifies the style applied. ' +
       'Either the output style may not have applied to this turn, or this is the ceiling\'s ' +
       'known false positive: a correctly styled port-default answer has been measured at 52 ' +
       'output tokens (in the full environment), above this ceiling. If this function was ' +
       'called directly rather than through runAmortizationPair, the case, model or ' +
       `environment may also not be the one this ceiling was calibrated for (${AMORTIZATION_CASE}, ` +
       `${OVERHEAD_MODEL}, ${OVERHEAD_ENVIRONMENT}); runAmortizationPair rejects those before ` +
-      'spending. Aborting rather than emitting data.' +
-      (turn === 2
-        ? ' If the style held on turn 1 but not here, fall back to single-shot measurement and scope the claim to it.'
-        : '')
+      'spending. Aborting rather than emitting data.'
     )
   }
 }
@@ -421,18 +424,127 @@ export function assertTurn2CarriedTurn1 (rows) {
   }
 }
 
+// Calibration, from the paid run whose baseline rows are committed in
+// evals/results/amortization-claude-opus-5-baseline.jsonl: baseline turn-1 input
+// measured 4829/4835/4835 — a 6-token spread across trials — while styled turn-1
+// input measured about 6865 for BLUF (an overhead of about 2,030 tokens) and about
+// 7150 for the terse variant (about 2,320). 1,500 therefore sits far below any real
+// overhead and far above the zero a missing style would produce.
+export const MIN_STYLE_OVERHEAD_TOKENS = 1500
+
+// The check that verifies the style was actually in the system prompt, from the input
+// side. Style presence is directly visible in turn-1 input tokens: the style text is
+// extra system-prompt content, so a styled turn 1 must write about 2,000 tokens more
+// than baseline into the cache, and the baseline is near-deterministic (a 6-token
+// spread across paid trials). Output length, by contrast, cannot distinguish styled
+// from unstyled — an unstyled turn 1 has been measured at 5 output tokens, the exact
+// styled figure. Considers turn 1 only: turn 2's input carries turn 1's exchange, so
+// only turn 1 is a clean cache write against a clean baseline. As with the sibling
+// checks, a vacuous pass is the failure this exists to prevent, so missing rows throw.
+export function assertStyleOverheadPresent (rows, { minOverhead = MIN_STYLE_OVERHEAD_TOKENS } = {}) {
+  const turnOne = rows.filter(row => row.turn === 1)
+  if (turnOne.length === 0) {
+    throw new Error('assertStyleOverheadPresent found no turn 1 rows; there is nothing to compare, and passing an empty comparison would defeat the check')
+  }
+
+  // Same slice-purity guard as assertStyledBelowBaseline: a baseline from another
+  // case would make the overhead measure the prompt mix, not the style.
+  const caseIds = [...new Set(turnOne.map(row => row.caseId))].sort()
+  if (caseIds.length > 1) {
+    throw new Error(
+      `refusing to compare: turn 1 rows mix caseIds [${caseIds.join(', ')}]. ` +
+      'A styled arm can only be validated against a baseline measured on the same case.'
+    )
+  }
+
+  const baselineRows = turnOne.filter(row => row.condition === 'baseline')
+  if (baselineRows.length === 0) {
+    throw new Error('assertStyleOverheadPresent found no baseline rows on turn 1; without a measured baseline the styled arms cannot be validated')
+  }
+
+  // "Styled" is every condition present that is not baseline, never a hardcoded list,
+  // so a future condition is covered automatically.
+  const styledConditions = [...new Set(turnOne.map(row => row.condition))].filter(name => name !== 'baseline')
+  if (styledConditions.length === 0) {
+    throw new Error(`assertStyleOverheadPresent found no styled arm on turn 1 to compare against the baseline (conditions present: ${[...new Set(turnOne.map(row => row.condition))].join(', ')}); a comparison with nothing on one side would pass vacuously, which is the failure this check exists to prevent`)
+  }
+
+  // Reused from report.mjs, as the sibling check does: no side may mix models or
+  // environments, and the two sides must agree on both.
+  for (const styled of styledConditions) {
+    assertHomogeneous(baselineRows, turnOne.filter(row => row.condition === styled))
+  }
+
+  // Duplicate (condition, trial) rows are rejected for the same reason the sibling
+  // checks reject them: a duplicated row is not two independent observations.
+  const trialsByCondition = new Map()
+  for (const row of turnOne) {
+    if (!trialsByCondition.has(row.condition)) trialsByCondition.set(row.condition, [])
+    trialsByCondition.get(row.condition).push(row.trial)
+  }
+  for (const [condition, trials] of trialsByCondition) {
+    const seen = new Set()
+    for (const trial of trials) {
+      if (seen.has(trial)) {
+        throw new Error(
+          `condition ${condition} has more than one turn 1 row for trial ${trial}; ` +
+          'a duplicated row is not two independent observations and would silently skew the median'
+        )
+      }
+      seen.add(trial)
+    }
+  }
+
+  // A degenerate median must be diagnosed by name, not surfaced as NaN arithmetic.
+  const medianOf = (condition, conditionRows) => {
+    const value = median(conditionRows.map(row => row.inputTokens))
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `the ${condition} turn 1 input median is ${value} and cannot be compared; ` +
+        'a row is missing inputTokens or carries a non-numeric one'
+      )
+    }
+    return value
+  }
+  const baselineMedian = medianOf('baseline', baselineRows)
+
+  for (const styled of styledConditions) {
+    const styledMedian = medianOf(styled, turnOne.filter(row => row.condition === styled))
+    const overhead = styledMedian - baselineMedian
+    if (!(overhead >= minOverhead)) {
+      throw new Error(
+        `condition ${styled} has a turn 1 input median of ${styledMedian} against a baseline median of ` +
+        `${baselineMedian} — a style overhead of ${overhead} tokens, below the ${minOverhead}-token ` +
+        'threshold. An overhead near zero means the output style was not in the system prompt for this ' +
+        `condition, so everything the slice reports about ${styled} is meaningless.`
+      )
+    }
+  }
+}
+
 // Calibration: on current lean+opus data a styled port-default turn measures 5 output
 // tokens against a baseline of 101-106 — a fraction near 0.05. 0.5 leaves an order of
 // magnitude of headroom for normal variation while still catching a styled arm that
 // came back at baseline length.
 export const MAX_STYLED_FRACTION_OF_BASELINE = 0.5
 
-// The real validity check for "did the style apply on turn 2": compare each styled
-// arm's turn 2 output against the slice's own MEASURED baseline arm, not a hardcoded
-// constant. Takes the flat array of every row from the whole slice — all conditions,
-// all trials, both turns — and considers only turn 2, the turn whose styling is in
-// question. An empty comparison passing silently is exactly the failure mode this
-// function exists to prevent, so missing rows throw rather than pass.
+// NOT USED by the amortization slice (evals/measure-amortization.mjs). It compares
+// turn-2 OUTPUT medians, and the paid run showed turn-2 output length is noise when
+// the prompt is re-asked: the committed baseline rows in
+// evals/results/amortization-claude-opus-5-baseline.jsonl measured turn 2 at 15, 207
+// and 174 output tokens (median 174), and a VALID styled turn 2 measured 162 — this
+// check would abort valid runs, and its turn-2 ceiling sibling did exactly that as a
+// false positive. The slice's style-presence check is assertStyleOverheadPresent, on
+// the input side. Kept exported and tested as the record of why output-side
+// validation was the wrong signal for this slice — deleting it would destroy that
+// record.
+//
+// Mechanics, for any caller with turns whose output length IS informative: compare
+// each styled arm's turn 2 output against the slice's own MEASURED baseline arm, not
+// a hardcoded constant. Takes the flat array of every row from the whole slice — all
+// conditions, all trials, both turns — and considers only turn 2. An empty comparison
+// passing silently is exactly the failure mode this function exists to prevent, so
+// missing rows throw rather than pass.
 export function assertStyledBelowBaseline (rows, { maxStyledFraction = MAX_STYLED_FRACTION_OF_BASELINE } = {}) {
   const turnTwo = rows.filter(row => row.turn === 2)
   if (turnTwo.length === 0) {
