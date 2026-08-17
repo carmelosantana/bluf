@@ -203,11 +203,11 @@ function signed (n) {
   return n > 0 ? `+${n}` : String(n)
 }
 
-// Cluster means are averages over unequal bucket sizes, so unlike every other
-// figure in the report they are not integers. One decimal is enough: the
-// interval is indicative, and more digits would imply precision it lacks.
-function round1 (n) {
-  return Math.round(n * 10) / 10
+// Cluster means are averages over unequal bucket sizes, so unlike every other figure in
+// the report they are not integers. They render as whole tokens: the interval is
+// indicative, and even one decimal would imply resolution the method lacks.
+function wholeTokens (n) {
+  return Math.round(n)
 }
 
 export function formatReport (comparison, { condition, model, environment }) {
@@ -291,14 +291,15 @@ export function formatReport (comparison, { condition, model, environment }) {
   lines.push('## Category clusters')
   lines.push('')
   lines.push(
-    `Cases within a category behave alike, so the paired output deltas collapse to ` +
-    `${perCategory.size} cluster${perCategory.size === 1 ? '' : 's'} (one per category) ` +
+    'Cases within a category are correlated, so they are not independent draws; the ' +
+    `paired output deltas collapse to ${perCategory.size} ` +
+    `cluster${perCategory.size === 1 ? '' : 's'} (one per category) ` +
     'before any spread is estimated. Mean output tokens saved per cluster ' +
     `(baseline minus ${condition}; positive is a saving):`
   )
   lines.push('')
   for (const [category, mean] of perCategory) {
-    lines.push(`- \`${category}\`: ${signed(round1(mean))}`)
+    lines.push(`- \`${category}\`: ${signed(wholeTokens(mean))}`)
   }
   lines.push('')
   if (interval === null) {
@@ -309,11 +310,13 @@ export function formatReport (comparison, { condition, model, environment }) {
   } else {
     lines.push(
       `- Point estimate (mean of the ${interval.clusters} cluster means): ` +
-      `${signed(round1(interval.point))} output tokens saved per response`
+      `${signed(wholeTokens(interval.point))} output tokens saved per response, ` +
+      'weighting each category equally'
     )
     lines.push(
-      `- Indicative range: ${signed(round1(interval.low))} to ${signed(round1(interval.high))} ` +
-      `(seeded cluster bootstrap, ${CLUSTER_BOOTSTRAP_RESAMPLES} resamples, 2.5th to 97.5th percentile)`
+      `- Indicative range: ${signed(wholeTokens(interval.low))} to ${signed(wholeTokens(interval.high))} ` +
+      `(seeded cluster bootstrap, ${CLUSTER_BOOTSTRAP_RESAMPLES} resamples, ` +
+      'the middle 95% of resampled cluster means)'
     )
     lines.push('')
     lines.push(
@@ -416,17 +419,39 @@ export function perTrialMedianOutputSaved (baselineRows, candidateRows) {
 
 export const CLUSTER_BOOTSTRAP_RESAMPLES = 2000
 
-// The 12 prompts fall into 5 categories and prompts within a category behave alike, so they
-// are not 12 independent draws. Collapsing each category to one value is what stops the
-// report treating correlated prompts as independent evidence.
+// The 12 prompts fall into 5 categories and prompts within a category are correlated, so
+// they are not 12 independent draws. Collapsing each category to one value is what stops
+// the report treating correlated prompts as independent evidence.
 export function clusterPairedDeltas (baselineRows, candidateRows) {
   assertComparable(baselineRows, candidateRows)
 
+  // Candidates are CONSUMED from a keyed queue rather than looked up with find():
+  // the multiset guard permits a (caseId, trial) key duplicated on both sides, and
+  // find() would pair every duplicated baseline row against the first candidate,
+  // double-counting it and dropping the rest — a silently wrong but plausible mean.
+  // byTrial and perTrialMedianOutputSaved carry the same defence.
+  const candidateQueues = new Map()
+  for (const row of candidateRows) {
+    const k = key(row)
+    if (!candidateQueues.has(k)) candidateQueues.set(k, [])
+    candidateQueues.get(k).push(row)
+  }
+
   const paired = new Map()
   for (const baseline of baselineRows) {
-    const candidate = candidateRows.find(row =>
-      row.caseId === baseline.caseId && row.trial === baseline.trial)
+    const candidate = candidateQueues.get(key(baseline))?.shift()
     if (!candidate) continue
+    // A row with no category would collapse into a single cluster keyed "undefined",
+    // render as such, and silently suppress the interval — the same vacuous-pass shape
+    // as the guards below, so it throws in the same style.
+    for (const [side, row] of [['baseline', baseline], ['candidate', candidate]]) {
+      if (typeof row.category !== 'string' || row.category.length === 0) {
+        throw new Error(
+          `cannot cluster: ${side} row ${row.caseId}/trial ${row.trial} has no category ` +
+          `(${JSON.stringify(row.category)}); a categoryless row cannot be assigned to a cluster`
+        )
+      }
+    }
     // Bucketing by baseline.category alone would let a row whose category label disagrees
     // across the two sweeps be silently absorbed into the baseline's bucket — a plausible
     // number from rows that did not measure the same prompt set.
@@ -481,7 +506,12 @@ function seededRandom (seed) {
 // this a confidence interval would claim a precision the design cannot support.
 export function clusteredInterval (baselineRows, candidateRows, { resamples = CLUSTER_BOOTSTRAP_RESAMPLES } = {}) {
   const clusters = clusterPairedDeltas(baselineRows, candidateRows)
-  const values = [...clusters.values()]
+  // Sorted numerically before seeding and before resampling: the Map's insertion order
+  // follows the order categories first appear in the rows, and both the PRNG seed
+  // (values[0]) and the resample indexing would otherwise make the published bounds an
+  // artifact of row order. A bootstrap over a multiset is order-invariant, so sorting
+  // loses nothing and makes "the same rows always produce the same interval" true.
+  const values = [...clusters.values()].sort((a, b) => a - b)
   if (values.length < 2) {
     throw new Error(
       `refusing to build an interval from ${values.length} cluster: resampling one cluster returns ` +

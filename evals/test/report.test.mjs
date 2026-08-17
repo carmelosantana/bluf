@@ -226,6 +226,11 @@ test('compare detects a mismatch that a concatenated key would hide', () => {
 test('formatReport omits the range column when only one trial ran', () => {
   const result = compare([row('a', 'baseline', 200)], [row('a', 'bluf', 100)])
   const text = formatReport(result, { condition: 'bluf', model: 'claude-fable-5', environment: 'lean' })
+  // This assertion holds only because a single case is necessarily a single cluster,
+  // which suppresses the clustered "Indicative range" line as well as the per-trial
+  // range column. Adding a second category to this fixture would surface the word
+  // "range" via the cluster section and fail this for an unrelated reason — extend
+  // the fixture in a new test rather than weakening this assertion.
   assert.doesNotMatch(text, /range/i, 'a single observation has no measured spread to report')
 })
 
@@ -595,6 +600,52 @@ test('clusteredInterval is deterministic', () => {
   const first = clusteredInterval(BASE, BLUF)
   const second = clusteredInterval(BASE, BLUF)
   assert.deepEqual(first, second)
+})
+
+test('clusteredInterval is invariant to row order', () => {
+  // The sweep writes rows in a per-trial shuffled schedule order, so the order in which
+  // categories first appear — and with it the cluster Map's insertion order — is an
+  // artifact of the shuffle. Before the cluster values were sorted, that order leaked
+  // into the PRNG seed and the resample indexing, and the published bounds moved with
+  // it. The same rows, however arranged, must produce the identical interval.
+  const reference = clusteredInterval(BASE, BLUF)
+  const byCaseDesc = rows => [...rows].sort((a, b) => b.caseId.localeCompare(a.caseId))
+  const interleaved = rows => [rows[2], rows[5], rows[0], rows[4], rows[1], rows[3]]
+  const orderings = [
+    [[...BASE].reverse(), [...BLUF].reverse()],
+    [byCaseDesc(BASE), byCaseDesc(BLUF)],
+    [interleaved(BASE), interleaved(BLUF)],
+    // The two sides need not even share an ordering.
+    [[...BASE].reverse(), interleaved(BLUF)]
+  ]
+  for (const [base, cand] of orderings) {
+    assert.deepEqual(clusteredInterval(base, cand), reference)
+  }
+})
+
+test('clusterPairedDeltas pairs duplicated (caseId, trial) rows one-to-one instead of reusing the first candidate', () => {
+  // The multiset guard permits a key duplicated on BOTH sides. Pairing with find()
+  // would set both baseline rows against the first candidate (100), reporting
+  // ((300-100) + (500-100)) / 2 = 300; consuming candidates one-to-one gives
+  // ((300-100) + (500-400)) / 2 = 150, which no pairing order can change.
+  const base = rowsFor('baseline', [
+    ['a', 'short-lookup', 1, 300], ['a', 'short-lookup', 1, 500]
+  ])
+  const cand = rowsFor('bluf', [
+    ['a', 'short-lookup', 1, 100], ['a', 'short-lookup', 1, 400]
+  ])
+
+  assert.equal(clusterPairedDeltas(base, cand).get('short-lookup'), 150)
+})
+
+test('clusterPairedDeltas refuses rows with no category instead of clustering them under "undefined"', () => {
+  // Without the guard these rows collapse into a single cluster keyed `undefined`,
+  // render as `undefined`, and silently suppress the interval — a vacuous pass, not
+  // a refusal.
+  const base = rowsFor('baseline', [['a', undefined, 1, 300], ['b', undefined, 1, 900]])
+  const cand = rowsFor('bluf', [['a', undefined, 1, 100], ['b', undefined, 1, 700]])
+
+  assert.throws(() => clusterPairedDeltas(base, cand), /no category/)
 })
 
 test('clusteredInterval brackets its point estimate and reports the cluster count', () => {
