@@ -301,7 +301,7 @@ TRIALS=3 npm run measure
 npm run measure:amortization
 ```
 
-`npm test` runs 209 tests with zero dependencies on Node 22+.
+`npm test` runs 210 tests with zero dependencies on Node 22+.
 
 **`TRIALS=3 npm run measure` makes 156 live API calls and costs real money** — the last full run, which still carried a third condition at 234 calls, cost roughly $48–54. It is not part of `npm test` and nothing runs it by accident. It rewrites `evals/results/`. Omit `TRIALS` for a single-trial run of 52 calls, which is cheaper and correspondingly less trustworthy.
 

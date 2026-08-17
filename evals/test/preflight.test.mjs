@@ -84,3 +84,17 @@ test('assertStyleChangedInput refuses a vacuous comparison', () => {
   assert.throws(() => assertStyleChangedInput(row(3593), {}), /refusing to compare/)
   assert.throws(() => assertStyleChangedInput({}, row(5624)), /refusing to compare/)
 })
+
+test('the main-module guard matches a path reached through a symlink', async () => {
+  // Same vacuous-pass class as the spaced-path bug: the ESM loader realpaths
+  // import.meta.filename but process.argv[1] is left as typed, so invoking through a
+  // symlink exits 0 with no output — indistinguishable from a passing check.
+  const dir = await mkdtemp(join(tmpdir(), 'bluf-symlink-test-'))
+  const link = join(dir, 'linked-preflight.mjs')
+  const real = fileURLToPath(new URL('../preflight.mjs', import.meta.url))
+  await symlink(real, link)
+
+  assert.equal(isMainEntry(link), true, 'a symlink to this file is still this file')
+  assert.equal(isMainEntry(join(dir, 'not-preflight.mjs')), false)
+  assert.equal(isMainEntry(undefined), false, 'a missing argv[1] is not an entry point')
+})

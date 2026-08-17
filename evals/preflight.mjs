@@ -1,4 +1,5 @@
 import { mkdtemp } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -37,8 +38,24 @@ export function assertStyleChangedInput (baselineRow, styledRow, { minOverhead =
 // `import.meta.url === \`file://\${process.argv[1]}\`` silently no-ops on any path
 // containing a space — the whole file exits 0 without running, which reads as a pass.
 // Exported so the test suite can exercise the spaced-path case without spending.
+//
+// realpath both sides for the same reason: the ESM loader resolves import.meta.filename
+// through symlinks while process.argv[1] is left as typed, so invoking this file through a
+// symlinked path is a second instance of the same silent no-op. Both failures look
+// identical from outside — exit 0, no output — which reads as a pass.
 export function isMainEntry (entryPath = process.argv[1]) {
-  return import.meta.filename === entryPath
+  if (entryPath == null) return false
+  return realpath(import.meta.filename) === realpath(entryPath)
+}
+
+// A path that cannot be resolved cannot be the entry point that is currently executing, so
+// falling back to the raw string keeps the comparison total rather than throwing.
+function realpath (path) {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
 }
 
 if (isMainEntry()) {
