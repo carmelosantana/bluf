@@ -4,6 +4,7 @@ import { readFile, mkdtemp } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { median } from './report.mjs'
 
 const run = promisify(execFile)
 
@@ -168,13 +169,21 @@ export async function runCase (caseRow, condition, model, environment, trial = 1
 }
 
 // port-default is the amortization case because it has the widest styled/unstyled gap of
-// any prompt in the set: 5 output tokens styled against 101-106 unstyled on claude-opus-5.
-// That gap is what makes the guard below able to detect an unstyled turn at all.
+// any prompt in the set: 5 output tokens styled against 101-106 unstyled on claude-opus-5
+// in the lean environment. That gap is what gives the ceiling below any separating power.
 export const AMORTIZATION_CASE = 'port-default'
 
-// A styled port-default answer measured 5 output tokens across every trial; unstyled
-// measured 101-106. 40 sits an order of magnitude above the styled figure and well below
-// the unstyled one, so it separates them without being sensitive to normal variation.
+// Ceiling for a plausibly styled port-default answer. On current-generation lean+opus
+// data the separation is wide — styled measured 5 output tokens in all six observations,
+// unstyled 101, 104 and 106 — but the repo's own results show it is not clean:
+//   - evals/results/lean-claude-opus-5-baseline-v1.jsonl and
+//     full-claude-opus-5-baseline-v1.jsonl each record an UNSTYLED answer at 5 output
+//     tokens, which this ceiling would pass;
+//   - evals/results/full-claude-opus-5-bluf-terse.jsonl trial 2 records a STYLED answer
+//     at 52 output tokens, which this ceiling would abort.
+// Those v1 rows come from an archived, retracted run and may reflect a defect in it, but
+// they cannot be dismissed, so the ceiling has a known miss rate in both directions. It
+// is calibrated ONLY for port-default on claude-opus-5 in the lean environment.
 export const STYLED_MAX_OUTPUT_TOKENS = 40
 
 export function buildAmortizationArgs (prompt, styleName, model, environment, { sessionId, resume = false } = {}) {
@@ -185,19 +194,28 @@ export function buildAmortizationArgs (prompt, styleName, model, environment, { 
   return resume ? [...base, '--resume', sessionId] : [...base, '--session-id', sessionId]
 }
 
-// An output style is read at session start. A resumed session SHOULD retain it, but that is
-// an assumption this project has not verified. If it does not hold, turn 2 is an unstyled
-// turn and every amortization figure derived from it describes the wrong thing while looking
-// entirely plausible. This guard is the difference between measuring amortization and
-// measuring nothing while believing otherwise.
-export function assertStyleSurvived ({ condition, turn, outputTokens }) {
+// A cheap one-sided sanity check that catches a grossly unstyled turn. It CANNOT prove
+// the style applied, for two reasons. First, the ceiling has a known miss rate in both
+// directions — see the evidence on STYLED_MAX_OUTPUT_TOKENS above — and is calibrated
+// only for port-default on claude-opus-5 in the lean environment. Second, turn 2
+// re-passes --settings {"outputStyle": ...} alongside --resume, so a styled turn 2 may
+// be styled by the flag rather than by the session. The flag stays deliberately: in a
+// real interactive session the style is in effect on every turn, so re-passing it
+// models reality, and removing it would turn a paid run into a CLI-semantics
+// experiment. The honest test of "did the style apply on turn 2" is
+// assertStyledBelowBaseline, which compares against the measured baseline arm.
+export function assertTurnLooksStyled ({ condition, turn, outputTokens }) {
   if (condition === 'baseline') return
   if (outputTokens > STYLED_MAX_OUTPUT_TOKENS) {
     throw new Error(
-      `condition ${condition} produced ${outputTokens} output tokens on turn ${turn}, above the ` +
-      `${STYLED_MAX_OUTPUT_TOKENS}-token ceiling for a styled ${AMORTIZATION_CASE} answer. The output ` +
-      'style did not apply to this turn, so the amortization figures would describe an unstyled turn. ' +
-      'Aborting rather than emitting data. Fall back to single-shot measurement and scope the claim to it.'
+      `condition ${condition}: turn ${turn} produced ${outputTokens} output tokens, above the ` +
+      `${STYLED_MAX_OUTPUT_TOKENS}-token ceiling for a styled ${AMORTIZATION_CASE} answer. ` +
+      'Either the output style may not have applied to this turn, or the case, model or ' +
+      `environment is not the one this ceiling was calibrated for (${AMORTIZATION_CASE}, ` +
+      `${OVERHEAD_MODEL}, ${OVERHEAD_ENVIRONMENT}). Aborting rather than emitting data.` +
+      (turn === 2
+        ? ' If the style held on turn 1 but not here, fall back to single-shot measurement and scope the claim to it.'
+        : '')
     )
   }
 }
@@ -214,6 +232,18 @@ export async function runAmortizationPair (caseRow, condition, model, environmen
   if (!(condition in CONDITIONS)) {
     throw new Error(`unknown condition: ${condition}; valid conditions are: ${Object.keys(CONDITIONS).join(', ')}`)
   }
+  // STYLED_MAX_OUTPUT_TOKENS is calibrated only for one case, one model and one
+  // environment. Anywhere else the ceiling is meaningless — it would abort correct runs
+  // or pass unstyled ones — so refuse before any money is spent.
+  if (caseRow.id !== AMORTIZATION_CASE) {
+    throw new Error(`runAmortizationPair got case ${caseRow.id} but the styled-output ceiling is calibrated only for ${AMORTIZATION_CASE}; running any other case would spend money on turns the guard cannot police`)
+  }
+  if (environment !== OVERHEAD_ENVIRONMENT) {
+    throw new Error(`runAmortizationPair got environment ${environment} but the styled-output ceiling is calibrated only for ${OVERHEAD_ENVIRONMENT}; running elsewhere would spend money on turns the guard cannot police`)
+  }
+  if (model !== OVERHEAD_MODEL) {
+    throw new Error(`runAmortizationPair got model ${model} but the styled-output ceiling is calibrated only for ${OVERHEAD_MODEL}; running another model would spend money on turns the guard cannot police`)
+  }
 
   const sessionId = newSessionId()
   // Both turns MUST run in the same cwd. claude stores session transcripts per project
@@ -221,28 +251,72 @@ export async function runAmortizationPair (caseRow, condition, model, environmen
   const cwd = await mkdtemp(join(tmpdir(), 'bluf-amort-'))
   const rows = []
 
-  for (const turn of [1, 2]) {
-    const args = buildAmortizationArgs(caseRow.prompt, CONDITIONS[condition], model, environment, {
-      sessionId,
-      resume: turn === 2
-    })
-    const payload = await execute(args, cwd)
-    assertNotErrored(payload, { caseId: caseRow.id, condition })
-    const usage = parseUsage(payload)
-    assertStyleSurvived({ condition, turn, outputTokens: usage.outputTokens })
+  try {
+    for (const turn of [1, 2]) {
+      const args = buildAmortizationArgs(caseRow.prompt, CONDITIONS[condition], model, environment, {
+        sessionId,
+        resume: turn === 2
+      })
+      const payload = await execute(args, cwd)
+      assertNotErrored(payload, { caseId: caseRow.id, condition })
+      const usage = parseUsage(payload)
+      assertTurnLooksStyled({ condition, turn, outputTokens: usage.outputTokens })
 
-    rows.push({
-      caseId: caseRow.id,
-      category: caseRow.category,
-      trial,
-      turn,
-      sessionId,
-      condition,
-      model,
-      environment,
-      ...usage
-    })
+      rows.push({
+        caseId: caseRow.id,
+        category: caseRow.category,
+        trial,
+        turn,
+        sessionId,
+        condition,
+        model,
+        environment,
+        ...usage
+      })
+    }
+  } catch (error) {
+    // A failure after turn 1 has already been paid for must not discard the row it
+    // bought. Attach what was collected so the caller can report it, and rethrow.
+    error.rows = rows
+    throw error
   }
 
   return rows
+}
+
+// Calibration: on current lean+opus data a styled port-default turn measures 5 output
+// tokens against a baseline of 101-106 — a fraction near 0.05. 0.5 leaves an order of
+// magnitude of headroom for normal variation while still catching a styled arm that
+// came back at baseline length.
+export const MAX_STYLED_FRACTION_OF_BASELINE = 0.5
+
+// The real validity check for "did the style apply on turn 2": compare each styled
+// arm's turn 2 output against the slice's own MEASURED baseline arm, not a hardcoded
+// constant. Takes the flat array of every row from the whole slice — all conditions,
+// all trials, both turns — and considers only turn 2, the turn whose styling is in
+// question. An empty comparison passing silently is exactly the failure mode this
+// function exists to prevent, so missing rows throw rather than pass.
+export function assertStyledBelowBaseline (rows, { maxStyledFraction = MAX_STYLED_FRACTION_OF_BASELINE } = {}) {
+  const turnTwo = rows.filter(row => row.turn === 2)
+  if (turnTwo.length === 0) {
+    throw new Error('assertStyledBelowBaseline found no turn 2 rows; there is nothing to compare, and passing an empty comparison would defeat the check')
+  }
+  const baselineTokens = turnTwo.filter(row => row.condition === 'baseline').map(row => row.outputTokens)
+  if (baselineTokens.length === 0) {
+    throw new Error('assertStyledBelowBaseline found no baseline rows on turn 2; without a measured baseline the styled arms cannot be validated')
+  }
+  const baselineMedian = median(baselineTokens)
+
+  const styledConditions = [...new Set(turnTwo.map(row => row.condition))].filter(name => name !== 'baseline')
+  for (const styled of styledConditions) {
+    const styledMedian = median(turnTwo.filter(row => row.condition === styled).map(row => row.outputTokens))
+    const fraction = styledMedian / baselineMedian
+    if (!(fraction < maxStyledFraction)) {
+      throw new Error(
+        `condition ${styled} has a turn 2 output median of ${styledMedian} against a baseline median of ` +
+        `${baselineMedian} — a fraction of ${fraction.toFixed(2)}, at or above the ${maxStyledFraction} threshold. ` +
+        'A styled arm this close to baseline length means the style cannot be shown to have applied on turn 2.'
+      )
+    }
+  }
 }
