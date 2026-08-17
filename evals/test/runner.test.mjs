@@ -762,6 +762,21 @@ test('assertStyledBelowBaseline refuses to pass an empty comparison: no baseline
   )
 })
 
+test('assertStyledBelowBaseline refuses to pass an empty comparison: no styled arms on turn 2', () => {
+  assert.throws(
+    () => assertStyledBelowBaseline([
+      amortRow('baseline', 2, 101),
+      amortRow('baseline', 2, 104),
+      amortRow('bluf', 1, 5)
+    ]),
+    (err) => {
+      assert.match(err.message, /no styled/, 'must say no styled arm was found to compare')
+      assert.match(err.message, /baseline/, 'must name the conditions it did find')
+      return true
+    }
+  )
+})
+
 test('assertStyledBelowBaseline flags the failing condition when others pass', () => {
   const rows = [
     amortRow('baseline', 2, 101),

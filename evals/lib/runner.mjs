@@ -307,7 +307,12 @@ export function assertStyledBelowBaseline (rows, { maxStyledFraction = MAX_STYLE
   }
   const baselineMedian = median(baselineTokens)
 
+  // "Styled" is every condition present that is not baseline, never a hardcoded list,
+  // so a future condition is covered automatically.
   const styledConditions = [...new Set(turnTwo.map(row => row.condition))].filter(name => name !== 'baseline')
+  if (styledConditions.length === 0) {
+    throw new Error(`assertStyledBelowBaseline found no styled arm on turn 2 to compare against the baseline (conditions present: ${[...new Set(turnTwo.map(row => row.condition))].join(', ')}); a comparison with nothing on one side would pass vacuously, which is the failure this check exists to prevent`)
+  }
   for (const styled of styledConditions) {
     const styledMedian = median(turnTwo.filter(row => row.condition === styled).map(row => row.outputTokens))
     const fraction = styledMedian / baselineMedian
