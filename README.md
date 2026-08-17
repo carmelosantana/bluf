@@ -4,7 +4,7 @@
 
 - Cuts assistant output tokens by a median of **35.0%** on claude-fable-5 and **30.9%** on claude-opus-5. The terse variant cuts **39.2%** and **38.5%**. Measured on 12 Claude Code-shaped prompts, 3 trials per case, in a full ~124k-token environment.
 - **Every one of the 12 trial-level measurements came out negative.** The direction is not in question; the size is. Per-trial ranges are −44.0% to −30.7% (fable) and −32.7% to −29.0% (opus). See [Variance](#variance).
-- Costs input tokens: **+2,031** (BLUF) or **+2,321** (terse) per turn, measured to within 7 tokens across the amortization run's trials. On the first turn of a session that is a cache **write**; from the second turn on it is a cache **read** of the same size.
+- Costs input tokens: **+2,030** (BLUF) or **+2,320** (terse) per turn — the median of the per-trial paired differences, the same statistic used for the output-savings figures. The per-trial differences were 2,029–2,037 (BLUF) and 2,319–2,327 (terse) across the amortization run's trials. On the first turn of a session that is a cache **write**; from the second turn on it is a cache **read** of the same size.
 - **At published cache pricing, costs money on turn 1 and saves money on every turn after.** Break-even is 6.6×–10.6× output:input for a one-turn session and 0.33×–0.53× in steady state. No prices are quoted here — multiply by your own and see [What it costs](#what-it-costs).
 - 6 of the 48 per-case measurements have trial ranges that straddle zero, meaning the style's effect on those cases is not distinguishable from run-to-run noise even at 3 trials.
 - Version **0.1.0** of these rules made Opus **32.2% more verbose**. Measuring across models caught it. See [The 0.1.0 regression](#the-010-regression-on-opus).
@@ -86,7 +86,7 @@ It adds grammar compression on top of the base style:
 - No arrows. Standard acronyms (DB, API, HTTP) are fine; never coin one.
 - Compression never touches code, quotes, exact strings, or caveats.
 
-**It cuts more on aggregate, but not uniformly, and it is not strictly better.** It costs more input than the base style (+2,321 per turn vs +2,031), and it loses on individual cases: on opus, `actions-workflow` measured 715 output tokens under terse against 499 under BLUF, and `docker-cache-miss` measured 3,840 against 3,525. Compressed grammar is also harder to skim for some readers, which no token count captures.
+**It cuts more on aggregate, but not uniformly, and it is not strictly better.** It costs more input than the base style (+2,320 per turn vs +2,030), and it loses on individual cases: on opus, `actions-workflow` measured 715 output tokens under terse against 499 under BLUF, and `docker-cache-miss` measured 3,840 against 3,525. Compressed grammar is also harder to skim for some readers, which no token count captures.
 
 ## Measured results
 
@@ -153,10 +153,10 @@ turns of one session per condition, on `port-default` in the lean environment, o
 
 | Variant | Turn | Cache write | Cache read | Total input added |
 | --- | ---: | ---: | ---: | ---: |
-| BLUF | 1 | **+2,031** | 0 | +2,031 |
-| BLUF | 2+ | −263 | **+2,031** | +1,768 |
-| terse | 1 | **+2,321** | 0 | +2,321 |
-| terse | 2+ | −263 | **+2,321** | +2,058 |
+| BLUF | 1 | **+2,030** | 0 | +2,030 |
+| BLUF | 2+ | −263 | **+2,030** | +1,767 |
+| terse | 1 | **+2,320** | 0 | +2,320 |
+| terse | 2+ | −263 | **+2,320** | +2,057 |
 
 Every write measured 1-hour TTL; the 5-minute figure was 0 in all 18 rows.
 
@@ -197,7 +197,7 @@ prices output below input.
 
 One asymmetry in the table's provenance: the output half is measured per model, but the input
 half comes from the opus-only amortization run — there is no fable input measurement in this
-repository. The fable rows reuse the opus-measured +2,031/+2,321 overhead. That transfer is
+repository. The fable rows reuse the opus-measured +2,030/+2,320 overhead. That transfer is
 very likely sound, because the overhead is a property of the style text rather than the model,
 but it is a transfer, not a fable measurement.
 
