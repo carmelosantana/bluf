@@ -91,7 +91,8 @@ test('parseUsage counts cache reads and cache writes as input tokens', () => {
       input_tokens: 10,
       output_tokens: 50,
       cache_read_input_tokens: 900,
-      cache_creation_input_tokens: 90
+      cache_creation_input_tokens: 90,
+      cache_creation: { ephemeral_1h_input_tokens: 90, ephemeral_5m_input_tokens: 0 }
     }
   })
   assert.equal(usage.inputTokens, 1000)
@@ -100,10 +101,11 @@ test('parseUsage counts cache reads and cache writes as input tokens', () => {
   assert.equal(usage.chars, 10)
 })
 
-test('parseUsage tolerates absent cache fields', () => {
-  const usage = parseUsage({ result: 'x', usage: { input_tokens: 5, output_tokens: 7 } })
-  assert.equal(usage.inputTokens, 5)
-  assert.equal(usage.totalTokens, 12)
+test('parseUsage rejects absent cache fields rather than fabricating zeros', () => {
+  assert.throws(
+    () => parseUsage({ result: 'x', usage: { input_tokens: 5, output_tokens: 7 } }),
+    /cache_read_input_tokens|cache_creation_input_tokens/
+  )
 })
 
 test('parseUsage rejects a payload with no usage block', () => {
@@ -163,47 +165,54 @@ test('runCase rejects an unknown condition before invoking anything', async () =
   )
 })
 
-test('parseUsage coerces string token fields to numbers instead of concatenating', () => {
-  const usage = parseUsage({
-    result: 'ok',
-    usage: { input_tokens: '10', output_tokens: '5', cache_read_input_tokens: '2' }
-  })
-  assert.equal(usage.inputTokens, 12)
-  assert.equal(usage.outputTokens, 5)
-  assert.equal(usage.totalTokens, 17)
+test('parseUsage rejects string token fields rather than coercing them', () => {
+  assert.throws(
+    () => parseUsage({
+      result: 'ok',
+      usage: { input_tokens: '10', output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+    }),
+    /input_tokens/
+  )
 })
 
 test('parseUsage throws on a non-numeric token field', () => {
   assert.throws(
-    () => parseUsage({ result: 'x', usage: { input_tokens: 'abc', output_tokens: 5 } }),
+    () => parseUsage({
+      result: 'x',
+      usage: { input_tokens: 'abc', output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+    }),
     /input_tokens/
   )
   assert.throws(
-    () => parseUsage({ result: 'x', usage: { input_tokens: 5, output_tokens: 'abc' } }),
+    () => parseUsage({
+      result: 'x',
+      usage: { input_tokens: 5, output_tokens: 'abc', cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+    }),
     /output_tokens/
   )
 })
 
-test('parseUsage still treats absent and null token fields as zero', () => {
-  const absent = parseUsage({ result: 'x', usage: { input_tokens: 5, output_tokens: 7 } })
-  assert.equal(absent.inputTokens, 5)
-  assert.equal(absent.totalTokens, 12)
-
-  const nulls = parseUsage({
-    result: 'x',
-    usage: { input_tokens: null, output_tokens: null, cache_read_input_tokens: null, cache_creation_input_tokens: null }
-  })
-  assert.equal(nulls.inputTokens, 0)
-  assert.equal(nulls.outputTokens, 0)
-  assert.equal(nulls.totalTokens, 0)
+test('parseUsage rejects null token fields rather than treating them as zero', () => {
+  assert.throws(
+    () => parseUsage({
+      result: 'x',
+      usage: { input_tokens: null, output_tokens: null, cache_read_input_tokens: null, cache_creation_input_tokens: null }
+    }),
+    /input_tokens/
+  )
 })
 
 test('parseUsage treats a missing result as zero chars and rejects a non-string result', () => {
-  const missing = parseUsage({ usage: { input_tokens: 1, output_tokens: 2 } })
+  const missing = parseUsage({
+    usage: { input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+  })
   assert.equal(missing.chars, 0)
 
   assert.throws(
-    () => parseUsage({ result: 42, usage: { input_tokens: 1, output_tokens: 2 } }),
+    () => parseUsage({
+      result: 42,
+      usage: { input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+    }),
     /result/
   )
 })
@@ -258,7 +267,8 @@ test('parseUsage returns the three input tiers separately', () => {
       input_tokens: 12,
       cache_read_input_tokens: 117119,
       cache_creation_input_tokens: 6500,
-      output_tokens: 5
+      output_tokens: 5,
+      cache_creation: { ephemeral_1h_input_tokens: 6500, ephemeral_5m_input_tokens: 0 }
     },
     result: 'hello'
   })
@@ -274,7 +284,8 @@ test('parseUsage tiers sum to the legacy inputTokens field', () => {
       input_tokens: 12,
       cache_read_input_tokens: 117119,
       cache_creation_input_tokens: 6500,
-      output_tokens: 5
+      output_tokens: 5,
+      cache_creation: { ephemeral_1h_input_tokens: 5000, ephemeral_5m_input_tokens: 1500 }
     },
     result: 'hello'
   })
@@ -288,7 +299,7 @@ test('parseUsage tiers sum to the legacy inputTokens field', () => {
   assert.equal(usage.totalTokens, 123636)
 })
 
-test('parseUsage rejects a non-numeric tier rather than coercing it', () => {
+test('parseUsage rejects any non-number tier value, numeric strings included', () => {
   assert.throws(
     () => parseUsage({
       usage: {
@@ -300,5 +311,131 @@ test('parseUsage rejects a non-numeric tier rather than coercing it', () => {
       result: 'hello'
     }),
     /cache_read_input_tokens is not a finite number/
+  )
+  assert.throws(
+    () => parseUsage({
+      usage: {
+        input_tokens: 12,
+        cache_read_input_tokens: '117119',
+        cache_creation_input_tokens: 0,
+        output_tokens: 5
+      },
+      result: 'hello'
+    }),
+    /cache_read_input_tokens is not a finite number/
+  )
+})
+
+// A complete usage block matching the real captured payload shape in
+// .superpowers/sdd/task-5-report.md — every real response carries all four flat
+// token fields plus the cache_creation TTL split.
+function fullUsage (overrides = {}, cacheCreation) {
+  const usage = {
+    input_tokens: 2,
+    cache_creation_input_tokens: 5169,
+    cache_read_input_tokens: 0,
+    output_tokens: 4,
+    cache_creation: { ephemeral_1h_input_tokens: 5169, ephemeral_5m_input_tokens: 0 },
+    ...overrides
+  }
+  if (cacheCreation !== undefined) usage.cache_creation = cacheCreation
+  return usage
+}
+
+test('parseUsage throws when any of the four token fields is absent, naming it', () => {
+  for (const name of ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens']) {
+    const usage = fullUsage()
+    delete usage[name]
+    assert.throws(
+      () => parseUsage({ result: 'x', usage }),
+      new RegExp(name),
+      `${name} absent must throw`
+    )
+  }
+})
+
+test('parseUsage throws on a null token field rather than recording zero', () => {
+  assert.throws(
+    () => parseUsage({ result: 'x', usage: fullUsage({ input_tokens: null }) }),
+    /input_tokens/
+  )
+})
+
+test('parseUsage throws on falsy non-number token values that Number() would turn into 0', () => {
+  for (const hole of ['', false, []]) {
+    assert.throws(
+      () => parseUsage({ result: 'x', usage: fullUsage({ output_tokens: hole }) }),
+      /output_tokens/,
+      `${JSON.stringify(hole)} must throw, not become 0`
+    )
+  }
+})
+
+test('parseUsage splits cache writes into 1h and 5m TTL tiers', () => {
+  const usage = parseUsage({
+    result: 'ok',
+    usage: fullUsage(
+      { cache_creation_input_tokens: 5169 },
+      { ephemeral_1h_input_tokens: 4000, ephemeral_5m_input_tokens: 1169 }
+    )
+  })
+  assert.equal(usage.inputCacheWrite1h, 4000)
+  assert.equal(usage.inputCacheWrite5m, 1169)
+  assert.equal(usage.inputCacheWrite, 5169)
+})
+
+test('parseUsage throws when cache_creation is present but an ephemeral field is absent', () => {
+  assert.throws(
+    () => parseUsage({ result: 'x', usage: fullUsage({}, { ephemeral_1h_input_tokens: 5169 }) }),
+    /ephemeral_5m_input_tokens/
+  )
+  assert.throws(
+    () => parseUsage({ result: 'x', usage: fullUsage({}, { ephemeral_5m_input_tokens: 0 }) }),
+    /ephemeral_1h_input_tokens/
+  )
+})
+
+test('parseUsage throws on a non-finite ephemeral cache field', () => {
+  assert.throws(
+    () => parseUsage({
+      result: 'x',
+      usage: fullUsage({}, { ephemeral_1h_input_tokens: 'lots', ephemeral_5m_input_tokens: 0 })
+    }),
+    /ephemeral_1h_input_tokens/
+  )
+})
+
+test('parseUsage throws when the TTL split disagrees with the flat cache write total, naming both figures', () => {
+  assert.throws(
+    () => parseUsage({
+      result: 'x',
+      usage: fullUsage(
+        { cache_creation_input_tokens: 5169 },
+        { ephemeral_1h_input_tokens: 5000, ephemeral_5m_input_tokens: 100 }
+      )
+    }),
+    (err) => {
+      assert.match(err.message, /5100/)
+      assert.match(err.message, /5169/)
+      return true
+    }
+  )
+})
+
+test('parseUsage sets both TTL tiers to zero when cache_creation is absent and the flat total is zero', () => {
+  const usage = fullUsage({ cache_creation_input_tokens: 0 })
+  delete usage.cache_creation
+  const parsed = parseUsage({ result: 'x', usage })
+  assert.equal(parsed.inputCacheWrite1h, 0)
+  assert.equal(parsed.inputCacheWrite5m, 0)
+  assert.equal(parsed.inputCacheWrite, 0)
+})
+
+test('parseUsage throws when cache_creation is absent but the flat total shows a real cache write', () => {
+  const usage = fullUsage({ cache_creation_input_tokens: 5169 })
+  delete usage.cache_creation
+  assert.throws(
+    () => parseUsage({ result: 'x', usage }),
+    /cache_creation/
   )
 })
