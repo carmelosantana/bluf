@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
 import { createHash } from 'node:crypto'
-import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, CLEAN_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256 } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, CLEAN_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256, parseProvenance, assertModelResolved } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -1757,6 +1757,9 @@ test('runCase installs the style before spending, in the clean environment only'
     const styled = await readFile(join(cwd, '.claude', 'output-styles', 'bluf.md'), 'utf8').catch(() => null)
     seen.push({ environment: args[args.indexOf('--setting-sources') + 1] ?? 'none', hasStyle: styled !== null })
     return {
+      // runCase now refuses any payload without provenance, so this fixture must carry
+      // a modelUsage block even though the test is about style installation.
+      modelUsage: { 'claude-opus-5': { outputTokens: 5, canonicalModel: 'claude-opus-5' } },
       usage: {
         input_tokens: 10,
         cache_read_input_tokens: 0,
@@ -1774,4 +1777,91 @@ test('runCase installs the style before spending, in the clean environment only'
 
   assert.equal(seen[0].hasStyle, true, 'clean must install the style; without it the run measures Default')
   assert.equal(seen[1].hasStyle, false, 'lean must not install it — that would change what the 0.2.0 rows mean')
+})
+
+const modelUsage = {
+  'claude-haiku-4-5-20251001': { outputTokens: 16, canonicalModel: 'claude-haiku-4-5' },
+  'claude-opus-5': { outputTokens: 253, canonicalModel: 'claude-opus-5' }
+}
+
+test('parseProvenance reads the requested model, not the first key', () => {
+  // Observed shape: a clean-environment call bills a small auxiliary haiku request
+  // alongside the real work, and haiku sorts first. Object.keys(...)[0] reports haiku.
+  const provenance = parseProvenance({ modelUsage }, { model: 'claude-opus-5' })
+
+  assert.equal(provenance.canonicalModel, 'claude-opus-5')
+  assert.deepEqual(provenance.modelsBilled, ['claude-haiku-4-5-20251001', 'claude-opus-5'])
+  assert.equal(provenance.auxiliaryOutputTokens, 16)
+})
+
+test('parseProvenance throws when the requested model was never billed', () => {
+  assert.throws(
+    () => parseProvenance({ modelUsage }, { model: 'claude-fable-5' }),
+    /claude-fable-5 was not billed/
+  )
+})
+
+test('parseProvenance throws on a payload with no modelUsage', () => {
+  // A vacuous pass here would record canonicalModel: undefined on every row and the
+  // resolution check below would compare undefined against undefined and succeed.
+  assert.throws(() => parseProvenance({}, { model: 'claude-opus-5' }), /no modelUsage/)
+})
+
+test('assertModelResolved accepts a matching resolution', () => {
+  const provenance = parseProvenance({ modelUsage }, { model: 'claude-opus-5' })
+  assert.equal(assertModelResolved(provenance, { model: 'claude-opus-5' }), undefined)
+})
+
+test('assertModelResolved refuses a silent model substitution', () => {
+  const substituted = {
+    modelUsage: { 'claude-fable-5': { outputTokens: 5, canonicalModel: 'claude-opus-5' } }
+  }
+  const provenance = parseProvenance(substituted, { model: 'claude-fable-5' })
+
+  assert.throws(() => assertModelResolved(provenance, { model: 'claude-fable-5' }), /resolved to claude-opus-5/)
+})
+
+test('runCase records provenance on every row', async () => {
+  const fakeRun = async () => ({
+    modelUsage,
+    usage: {
+      input_tokens: 10,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 5000,
+      cache_creation: { ephemeral_1h_input_tokens: 5000, ephemeral_5m_input_tokens: 0 },
+      output_tokens: 253
+    },
+    result: 'x'
+  })
+  const caseRow = { id: 'port-default', category: 'short-lookup', prompt: 'what port?' }
+
+  const row = await runCase(caseRow, 'bluf', 'claude-opus-5', 'clean', 1, { execute: fakeRun })
+
+  assert.equal(row.canonicalModel, 'claude-opus-5')
+  assert.deepEqual(row.modelsBilled, ['claude-haiku-4-5-20251001', 'claude-opus-5'])
+  assert.equal(row.auxiliaryOutputTokens, 16)
+  assert.equal(row.styleSha256, STYLE_SHA256)
+  assert.deepEqual(row.settingSources, ['project'])
+  assert.equal(typeof row.cliVersion, 'string')
+  assert.ok(row.cliVersion.length > 0)
+})
+
+test('runCase records an empty settingSources outside the clean environment', async () => {
+  // full and lean pass no --setting-sources flag at all; recording 'project' there
+  // would misdescribe every 0.2.0-style row a future run produces.
+  const fakeRun = async () => ({
+    modelUsage,
+    usage: {
+      input_tokens: 10,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 5000,
+      cache_creation: { ephemeral_1h_input_tokens: 5000, ephemeral_5m_input_tokens: 0 },
+      output_tokens: 253
+    },
+    result: 'x'
+  })
+  const caseRow = { id: 'port-default', category: 'short-lookup', prompt: 'what port?' }
+
+  const row = await runCase(caseRow, 'bluf', 'claude-opus-5', 'full', 1, { execute: fakeRun })
+  assert.deepEqual(row.settingSources, [])
 })

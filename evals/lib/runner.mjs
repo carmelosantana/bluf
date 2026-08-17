@@ -162,6 +162,59 @@ export function assertNotErrored (payload, { caseId, condition } = {}) {
   }
 }
 
+// payload.modelUsage carries MORE THAN THE REQUESTED MODEL. Clean-environment calls have
+// been observed billing an auxiliary claude-haiku-4-5 request (about 529 input, 16 output)
+// alongside the real work, and the result event's `usage` totals include it. Reading the
+// first key therefore reports haiku as the canonical model for an opus call — a mistake
+// already made twice in this project. Read the requested model's entry; record the rest so
+// the contamination is visible rather than silently folded into the totals.
+export function parseProvenance (payload, { model }) {
+  const modelUsage = payload.modelUsage
+  if (!modelUsage || typeof modelUsage !== 'object') {
+    throw new Error(
+      'the response carried no modelUsage, so the model that actually ran cannot be recorded. ' +
+      'Refusing to write a row whose provenance is unknown.'
+    )
+  }
+  const requested = modelUsage[model]
+  if (!requested) {
+    throw new Error(
+      `${model} was not billed on this call; billed models were [${Object.keys(modelUsage).sort().join(', ')}]. ` +
+      'Either the request was substituted wholesale or the model key changed shape.'
+    )
+  }
+  return {
+    canonicalModel: requested.canonicalModel,
+    modelsBilled: Object.keys(modelUsage).sort(),
+    auxiliaryOutputTokens: Object.entries(modelUsage)
+      .filter(([name]) => name !== model)
+      .reduce((sum, [, use]) => sum + use.outputTokens, 0)
+  }
+}
+
+// A sweep that silently measured a different model than it requested produces rows that look
+// comparable to the committed ones and are not. This throws before the row is written, so the
+// operator loses one call rather than discovering it after 260.
+export function assertModelResolved (provenance, { model }) {
+  if (provenance.canonicalModel !== model) {
+    throw new Error(
+      `requested ${model} but the response resolved to ${provenance.canonicalModel}. ` +
+      'Refusing to record a row under a model that did not produce it.'
+    )
+  }
+}
+
+// Read once per process, not per call: 260 subprocess spawns to read a constant would be
+// waste, and the version cannot change mid-sweep.
+let cliVersionCache = null
+export async function readCliVersion () {
+  if (cliVersionCache === null) {
+    const { stdout } = await run('claude', ['--version'], { maxBuffer: 1024 * 1024 })
+    cliVersionCache = stdout.trim()
+  }
+  return cliVersionCache
+}
+
 export const STYLE_FILE = new URL('../../output-styles/bluf.md', import.meta.url)
 
 // Pinned so an edit to the shipped style fails a test rather than silently invalidating
@@ -218,6 +271,8 @@ export async function runCase (caseRow, condition, model, environment, trial = 1
   const payload = await execute(args, cwd)
   assertNotErrored(payload, { caseId: caseRow.id, condition })
   const usage = parseUsage(payload)
+  const provenance = parseProvenance(payload, { model })
+  assertModelResolved(provenance, { model })
 
   return {
     caseId: caseRow.id,
@@ -226,8 +281,20 @@ export async function runCase (caseRow, condition, model, environment, trial = 1
     condition,
     model,
     environment,
+    cliVersion: await readCliVersion(),
+    styleSha256: STYLE_SHA256,
+    settingSources: settingSourcesOf(environment),
+    ...provenance,
     ...usage
   }
+}
+
+// Derived from the environment's own argv rather than hard-coded, so a change to
+// ENVIRONMENTS cannot leave the recorded provenance describing the previous behaviour.
+function settingSourcesOf (environment) {
+  const args = ENVIRONMENTS[environment]
+  const index = args.indexOf('--setting-sources')
+  return index === -1 ? [] : args[index + 1].split(',')
 }
 
 // port-default is the amortization case because it has the widest styled/unstyled gap of
