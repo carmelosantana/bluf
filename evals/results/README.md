@@ -31,3 +31,34 @@ Two things about them:
 
 `samples/` holds verbatim response text, which the `.jsonl` files do not record. See
 `samples/CAPTURE.md` for how each was captured and which prompt produced it.
+
+## Amortization slice
+
+`amortization-claude-opus-5-*.jsonl` — 18 rows from `npm run measure:amortization`. Two turns
+of a single `claude` session per (condition, trial): turn 1 opens it with `--session-id`, turn 2
+re-asks the same prompt with `--resume`. Case `port-default`, lean environment, three trials,
+opus-pinned because `--strict-mcp-config` forces that model.
+
+**These are the only rows here that carry the input-token tier split** —
+`inputUncached`, `inputCacheRead`, `inputCacheWrite`, and the `1h`/`5m` breakdown of the write.
+Every other file predates tier capture and stores only a summed `inputTokens`, which is why no
+cost figure can be derived from them: uncached input, cache reads, and cache writes bill at
+different rates, and 1-hour and 5-minute writes differ again. `requireTiers()` in
+`evals/lib/report.mjs` throws on those older rows rather than treating an absent tier as zero.
+
+This slice exists because every other measurement here is single-shot, and single-shot cannot
+observe the thing that decides the cost question: whether the style's input overhead is a cache
+write paid once per session or a cache read paid every turn. It is the latter from turn 2 on.
+
+Three post-payment checks in `evals/lib/runner.mjs` gate the result — that every turn-2 row read
+from cache, that each turn-2 row's input strictly exceeds its turn-1 partner's (a forked session
+would send an identical prefix and pass the first check), and that the styled arms' turn-1 input
+exceeds baseline by the style's own token count. None of them can save money. They exist so a run
+that measured the wrong thing aborts loudly instead of printing a plausible number.
+
+**Output tokens in this slice are not a style measurement.** Turn 2 re-asks a question just
+answered, so its length is noise — the unstyled arm measured 181, 33, and 194 across three
+trials. The output-reduction claim comes from the 12-case sweep in `report.md`, not from here.
+An earlier version of this slice aborted a valid run on a turn-2 output ceiling for exactly this
+reason, and the unstyled arm has separately measured 5 output tokens on turn 1, identical to a
+styled answer.
