@@ -1,9 +1,10 @@
-import { writeFile, mkdir, readFile } from 'node:fs/promises'
+import { writeFile, mkdir, readFile, rm } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import {
   AMORTIZATION_CASE, CONDITIONS, ENVIRONMENTS, MODELS,
   OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, PROMPTS_SHA256,
-  loadCases, runAmortizationPair, assertStyledBelowBaseline
+  loadCases, runAmortizationPair, assertStyledBelowBaseline,
+  assertTurn2ReadFromCache
 } from './lib/runner.mjs'
 
 // This slice spends real money. Every check below is free and runs before the first
@@ -51,40 +52,71 @@ console.log(
 
 await mkdir(RESULTS, { recursive: true })
 
-const allRows = []
-
+// A prior run — completed with a different TRIALS, or aborted partway — may have left
+// amortization files behind, and a run that then aborts before overwriting all of them
+// leaves a slice that silently mixes vintages. Delete exactly the files this run will
+// write, so that any amortization file on disk afterwards is unambiguously this run's.
+// This is a free action: it sits below every free gate (an aborted gate leaves prior
+// results untouched) and above the first paid call.
+const targetFor = condition => new URL(`amortization-${OVERHEAD_MODEL}-${condition}.jsonl`, RESULTS)
 for (const condition of conditions) {
-  const rows = []
-  for (let trial = 1; trial <= TRIALS; trial += 1) {
-    let pair
-    try {
-      pair = await runAmortizationPair(
+  await rm(targetFor(condition), { force: true })
+}
+
+const allRows = []
+const writtenFiles = []
+let persistedRows = 0
+
+// The try covers every paid call AND the writes of what they bought: a failure anywhere
+// after the first paid call must still account for every row that was paid for.
+try {
+  for (const condition of conditions) {
+    const rows = []
+    for (let trial = 1; trial <= TRIALS; trial += 1) {
+      const pair = await runAmortizationPair(
         caseRow, condition, OVERHEAD_MODEL, OVERHEAD_ENVIRONMENT, trial
       )
-    } catch (error) {
-      // runAmortizationPair attaches the rows it already bought. Reporting them is this
-      // driver's job — an unreported paid row is a wasted call nobody can account for.
-      const bought = error?.rows ?? error?.cause?.rows ?? []
-      if (bought.length > 0) {
-        console.error(`\npaid rows already collected before the failure (${bought.length}):`)
-        for (const row of bought) console.error(`  ${JSON.stringify(row)}`)
+      rows.push(...pair)
+      allRows.push(...pair)
+      for (const row of pair) {
+        console.log(
+          `  ${condition} trial ${trial} turn ${row.turn}: ` +
+          `uncached ${row.inputUncached}, cache-read ${row.inputCacheRead}, ` +
+          `cache-write ${row.inputCacheWrite} (1h ${row.inputCacheWrite1h}, 5m ${row.inputCacheWrite5m}), ` +
+          `output ${row.outputTokens}`
+        )
       }
-      throw error
     }
-    rows.push(...pair)
-    for (const row of pair) {
-      console.log(
-        `  ${condition} trial ${trial} turn ${row.turn}: ` +
-        `uncached ${row.inputUncached}, cache-read ${row.inputCacheRead}, ` +
-        `cache-write ${row.inputCacheWrite} (1h ${row.inputCacheWrite1h}, 5m ${row.inputCacheWrite5m}), ` +
-        `output ${row.outputTokens}`
-      )
-    }
+    const target = targetFor(condition)
+    await writeFile(target, rows.map(row => JSON.stringify(row)).join('\n') + '\n')
+    writtenFiles.push(target.pathname)
+    persistedRows += rows.length
+    console.log(`wrote ${target.pathname}`)
   }
-  const target = new URL(`amortization-${OVERHEAD_MODEL}-${condition}.jsonl`, RESULTS)
-  await writeFile(target, rows.map(row => JSON.stringify(row)).join('\n') + '\n')
-  console.log(`wrote ${target.pathname}`)
-  allRows.push(...rows)
+} catch (error) {
+  // runAmortizationPair attaches the rows it already bought to the error. Together with
+  // the completed pairs not yet persisted to a file, these are the paid rows that would
+  // otherwise vanish with the stack trace — an unreported paid row is a wasted call
+  // nobody can account for.
+  const bought = error?.rows ?? error?.cause?.rows ?? []
+  const unpersisted = [...allRows.slice(persistedRows), ...bought]
+  if (unpersisted.length > 0) {
+    console.error(`\npaid rows collected but not written to any result file (${unpersisted.length}):`)
+    for (const row of unpersisted) console.error(`  ${JSON.stringify(row)}`)
+  }
+  // A throw mid-loop is the path where partial result files actually happen: whole
+  // conditions may already be on disk, each file internally complete-looking. Non-zero
+  // exit protects the shell, not the files, so the operator must be told in words.
+  if (writtenFiles.length > 0) {
+    console.error(
+      '\nINCOMPLETE SLICE: this run aborted after writing these result files:\n' +
+      writtenFiles.map(path => `  ${path}`).join('\n') + '\n' +
+      `They cover only part of the intended ${conditions.length}-condition slice and were never ` +
+      'validated against each other. Do NOT read them as a finished measurement — delete them, ' +
+      'or re-run the slice to completion (a fresh run clears them itself).'
+    )
+  }
+  throw error
 }
 
 // The validity checks equalise the arms against each other but cannot know how many trials
@@ -98,8 +130,15 @@ if (allRows.length !== totalCalls) {
   )
 }
 
-// The real validity check: styled turn-2 output measured against the baseline arm this slice
-// just bought, rather than against a hardcoded ceiling.
+// The two real validity checks. Both run after the money is spent — that is their job,
+// not a defect: they convert a quiet false success into a loud abort (see the comment on
+// assertTurn2ReadFromCache). First: did each resumed turn 2 actually read the cached
+// prefix back? Every other guard is output-token only, and the input tier is the figure
+// this whole slice exists to measure.
+assertTurn2ReadFromCache(allRows)
+
+// Second: styled turn-2 output measured against the baseline arm this slice just
+// bought, rather than against a hardcoded ceiling.
 assertStyledBelowBaseline(allRows)
 
 console.log('\nDone. The figure that matters is turn 2: which tier the style overhead lands in.')

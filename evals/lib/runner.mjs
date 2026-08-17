@@ -310,6 +310,48 @@ export async function runAmortizationPair (caseRow, condition, model, environmen
   return rows
 }
 
+// The input-tier validity check: did turn 2 actually read the cached prefix back? Every
+// other guard in this module is output-token only, so a --resume that silently starts a
+// fresh session — paying full price for a cold prefix on every "turn 2" — sails through
+// all of them, exits 0, and leaves 18 clean-looking rows whose whole premise is false.
+//
+// This check necessarily runs AFTER the money is spent: a failed resume is only visible
+// in the usage block the paid turn-2 call returns. It cannot save a cent, and that is
+// not a defect and not a reason to remove it. Its entire job is to convert a quiet
+// false success into a loud, unmistakable abort before anyone prices the rows. Too late
+// to save the money is exactly on time to save the conclusion — do not "optimise" it
+// away as useless.
+export function assertTurn2ReadFromCache (rows) {
+  const turnTwo = rows.filter(row => row.turn === 2)
+  if (turnTwo.length === 0) {
+    throw new Error(
+      'assertTurn2ReadFromCache found no turn 2 rows to check; a vacuous pass here would wave through ' +
+      'the exact failure this check exists to catch — resumed sessions that never reused their cached ' +
+      'prefix, whose amortization figures describe cold sessions and are meaningless'
+    )
+  }
+
+  // The negated comparisons (!(a > b)) are deliberate: a missing or non-numeric field
+  // makes the comparison false and therefore throws, instead of passing on NaN.
+  for (const row of turnTwo) {
+    const detail = `condition ${row.condition} trial ${row.trial}: inputCacheRead ${row.inputCacheRead}, inputCacheWrite ${row.inputCacheWrite}`
+    const consequence =
+      'The resumed session did not reuse the cached prefix — most likely --resume forked a fresh ' +
+      'session instead of resuming — so the amortization figures describe two cold sessions rather ' +
+      'than one session\'s second turn, and are meaningless.'
+    if (!(row.inputCacheRead > 0)) {
+      throw new Error(`turn 2 read nothing from the cache (${detail}). ${consequence}`)
+    }
+    if (!(row.inputCacheRead > row.inputCacheWrite)) {
+      throw new Error(
+        `turn 2 wrote as much to the cache as it read, or more (${detail}). A resumed turn may ` +
+        'legitimately write a small new block for the turn-1 exchange it just appended, but the ' +
+        `cached prefix it read must dominate. ${consequence}`
+      )
+    }
+  }
+}
+
 // Calibration: on current lean+opus data a styled port-default turn measures 5 output
 // tokens against a baseline of 101-106 — a fraction near 0.05. 0.5 leaves an order of
 // magnitude of headroom for normal variation while still catching a styled arm that

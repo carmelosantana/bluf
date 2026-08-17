@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
-import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, MAX_STYLED_FRACTION_OF_BASELINE } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, MAX_STYLED_FRACTION_OF_BASELINE } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -1075,6 +1075,155 @@ test('assertStyledBelowBaseline passes the intended 3x3x2 port-default run', () 
 test('MAX_STYLED_FRACTION_OF_BASELINE leaves an order of magnitude of headroom over measured data', () => {
   // Measured styled/baseline fraction on lean+opus is about 5/104 ~ 0.05.
   assert.equal(MAX_STYLED_FRACTION_OF_BASELINE, 0.5)
+})
+
+// A turn row with the input-tier fields assertTurn2ReadFromCache reads. Defaults model
+// the healthy shape: turn 1 writes the prefix, turn 2 reads it back and writes only a
+// small block for the appended turn-1 exchange.
+function tierRow (condition, turn, trial = 1, overrides = {}) {
+  return amortRow(condition, turn, condition === 'baseline' ? 104 : 5, trial, {
+    inputCacheRead: turn === 2 ? 6800 : 0,
+    inputCacheWrite: turn === 2 ? 120 : 6800,
+    ...overrides
+  })
+}
+
+test('assertTurn2ReadFromCache passes when every turn 2 read dominates its write', () => {
+  const rows = [
+    tierRow('baseline', 1), tierRow('baseline', 2),
+    tierRow('bluf', 1), tierRow('bluf', 2),
+    tierRow('bluf-terse', 1), tierRow('bluf-terse', 2)
+  ]
+  assert.equal(assertTurn2ReadFromCache(rows), undefined)
+})
+
+test('assertTurn2ReadFromCache throws when a turn 2 row read nothing from cache', () => {
+  // The reviewer's exact scenario: --resume silently starts a fresh session, so
+  // every turn "2" is a cold turn 1 in disguise — it writes the prefix instead of
+  // reading it.
+  const rows = [
+    tierRow('bluf', 1),
+    tierRow('bluf', 2, 1, { inputCacheRead: 0, inputCacheWrite: 6800 })
+  ]
+  assert.throws(
+    () => assertTurn2ReadFromCache(rows),
+    (err) => {
+      assert.match(err.message, /bluf/, 'must name the condition')
+      assert.match(err.message, /trial 1/, 'must name the trial')
+      assert.match(err.message, /inputCacheRead 0/, 'must state the actual read')
+      assert.match(err.message, /inputCacheWrite 6800/, 'must state the actual write')
+      assert.match(err.message, /did not reuse the cached prefix/, 'must state the mechanism')
+      assert.match(err.message, /cold sessions/, 'must state the consequence for the figures')
+      assert.match(err.message, /meaningless/, 'must say the figures cannot be used')
+      return true
+    }
+  )
+})
+
+test('assertTurn2ReadFromCache throws when a turn 2 write exceeds its read', () => {
+  // A small write for the appended turn-1 exchange is legitimate, but the cached
+  // prefix the turn read must dominate; a write larger than the read means the
+  // prefix was rebuilt, not reused.
+  const rows = [
+    tierRow('bluf', 1),
+    tierRow('bluf', 2, 2, { inputCacheRead: 120, inputCacheWrite: 6800 })
+  ]
+  assert.throws(
+    () => assertTurn2ReadFromCache(rows),
+    (err) => {
+      assert.match(err.message, /bluf/, 'must name the condition')
+      assert.match(err.message, /trial 2/, 'must name the trial')
+      assert.match(err.message, /inputCacheRead 120/, 'must state the actual read')
+      assert.match(err.message, /inputCacheWrite 6800/, 'must state the actual write')
+      assert.match(err.message, /did not reuse the cached prefix/, 'must state the mechanism')
+      assert.match(err.message, /meaningless/, 'must say the figures cannot be used')
+      return true
+    }
+  )
+})
+
+test('assertTurn2ReadFromCache treats a read equal to the write as a failure, not a pass', () => {
+  const rows = [tierRow('bluf', 2, 1, { inputCacheRead: 6800, inputCacheWrite: 6800 })]
+  assert.throws(() => assertTurn2ReadFromCache(rows), /6800/)
+})
+
+test('assertTurn2ReadFromCache refuses to pass vacuously when there are no turn 2 rows', () => {
+  assert.throws(
+    () => assertTurn2ReadFromCache([]),
+    /no turn 2 rows/
+  )
+  assert.throws(
+    () => assertTurn2ReadFromCache([tierRow('baseline', 1), tierRow('bluf', 1)]),
+    /no turn 2 rows/
+  )
+})
+
+test('assertTurn2ReadFromCache flags a single bad row among many good ones', () => {
+  const rows = [
+    tierRow('baseline', 2, 1),
+    tierRow('baseline', 2, 2),
+    tierRow('bluf', 2, 1),
+    tierRow('bluf', 2, 2, { inputCacheRead: 0, inputCacheWrite: 6800 }),
+    tierRow('bluf-terse', 2, 1),
+    tierRow('bluf-terse', 2, 2)
+  ]
+  assert.throws(
+    () => assertTurn2ReadFromCache(rows),
+    (err) => {
+      assert.match(err.message, /bluf/, 'must name the offending condition')
+      assert.match(err.message, /trial 2/, 'must name the offending trial')
+      return true
+    }
+  )
+})
+
+// Must-not-regress: the intended paid run, simulated end to end with an injected
+// executor and zero API calls. 3 conditions x 3 trials through runAmortizationPair
+// with a realistic tier shape — turn 1 writes the prefix to cache, turn 2 reads it
+// back and writes only a small block for the appended exchange — must produce 18
+// rows that every driver check accepts.
+test('the intended 3x3x2 slice passes the row-count pin and both validity checks', async () => {
+  const turnTwoOutput = {
+    baseline: [101, 104, 106],
+    bluf: [5, 5, 5],
+    'bluf-terse': [5, 7, 5]
+  }
+  const allRows = []
+  for (const condition of Object.keys(CONDITIONS)) {
+    for (const trial of [1, 2, 3]) {
+      let turn = 0
+      const pair = await runAmortizationPair(
+        { id: 'port-default', category: 'short-lookup', prompt: 'what port?' },
+        condition, 'claude-opus-5', 'lean', trial,
+        {
+          execute: async () => {
+            turn += 1
+            const isFirstTurn = turn === 1
+            return {
+              usage: {
+                input_tokens: 10,
+                cache_read_input_tokens: isFirstTurn ? 0 : 6800,
+                cache_creation_input_tokens: isFirstTurn ? 6800 : 120,
+                cache_creation: {
+                  ephemeral_1h_input_tokens: isFirstTurn ? 6800 : 120,
+                  ephemeral_5m_input_tokens: 0
+                },
+                output_tokens: isFirstTurn
+                  ? (condition === 'baseline' ? 104 : 5)
+                  : turnTwoOutput[condition][trial - 1]
+              },
+              result: 'x'
+            }
+          }
+        }
+      )
+      allRows.push(...pair)
+    }
+  }
+
+  assert.equal(allRows.length, 18, 'the intended slice is 3 conditions x 3 trials x 2 turns')
+  assert.equal(assertTurn2ReadFromCache(allRows), undefined)
+  assert.equal(assertStyledBelowBaseline(allRows), undefined)
 })
 
 test('runAmortizationPair rejects an unknown condition before spending anything', async () => {

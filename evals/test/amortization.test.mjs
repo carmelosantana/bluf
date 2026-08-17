@@ -54,6 +54,81 @@ test('measure-amortization pins the expected row count and runs the validity che
   )
 })
 
+test('measure-amortization checks the input tier of turn 2 after the money is spent', async () => {
+  const source = await readFile(new URL('../measure-amortization.mjs', import.meta.url), 'utf8')
+
+  const cacheCheckIndex = source.indexOf('assertTurn2ReadFromCache(')
+  assert.ok(
+    cacheCheckIndex > -1,
+    'the driver must verify turn 2 actually read from the cache; every other guard is output-token only, ' +
+    'and a --resume that silently forks a fresh session passes all of them with meaningless figures'
+  )
+  assert.ok(
+    cacheCheckIndex > source.indexOf('allRows.length !== totalCalls'),
+    'the cache-read check belongs with the post-run validity checks, after the row-count pin'
+  )
+  assert.ok(
+    source.includes('assertStyledBelowBaseline('),
+    'the cache-read check complements the styled-output check; both must run'
+  )
+})
+
+test('measure-amortization warns about the incomplete slice on the path where partial files happen', async () => {
+  const source = await readFile(new URL('../measure-amortization.mjs', import.meta.url), 'utf8')
+
+  const catchIndex = source.indexOf('catch (error)')
+  assert.ok(catchIndex > -1, 'the paid loop must have an error path')
+  const warningIndex = source.indexOf('INCOMPLETE SLICE')
+  assert.ok(
+    warningIndex > catchIndex,
+    'the partial-slice warning must live on the catch path — the only path where partial result files ' +
+    'actually occur; a throw mid-loop leaves complete-looking files on disk with nothing marking them partial'
+  )
+  assert.ok(
+    source.includes('finished measurement'),
+    'the warning must tell the operator the files on disk must not be read as a finished measurement'
+  )
+})
+
+test('measure-amortization protects every paid call, not just the pair runner', async () => {
+  const source = await readFile(new URL('../measure-amortization.mjs', import.meta.url), 'utf8')
+
+  const tryIndex = source.indexOf('try {')
+  const writeIndex = source.indexOf('await writeFile(')
+  const catchIndex = source.indexOf('catch (error)')
+  assert.ok(tryIndex > -1 && writeIndex > -1 && catchIndex > -1)
+  assert.ok(
+    tryIndex < writeIndex && writeIndex < catchIndex,
+    'writeFile must sit inside the protected region: a write failure after paid calls must still ' +
+    'dump the rows that were bought'
+  )
+})
+
+test('measure-amortization clears its own stale result files before the first paid call', async () => {
+  const source = await readFile(new URL('../measure-amortization.mjs', import.meta.url), 'utf8')
+
+  const rmIndex = source.indexOf('await rm(')
+  const firstPaidIndex = source.indexOf('runAmortizationPair(', source.indexOf('loadCases'))
+  const hashPinIndex = source.indexOf('PROMPTS_SHA256')
+  assert.ok(
+    rmIndex > -1,
+    'the driver must delete the amortization files it is about to write; a stale file from an earlier ' +
+    'run with a different trial count would otherwise mix vintages in one slice'
+  )
+  assert.ok(
+    rmIndex > hashPinIndex,
+    'the free gates must all run before any file is touched; an aborted gate must leave prior results intact'
+  )
+  assert.ok(
+    rmIndex < firstPaidIndex,
+    'clearing must happen before the first paid call, so an aborted run can never leave a mixed-vintage slice'
+  )
+  assert.ok(
+    source.includes('force: true'),
+    'clearing must tolerate the files not existing; a fresh checkout has none'
+  )
+})
+
 test('measure-amortization writes to its own result files and never the main sweep files', async () => {
   const source = await readFile(new URL('../measure-amortization.mjs', import.meta.url), 'utf8')
 
