@@ -2,14 +2,20 @@ import { writeFile, mkdir, readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import {
   CONDITIONS, MODELS, ENVIRONMENTS, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL,
-  OVERHEAD_CASES, PROMPTS_SHA256, loadCases, runCase, readCliVersion
+  OVERHEAD_CASES, PROMPTS_SHA256, loadCases, runCase, readCliVersion,
+  assertStyleOverheadPresent
 } from './lib/runner.mjs'
 import { scheduleSweep, SCHEDULE_VERSION } from './lib/schedule.mjs'
 import { compare, formatReport } from './lib/report.mjs'
 
 // Every sweep below spends real money. All cheap validation happens up here,
 // before the first paid runCase call.
-const MAX_TRIALS = 3
+//
+// Raised from 3 to 5 for the clean-environment sweep. The isolated room is noisier: across
+// three replication trials the baseline output totals spanned 28%, against 3.2% for the same
+// model in `full`. The extra trials exist to resolve that spread, and the ceiling stays low
+// because every trial multiplies a paid sweep.
+const MAX_TRIALS = 5
 
 const TRIALS = Number(process.env.TRIALS ?? 1)
 if (!Number.isInteger(TRIALS) || TRIALS < 1) {
@@ -126,6 +132,29 @@ try {
       )
       for (const row of rows[model][MAIN_ENVIRONMENT][condition]) persisted.add(row)
       writtenFiles.push(target.pathname)
+    }
+
+    // The structural guard in runCase proves the style file is on disk. It cannot prove the
+    // CLI loaded it — that is CLI behaviour no local assertion observes. Without this, a
+    // clean sweep whose style silently failed to load writes a full set of
+    // Default-against-Default rows and reports success. Runs after payment because it needs
+    // measured input; it cannot save the money, only stop the result being published. It
+    // also runs after the rows are persisted, so an abort here still leaves the paid
+    // evidence on disk for diagnosis (flagged INCOMPLETE by the catch below).
+    //
+    // Called once per case, never across the sweep: assertStyleOverheadPresent refuses
+    // rows that mix caseIds — deliberately, because a baseline from a different prompt
+    // would make the overhead measure the prompt mix rather than the style — so each
+    // styled arm is validated against the baseline measured on the same prompt. Sweep
+    // rows carry no `turn` field; turn 1 is synthesised because every sweep row is a
+    // single-call first turn, which is exactly what the check is defined over.
+    for (const caseRow of cases) {
+      assertStyleOverheadPresent(
+        Object.values(rows[model][MAIN_ENVIRONMENT])
+          .flatMap(list => list
+            .filter(row => row.caseId === caseRow.id)
+            .map(row => ({ ...row, turn: 1 })))
+      )
     }
   }
 

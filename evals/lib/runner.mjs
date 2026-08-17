@@ -48,9 +48,13 @@ export const OVERHEAD_CASES = ['port-default', 'docker-cache-miss']
 // updates this constant and re-runs the sweep. Update it ONLY alongside a fresh sweep.
 export const PROMPTS_SHA256 = '84cb69746c89478090ff7923388c7eadbd66997f4193f9370cbd490640785364'
 
-export const MAIN_ENVIRONMENT = 'full'
-export const OVERHEAD_ENVIRONMENT = 'lean'
 export const CLEAN_ENVIRONMENT = 'clean'
+// The main sweep moved to `clean` for the 0.3.0 measurement: `full` inherits the operator's
+// user settings and MCP servers, measured at 121,607 input tokens against 3,598 in `clean`,
+// which makes any absolute figure machine-specific. See evals/results/probes/README.md.
+// The 0.2.0 rows in full-*.jsonl are unaffected; the clean sweep writes clean-*.jsonl.
+export const MAIN_ENVIRONMENT = CLEAN_ENVIRONMENT
+export const OVERHEAD_ENVIRONMENT = 'lean'
 // Pinned because the lean flags (--strict-mcp-config with an empty --mcp-config)
 // force the run onto claude-opus-5 regardless of what --model requests. Pinning
 // the same model here is what holds the model constant and keeps the overhead
