@@ -291,7 +291,7 @@ export function assertTurnLooksStyled ({ condition, turn, outputTokens }) {
   }
 }
 
-async function defaultExecute (args, cwd) {
+export async function defaultExecute (args, cwd) {
   const { stdout } = await run('claude', args, { cwd, maxBuffer: 32 * 1024 * 1024 })
   return JSON.parse(stdout)
 }

@@ -10,6 +10,7 @@
   },
   "scripts": {
     "test": "node --test 'evals/test/*.test.mjs'",
+    "preflight": "node evals/preflight.mjs",
     "measure": "node evals/measure.mjs",
     "measure:amortization": "node evals/measure-amortization.mjs"
   }
