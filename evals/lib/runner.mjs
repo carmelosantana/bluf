@@ -188,11 +188,12 @@ export async function assertProjectStyleInstalled (cwd) {
   let installed
   try {
     installed = await readFile(target)
-  } catch {
+  } catch (cause) {
     throw new Error(
       `no project-level style at ${target}. The clean environment passes --setting-sources project, ` +
       'which excludes the user-level output-styles directory, so without this file claude falls back ' +
-      'to Default and the run measures Default against Default while reporting success.'
+      'to Default and the run measures Default against Default while reporting success.',
+      { cause }
     )
   }
   const digest = createHash('sha256').update(installed).digest('hex')

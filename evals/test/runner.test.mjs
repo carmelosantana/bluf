@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
 import { createHash } from 'node:crypto'
-import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256 } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, CLEAN_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256 } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -37,10 +37,13 @@ test('OVERHEAD_CASES names two real case ids', async () => {
   for (const id of OVERHEAD_CASES) assert.ok(ids.includes(id), `${id} is not a real case`)
 })
 
-test('MAIN_ENVIRONMENT and OVERHEAD_ENVIRONMENT are distinct real environments', () => {
+test('MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT and CLEAN_ENVIRONMENT are distinct real environments', () => {
   assert.ok(MAIN_ENVIRONMENT in ENVIRONMENTS)
   assert.ok(OVERHEAD_ENVIRONMENT in ENVIRONMENTS)
+  assert.ok(CLEAN_ENVIRONMENT in ENVIRONMENTS)
   assert.notEqual(MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT)
+  assert.notEqual(MAIN_ENVIRONMENT, CLEAN_ENVIRONMENT)
+  assert.notEqual(OVERHEAD_ENVIRONMENT, CLEAN_ENVIRONMENT)
 })
 
 test('OVERHEAD_MODEL is one of the models under test', () => {
