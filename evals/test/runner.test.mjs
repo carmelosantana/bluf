@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
 import { createHash } from 'node:crypto'
-import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, CLEAN_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256, parseProvenance, assertModelResolved, settingSourcesOf } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, CLEAN_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS, installProjectStyle, assertProjectStyleInstalled, assertUserStyleFresh, STYLE_SHA256, parseProvenance, assertModelResolved, settingSourcesOf } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -1755,6 +1755,45 @@ test('STYLE_SHA256 matches the shipped style file', async () => {
   // exact file, so an edit invalidates them all rather than merely breaking this test.
   const shipped = await readFile(new URL('../../output-styles/bluf.md', import.meta.url))
   assert.equal(createHash('sha256').update(shipped).digest('hex'), STYLE_SHA256)
+})
+
+// assertUserStyleFresh is pure — the driver reads ~/.claude/output-styles/bluf.md
+// (read-only) and passes the digest — so these tests exercise the decision without
+// touching any home directory.
+
+test('assertUserStyleFresh accepts a user-level install matching the shipped style', () => {
+  assert.equal(assertUserStyleFresh({
+    path: '/anywhere/.claude/output-styles/bluf.md',
+    actualSha256: STYLE_SHA256
+  }), undefined)
+})
+
+test('assertUserStyleFresh refuses an absent user-level install, naming the path and the fix', () => {
+  // The lean overhead sweep loads the style from the user-level install, which is
+  // otherwise validated only by the post-payment check at the END of the sweep — after
+  // all 260 calls are paid, with no partial mode to recover the lean arm. The refusal
+  // must arrive before any money moves, and must tell the operator exactly what to run.
+  assert.throws(
+    () => assertUserStyleFresh({ path: '/home/op/.claude/output-styles/bluf.md', actualSha256: null }),
+    error =>
+      /refusing to start/.test(error.message) &&
+      error.message.includes('/home/op/.claude/output-styles/bluf.md') &&
+      /no user-level style install/.test(error.message) &&
+      /mkdir -p ~\/.claude\/output-styles/.test(error.message)
+  )
+})
+
+test('assertUserStyleFresh refuses a stale user-level install, naming both hashes', () => {
+  const stale = 'f'.repeat(64)
+  assert.throws(
+    () => assertUserStyleFresh({ path: '/home/op/.claude/output-styles/bluf.md', actualSha256: stale }),
+    error =>
+      /refusing to start/.test(error.message) &&
+      error.message.includes(stale) &&
+      error.message.includes(STYLE_SHA256) &&
+      error.message.includes('/home/op/.claude/output-styles/bluf.md') &&
+      /does not match the shipped style/.test(error.message)
+  )
 })
 
 test('runCase installs the style before spending, in the clean environment only', async () => {

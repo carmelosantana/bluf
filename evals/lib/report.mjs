@@ -283,9 +283,10 @@ export function formatReport (comparison, { condition, model, environment }) {
     lines.push('No net-negative cases.')
   }
 
-  // The word "range" is reserved for the multi-cluster branch: a single-trial,
+  // The word "range" is reserved for the 3-plus-cluster branch: a single-trial,
   // single-case report must not claim any spread (a test pins this), and the
-  // indicative range genuinely is one only when there are clusters to resample.
+  // indicative range genuinely is one only when there are enough clusters that
+  // resampling can land anywhere other than the raw cluster means themselves.
   const { perCategory, interval } = comparison.clustered
   lines.push('')
   lines.push('## Category clusters')
@@ -306,6 +307,30 @@ export function formatReport (comparison, { condition, model, environment }) {
     lines.push(
       'Only 1 cluster was measured, so no interval is reported: resampling a single ' +
       'cluster returns that cluster every time, and a zero-width figure would read as certainty.'
+    )
+  } else if (interval.clusters === 2) {
+    // With exactly 2 clusters a bootstrap is theatre: the 2.5th and 97.5th percentiles
+    // of resampled means are mathematically forced to the two cluster means themselves
+    // (and, with equal means, to a zero-width figure — the exact reading the 1-cluster
+    // refusal above exists to prevent). Printing them relabelled as a 2000-resample
+    // range would dress the two raw values up as an estimated spread, so this branch
+    // names them as what they are instead.
+    lines.push(
+      `- Point estimate (mean of the ${interval.clusters} cluster means): ` +
+      `${signed(wholeTokens(interval.point))} output tokens saved per response, ` +
+      'weighting each category equally'
+    )
+    const [lowMean, highMean] = [...perCategory.values()].sort((a, b) => a - b)
+    lines.push(
+      '- No resampled spread is reported from 2 clusters: a bootstrap over two clusters ' +
+      'can only place its bounds on the two cluster means themselves, so the bounds of ' +
+      `the evidence are simply those two means, ${signed(wholeTokens(lowMean))} and ` +
+      `${signed(wholeTokens(highMean))} — raw values, not an estimated spread.`
+    )
+    lines.push('')
+    lines.push(
+      'Two clusters is far below the few dozen at which cluster-robust methods become ' +
+      'reliable. The two per-cluster values above are the whole of the evidence.'
     )
   } else {
     lines.push(

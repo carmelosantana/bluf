@@ -68,3 +68,25 @@ test('a mid-sweep failure names the partial result files it leaves on disk', asy
     'the warning must tell the operator the files on disk must not be read as a finished measurement'
   )
 })
+
+test('the incomplete-sweep warning does not call complete result files partial', async () => {
+  const source = await readFile(new URL('../measure.mjs', import.meta.url), 'utf8')
+
+  // If all expected result files were written and only a post-payment check or report
+  // generation failed, "they cover only part of the intended sweep" is false and would
+  // mislead an operator into discarding good rows. The catch must distinguish the two
+  // cases, and "all expected" must derive from the same plannedSweepFiles enumeration
+  // the write loops' constants feed — never a hard-coded count.
+  assert.ok(
+    source.includes("planned.filter(name => name !== 'report.md')"),
+    'the expected-file count must be derived from the shared plannedSweepFiles enumeration'
+  )
+  assert.ok(
+    source.includes('AFTER writing all '),
+    'the all-files-written case must be reported as complete files with a failed later step'
+  )
+  assert.ok(
+    source.includes('report.md was not'),
+    'the all-files-written case must say the report is what is missing'
+  )
+})

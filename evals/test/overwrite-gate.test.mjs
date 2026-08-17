@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { plannedSweepFiles, assertOverwritesAllowed, OVERWRITE_ALLOWLIST_VAR } from '../lib/overwrite-gate.mjs'
+import { plannedSweepFiles, assertOverwritesAllowed, assertGitUsable, OVERWRITE_ALLOWLIST_VAR } from '../lib/overwrite-gate.mjs'
 import { CONDITIONS, MODELS, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL } from '../lib/runner.mjs'
 
 // Both functions under test are pure: the tracked list is an argument, so none of
@@ -98,6 +98,28 @@ test('naming only some of the doomed files still refuses for the rest', () => {
       /lean-claude-opus-5-bluf\.jsonl/.test(error.message) &&
       !/  lean-claude-opus-5-baseline\.jsonl/.test(error.message)
   )
+})
+
+test('a broken git alongside a .git directory refuses to run instead of failing open', () => {
+  // The per-path ls-files probe reads every non-zero exit as "untracked" — so a git
+  // that fails wholesale (not installed, dubious-ownership refusal in a container)
+  // would report nothing tracked and wave a committed result set to its destruction.
+  // With a .git directory present, a failed work-tree probe must refuse the run.
+  assert.throws(
+    () => assertGitUsable({ probeSucceeded: false, gitDirExists: true }),
+    error =>
+      /refusing to start/.test(error.message) &&
+      /git is unusable/.test(error.message) &&
+      /cannot verify/.test(error.message)
+  )
+})
+
+test('assertGitUsable proceeds when git works, or when there is no repository to protect', () => {
+  // A working git means the per-path probe is trustworthy; no .git directory means
+  // there is genuinely no committed evidence, so proceeding is correct either way.
+  assertGitUsable({ probeSucceeded: true, gitDirExists: true })
+  assertGitUsable({ probeSucceeded: true, gitDirExists: false })
+  assertGitUsable({ probeSucceeded: false, gitDirExists: false })
 })
 
 test('an allowlist entry that matches nothing this run would overwrite is an error, not a no-op', () => {

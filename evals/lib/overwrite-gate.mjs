@@ -15,6 +15,29 @@
 // sacrificed, and anything that is not an exact filename match unlocks nothing.
 export const OVERWRITE_ALLOWLIST_VAR = 'BLUF_OVERWRITE_TRACKED_RESULTS'
 
+// Fail CLOSED when git itself is unusable. The driver's per-path `git ls-files
+// --error-unmatch` probe treats every non-zero exit as "untracked, safe to write" —
+// correct for a genuinely untracked path, catastrophic when git as a whole is broken
+// (not installed, `fatal: detected dubious ownership` in a container or as another
+// user): every path then reads as untracked, the gate reports nothing tracked, and a
+// committed result set is destroyed silently — precisely the loss the gate exists to
+// prevent. The rule: if the one-time `git rev-parse --is-inside-work-tree` probe
+// failed while a .git directory exists at the repository root, committed evidence may
+// exist that the gate cannot see, so refuse to run. If there is genuinely no .git,
+// there is no committed evidence to protect and proceeding is correct. Pure — the
+// driver supplies both observations — so tests exercise the decision directly.
+export function assertGitUsable ({ probeSucceeded, gitDirExists }) {
+  if (probeSucceeded || !gitDirExists) return
+  throw new Error(
+    'refusing to start: a .git directory exists at the repository root, but ' +
+    '`git rev-parse --is-inside-work-tree` failed, so git is unusable here and the ' +
+    'tracked-overwrite gate cannot verify which committed result files this sweep would ' +
+    'overwrite. Treating every path as untracked would fail open — the silent destruction ' +
+    'of committed evidence is exactly what this gate exists to prevent. Fix git (install ' +
+    'it, or resolve the ownership or permission error it reported) and re-run.'
+  )
+}
+
 // Every result-directory path one `npm run measure` invocation writes: the main
 // sweep's MODELS x CONDITIONS files, the overhead sweep's CONDITIONS pair for the
 // pinned overhead model, and the unversioned report. Filenames must mirror the

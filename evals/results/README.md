@@ -91,8 +91,11 @@ run is about to spend on, not stored evidence.
 the sweep still carried three conditions (6 of the rows belong to the retired terse arm; a
 re-run today covers two conditions and 12 rows). Two turns
 of a single `claude` session per (condition, trial): turn 1 opens it with `--session-id`, turn 2
-re-asks the same prompt with `--resume`. Case `port-default`, lean environment, three trials,
-opus-pinned because `--strict-mcp-config` forces that model.
+re-asks the same prompt with `--resume`. Case `port-default`, lean environment, three trials, on
+claude-opus-5. The pin was chosen at the time because `--strict-mcp-config` was believed to force
+that model — a forcing that did not reproduce when probed on 2026-08-17 (see
+[probes/README.md](probes/README.md), "Model resolution"); the pin now stands for comparability
+with these committed opus rows.
 
 **These are the only rows here that carry the input-token tier split** —
 `inputUncached`, `inputCacheRead`, `inputCacheWrite`, and the `1h`/`5m` breakdown of the write.

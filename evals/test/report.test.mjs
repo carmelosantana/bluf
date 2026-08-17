@@ -690,6 +690,40 @@ test('formatReport shows the interval and every cluster value', () => {
   assert.match(rendered, /indicative/i, 'the report must not imply a confidence interval')
 })
 
+test('formatReport names the two cluster means instead of a bootstrap range at exactly 2 clusters', () => {
+  // The overhead/lean report is always exactly 2 clusters (short-lookup and long-list),
+  // and with 2 clusters the bootstrap's bounds are mathematically forced to the two
+  // cluster means — printing them as a 2000-resample "Indicative range" relabels the
+  // raw values as an estimated spread. The report must name them as the means they are.
+  const base = rowsFor('baseline', [['a', 'short-lookup', 1, 300], ['b', 'long-list', 1, 900]])
+  const cand = rowsFor('bluf', [['a', 'short-lookup', 1, 100], ['b', 'long-list', 1, 850]])
+  const rendered = formatReport(compare(base, cand), {
+    condition: 'bluf', model: 'claude-opus-5', environment: 'lean'
+  })
+
+  assert.doesNotMatch(rendered, /Indicative range/, '2 clusters must not render as a bootstrap range')
+  assert.doesNotMatch(rendered, /seeded cluster bootstrap/, '2 clusters must not be labelled a resampled estimate')
+  assert.doesNotMatch(rendered, /resamples/, 'no resample count may be quoted when nothing was estimated')
+  assert.match(rendered, /cluster means/, 'the two values must be named as the cluster means they are')
+  assert.match(rendered, /\+50 and \+200/, 'the bounds printed must be the two cluster means, sorted')
+  assert.match(rendered, /Point estimate/, 'the equally-weighted point estimate is still honest and stays')
+})
+
+test('formatReport with 2 equal cluster means prints no zero-width range labelled as a bootstrap', () => {
+  // Equal cluster means force the 2-cluster bootstrap to a zero-width "low to high" —
+  // exactly the certainty-shaped reading the 1-cluster refusal exists to prevent.
+  const base = rowsFor('baseline', [['a', 'short-lookup', 1, 300], ['b', 'long-list', 1, 900]])
+  const cand = rowsFor('bluf', [['a', 'short-lookup', 1, 150], ['b', 'long-list', 1, 750]])
+  const rendered = formatReport(compare(base, cand), {
+    condition: 'bluf', model: 'claude-opus-5', environment: 'lean'
+  })
+
+  assert.doesNotMatch(rendered, /Indicative range/, 'equal means must not render a zero-width bootstrap range')
+  assert.doesNotMatch(rendered, /resamples/, 'no resample count may be quoted when nothing was estimated')
+  assert.doesNotMatch(rendered, /\+150 to \+150/, 'a zero-width "x to x" spread must never be printed')
+  assert.match(rendered, /\+150 and \+150/, 'the two equal means are still reported, as raw values')
+})
+
 test('clusterPairedDeltas refuses a category that disagrees across conditions', () => {
   // Same (caseId, trial) multisets, so the coverage guards pass — but case 'a' claims a
   // different category in each sweep. Bucketing it by the baseline's label would return

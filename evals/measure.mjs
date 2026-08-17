@@ -1,16 +1,18 @@
-import { writeFile, mkdir, readFile } from 'node:fs/promises'
+import { writeFile, mkdir, readFile, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import {
   CONDITIONS, MODELS, ENVIRONMENTS, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL,
   OVERHEAD_CASES, PROMPTS_SHA256, loadCases, runCase, readCliVersion,
-  assertStyleOverheadPresent
+  assertStyleOverheadPresent, assertUserStyleFresh
 } from './lib/runner.mjs'
 import { scheduleSweep, SCHEDULE_VERSION } from './lib/schedule.mjs'
 import { compare, formatReport } from './lib/report.mjs'
-import { plannedSweepFiles, assertOverwritesAllowed, OVERWRITE_ALLOWLIST_VAR } from './lib/overwrite-gate.mjs'
+import { plannedSweepFiles, assertOverwritesAllowed, assertGitUsable, OVERWRITE_ALLOWLIST_VAR } from './lib/overwrite-gate.mjs'
 
 const run = promisify(execFile)
 
@@ -87,32 +89,77 @@ for (const [label, environment] of [['MAIN_ENVIRONMENT', MAIN_ENVIRONMENT], ['OV
 // version) are not equivalent evidence. Enumerating the doomed paths and checking
 // them against git is free; recovering destroyed rows is not possible. The escape
 // hatch is deliberate and auditable: OVERWRITE_ALLOWLIST_VAR must name each file,
-// never a bare boolean. `git ls-files --error-unmatch` exits non-zero for an
-// untracked path (or outside a git checkout entirely, where there is no committed
-// evidence to protect), so a failure means the path is safe to write.
+// never a bare boolean.
+//
+// The per-path probe below reads a non-zero `git ls-files --error-unmatch` exit as
+// "untracked, safe to write" — which is only sound once git itself is known to work,
+// because a broken git (not installed, dubious-ownership refusal in a container or as
+// another user) exits non-zero for EVERY path and would fail the gate open. So git is
+// probed once up front, and assertGitUsable refuses to run when the probe fails while
+// a .git directory exists at the repository root. When there is genuinely no .git,
+// there is no committed evidence to protect and the run proceeds with nothing tracked.
+const planned = plannedSweepFiles({
+  models: MODELS,
+  conditions: Object.keys(CONDITIONS),
+  mainEnvironment: MAIN_ENVIRONMENT,
+  overheadEnvironment: OVERHEAD_ENVIRONMENT,
+  overheadModel: OVERHEAD_MODEL
+})
 {
-  const planned = plannedSweepFiles({
-    models: MODELS,
-    conditions: Object.keys(CONDITIONS),
-    mainEnvironment: MAIN_ENVIRONMENT,
-    overheadEnvironment: OVERHEAD_ENVIRONMENT,
-    overheadModel: OVERHEAD_MODEL
-  })
+  let probeSucceeded = true
+  try {
+    await run('git', ['rev-parse', '--is-inside-work-tree'], {
+      cwd: fileURLToPath(new URL('.', import.meta.url))
+    })
+  } catch {
+    probeSucceeded = false
+  }
+  let gitDirExists = true
+  try {
+    await stat(new URL('../.git', import.meta.url))
+  } catch {
+    gitDirExists = false
+  }
+  assertGitUsable({ probeSucceeded, gitDirExists })
+
   const trackedFiles = []
-  for (const name of planned) {
-    try {
-      await run('git', ['ls-files', '--error-unmatch', '--', fileURLToPath(new URL(`./${name}`, RESULTS))], {
-        cwd: fileURLToPath(new URL('.', import.meta.url))
-      })
-      trackedFiles.push(name)
-    } catch {
-      // untracked: nothing committed at this path, so the sweep may write it
+  if (probeSucceeded) {
+    for (const name of planned) {
+      try {
+        await run('git', ['ls-files', '--error-unmatch', '--', fileURLToPath(new URL(`./${name}`, RESULTS))], {
+          cwd: fileURLToPath(new URL('.', import.meta.url))
+        })
+        trackedFiles.push(name)
+      } catch {
+        // untracked: nothing committed at this path, so the sweep may write it
+      }
     }
   }
   assertOverwritesAllowed({
     plannedFiles: planned,
     trackedFiles,
     allowValue: process.env[OVERWRITE_ALLOWLIST_VAR]
+  })
+}
+
+// Gate: verify the USER-level style install before spending. The lean overhead sweep
+// passes no --setting-sources, so its styled arm loads the style from the operator's
+// ~/.claude/output-styles/bluf.md — a path runCase never checks (its install and
+// assertion are clean-environment-only). The post-payment assertStyleOverheadPresent
+// check at the end of the sweep does catch a missing or stale install, but only after
+// all 260 calls are paid, with no partial mode to recover the lean arm. This read is
+// free and READ ONLY: nothing is ever written under ~/.claude.
+{
+  const userStylePath = join(homedir(), '.claude', 'output-styles', 'bluf.md')
+  let installed = null
+  try {
+    installed = await readFile(userStylePath)
+  } catch {
+    // absent: assertUserStyleFresh receives null and refuses with the install command
+  }
+  assertUserStyleFresh({
+    path: userStylePath,
+    actualSha256: installed === null ? null : createHash('sha256').update(installed).digest('hex')
   })
 }
 
@@ -201,8 +248,10 @@ try {
   }
 
   // Environment-overhead sweep: two designated cases, lean environment, one pinned model.
-  // OVERHEAD_MODEL must be claude-opus-5: the lean flags force that model regardless of
-  // what --model requests, so pinning it is what holds the model constant.
+  // OVERHEAD_MODEL is pinned to claude-opus-5 for comparability with the committed 0.2.0
+  // lean rows, which were measured on that model. The old rationale — that the lean flags
+  // force claude-opus-5 regardless of what --model requests — did not reproduce on
+  // 2026-08-17 (see evals/results/probes/README.md, "Model resolution").
   // Membership was validated at the top of the file, before the paid main sweep.
   const overheadCases = cases.filter(caseRow => OVERHEAD_CASES.includes(caseRow.id))
 
@@ -262,14 +311,33 @@ try {
   }
   // A throw mid-sweep is the path where partial result files actually happen: an
   // earlier model's files may already be on disk, each internally complete-looking.
-  // Non-zero exit protects the shell, not the files, so the operator must be told.
+  // Non-zero exit protects the shell, not the files, so the operator must be told —
+  // accurately. Two distinct situations end here, and conflating them would mislead:
+  // a genuinely partial sweep, and a run whose every result file was written but
+  // whose post-payment validation or report generation then failed. "All expected"
+  // is derived from the same plannedSweepFiles enumeration the overwrite gate uses
+  // (minus report.md, which is only written after this try block), never a
+  // hard-coded count.
   if (writtenFiles.length > 0) {
-    console.error(
-      '\nINCOMPLETE SWEEP: this run aborted after writing these result files:\n' +
-      writtenFiles.map(path => `  ${path}`).join('\n') + '\n' +
-      'They cover only part of the intended sweep. Do NOT read them as a ' +
-      'finished measurement — a rerun overwrites them.'
-    )
+    const expectedResultFiles = planned.filter(name => name !== 'report.md')
+    if (writtenFiles.length === expectedResultFiles.length) {
+      console.error(
+        '\nINCOMPLETE SWEEP: this run aborted AFTER writing all ' +
+        `${expectedResultFiles.length} expected result files:\n` +
+        writtenFiles.map(path => `  ${path}`).join('\n') + '\n' +
+        'The result files themselves are complete — the failure above happened in a ' +
+        'post-payment validation step or in report generation, so report.md was not ' +
+        'written. Read the error before trusting the rows: it may indict what they ' +
+        'measured, not merely how the run ended. A rerun overwrites them.'
+      )
+    } else {
+      console.error(
+        '\nINCOMPLETE SWEEP: this run aborted after writing these result files:\n' +
+        writtenFiles.map(path => `  ${path}`).join('\n') + '\n' +
+        'They cover only part of the intended sweep. Do NOT read them as a ' +
+        'finished measurement — a rerun overwrites them.'
+      )
+    }
   }
   throw error
 }

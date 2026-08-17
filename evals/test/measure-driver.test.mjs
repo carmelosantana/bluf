@@ -37,11 +37,38 @@ test('every free validation still sits above the first paid call', () => {
   const firstPaid = source.indexOf('await runCase(')
   assert.ok(firstPaid > -1)
 
-  for (const guard of ['PROMPTS_SHA256', 'MAX_TRIALS', 'OVERHEAD_CASES', 'assertOverwritesAllowed']) {
+  for (const guard of ['PROMPTS_SHA256', 'MAX_TRIALS', 'OVERHEAD_CASES', 'assertGitUsable', 'assertOverwritesAllowed', 'assertUserStyleFresh']) {
     const index = source.indexOf(guard)
     assert.ok(index > -1, `${guard} validation must exist`)
     assert.ok(index < firstPaid, `${guard} validation must precede any spending`)
   }
+})
+
+test('the overwrite gate fails closed when git is unusable', () => {
+  // `git ls-files --error-unmatch` exits non-zero for every path when git itself is
+  // broken (not installed, dubious ownership in a container), which would read as
+  // "nothing tracked" and fail the gate open. The driver must probe git once up front
+  // and hand the outcome to assertGitUsable before trusting any per-path result.
+  const probe = source.indexOf("'rev-parse', '--is-inside-work-tree'")
+  assert.ok(probe > -1, 'the driver must probe git usability with rev-parse --is-inside-work-tree')
+  const decision = source.indexOf('assertGitUsable(')
+  assert.ok(decision > probe, 'the probe outcome must be judged by the pure assertGitUsable decision')
+  assert.ok(decision < source.indexOf('assertOverwritesAllowed('),
+    'git must be proven usable before the per-path tracked check is trusted')
+})
+
+test('the user-level style install is verified free of charge, before the first paid call', () => {
+  // The lean sweep loads the style from ~/.claude/output-styles/bluf.md, and the only
+  // other check on that install is post-payment: a stale install would burn all 260
+  // calls before throwing. The pre-spend check must read (never write) the user-level
+  // file, derive the path from os.homedir, and sit above the first paid call.
+  const check = source.indexOf('assertUserStyleFresh(')
+  const firstPaid = source.indexOf('await runCase(')
+  assert.ok(check > -1, 'the driver must verify the user-level style install')
+  assert.ok(check < firstPaid, 'the user-level style check must precede any spending')
+  assert.ok(source.includes('homedir()'), 'the user-level path must come from os.homedir, never a hard-coded /home')
+  assert.ok(!/writeFile[^\n]*homedir/.test(source) && !/homedir[^\n]*writeFile/.test(source),
+    'nothing may be written under the home directory: the check is read-only')
 })
 
 test('the tracked-overwrite gate runs before the first paid call', () => {

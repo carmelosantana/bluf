@@ -55,10 +55,15 @@ export const CLEAN_ENVIRONMENT = 'clean'
 // The 0.2.0 rows in full-*.jsonl are unaffected; the clean sweep writes clean-*.jsonl.
 export const MAIN_ENVIRONMENT = CLEAN_ENVIRONMENT
 export const OVERHEAD_ENVIRONMENT = 'lean'
-// Pinned because the lean flags (--strict-mcp-config with an empty --mcp-config)
-// force the run onto claude-opus-5 regardless of what --model requests. Pinning
-// the same model here is what holds the model constant and keeps the overhead
-// comparison valid — do not "fix" this to a different model.
+// Pinned for comparability with the committed 0.2.0 lean rows
+// (evals/results/lean-claude-opus-5-*-0.2.0.jsonl), which were measured on
+// claude-opus-5 — the overhead comparison is only valid against rows from the same
+// model. The rationale previously recorded here — that the lean flags
+// (--strict-mcp-config with an empty --mcp-config) force the run onto claude-opus-5
+// regardless of what --model requests — did not reproduce on 2026-08-17: a
+// claude-fable-5 request billed fable in both lean and clean (see
+// evals/results/probes/README.md, "Model resolution"). The pinned value stands
+// either way — do not "fix" this to a different model.
 export const OVERHEAD_MODEL = 'claude-opus-5'
 
 // Rotates a condition list so a different condition leads on each case. Without
@@ -280,6 +285,41 @@ export async function assertProjectStyleInstalled (cwd) {
     throw new Error(
       `the installed style at ${target} does not match the shipped style (${digest} vs ${STYLE_SHA256}). ` +
       'Measuring an altered style would attribute its behaviour to the published rule set.'
+    )
+  }
+}
+
+// The free PRE-spend check on the operator's user-level style install. The lean
+// environment passes no --setting-sources, so its styled arm loads the style from
+// ~/.claude/output-styles/bluf.md — which runCase never verifies (installProjectStyle
+// and its assertion are clean-environment-only, and `npm run preflight` exercises the
+// clean environment only). The post-payment assertStyleOverheadPresent check does
+// catch a missing or stale install, but only after every call is paid for, and a
+// throw there means report.md is never written and the lean arm needs another full
+// run. Reading one file up front is free. Pure by design: the driver reads the file
+// (READ ONLY — nothing is ever written under ~/.claude) and passes the digest, or
+// null when the file is absent, so tests exercise the decision without touching a
+// home directory.
+export function assertUserStyleFresh ({ path, actualSha256, expectedSha256 = STYLE_SHA256 }) {
+  const installCommand = 'mkdir -p ~/.claude/output-styles && cp output-styles/bluf.md ~/.claude/output-styles/'
+  if (actualSha256 == null) {
+    throw new Error(
+      `refusing to start: no user-level style install at ${path}. The lean overhead sweep ` +
+      'passes no --setting-sources, so it loads the style from that user-level path; without ' +
+      'it every lean styled call measures Default against Default, and the post-payment style ' +
+      'check would only catch that after the whole sweep had been paid for. Install it first:\n' +
+      `  ${installCommand}`
+    )
+  }
+  if (actualSha256 !== expectedSha256) {
+    throw new Error(
+      `refusing to start: the user-level style at ${path} does not match the shipped style.\n` +
+      `  installed: ${actualSha256}\n` +
+      `  shipped:   ${expectedSha256}\n` +
+      'A stale install would make the lean arm measure a different rule set than the one the ' +
+      'results are attributed to, discovered only by the post-payment check after all the ' +
+      'money was spent. Reinstall it:\n' +
+      `  ${installCommand}`
     )
   }
 }

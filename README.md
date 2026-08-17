@@ -3,7 +3,7 @@
 *Bottom Line Up Front.* A Claude Code output style that leads with the conclusion, written to cut filler — with the output-token reduction measured, including what it costs.
 
 - Cuts assistant output tokens by a median of **35.0%** on claude-fable-5 and **30.9%** on claude-opus-5. Measured on 12 Claude Code-shaped prompts, 3 trials per case, in a full ~122k-token environment.
-- **Every one of the 6 trial-level measurements came out negative.** On this suite, in this run, the direction was consistent; the size varied. Per-trial ranges are −44.0% to −30.7% (fable) and −32.7% to −29.0% (opus). See [Variance](#variance).
+- **Every one of the 6 trial-level measurements came out negative.** On this suite, in this run, the direction was consistent; the size varied. Per-trial ranges are −44.0% to −30.7% (fable) and −32.7% to −29.0% (opus) — with a caveat: this run's "trials" were back-to-back repeats under schedule version 1, not independent sweeps. See [Variance](#variance).
 - Costs input tokens: **+2,030** per turn — the median of the per-trial paired differences, the same statistic used for the output-savings figures. The per-trial differences were 2,029–2,037 across the amortization run's trials. On the first turn of a session that is a cache **write**; from the second turn on it is a cache **read** of the same size.
 - **At published cache pricing, costs money on turn 1 and saves money on every turn after.** Break-even is 7.2×–10.6× output:input for a one-turn session and 0.36×–0.53× in steady state. No prices are quoted here — multiply by your own and see [What it costs](#what-it-costs).
 - 4 of the 24 per-case measurements have trial ranges that straddle zero, meaning the style's effect on those cases is not distinguishable from run-to-run noise even at 3 trials.
@@ -238,7 +238,7 @@ Medians ignore it; sums do not.
 
 ### Variance
 
-3 trials per case. The aggregate effect was computed per trial and then summarised, rather than by pooling all trials, so the ranges below reflect real run-to-run spread:
+3 trials per case. The aggregate effect was computed per trial and then summarised, rather than by pooling all trials. One scope limit on what these ranges mean: the committed rows were measured under **schedule version 1**, whose "trials" ran a case's repetitions back to back with the condition rotation keyed on the case alone — repeated measurements of each case in quick succession, not independent sweeps of the whole suite. The ranges below are therefore the spread of back-to-back repeats, which likely understates true run-to-run spread; schedule version 2 (trial-major, reshuffled per trial) is what makes future cross-trial ranges measure independent sweeps. See the Schedule versions section of [`evals/results/README.md`](evals/results/README.md).
 
 | Model | Median | Range across trials |
 | --- | ---: | --- |
@@ -301,7 +301,7 @@ TRIALS=5 npm run measure
 npm run measure:amortization
 ```
 
-`npm test` runs 256 tests with zero dependencies on Node 22+.
+`npm test` runs 278 tests with zero dependencies on Node 22+.
 
 **`TRIALS=5 npm run measure` makes 260 live API calls and costs real money** — 12 cases × 2 conditions × 5 trials × 2 models in the clean environment (240 calls), plus 2 overhead cases × 2 conditions × 5 trials in the lean environment (20). The only measured cost figure is for a different design and does not transfer: the last full run — 3 trials, full environment, still carrying a third condition at 234 calls — cost roughly $48–54. The sweep is not part of `npm test` and nothing runs it by accident. It refuses to start while any file it would write is tracked by git, so committed evidence has to be preserved under a versioned name (or sacrificed by name via an environment variable the refusal message documents) before it rewrites `evals/results/`. Omit `TRIALS` for a single-trial run of 52 calls, which is cheaper and correspondingly less trustworthy.
 
