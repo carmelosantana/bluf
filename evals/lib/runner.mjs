@@ -352,6 +352,75 @@ export function assertTurn2ReadFromCache (rows) {
   }
 }
 
+// The companion input-growth check: did each turn 2 actually CARRY turn 1's exchange?
+// assertTurn2ReadFromCache alone misses the likeliest silent failure. A --resume that
+// forks a fresh session re-sends a byte-identical system prefix; the API serves that
+// prefix from turn 1's cache entry, so the forked row reports a large cache read and a
+// small write — exactly the healthy shape the sibling check accepts. The free
+// discriminator is total input: a genuinely resumed turn 2 must include turn 1's
+// exchange in its input, so its total is strictly larger than turn 1's, while a fork
+// sends the same prefix and lands at roughly the same total. Kept separate from the
+// sibling because it answers a different question over different rows: the sibling
+// reads each turn 2's own cache tiers, this one pairs each turn 2 with its turn 1 and
+// compares across the pair. Like the sibling, it runs after the money is spent — its
+// job is to stop the conclusion, not the payment.
+export function assertTurn2CarriedTurn1 (rows) {
+  // Pair by (condition, trial). A duplicated or dropped row must fail the pairing
+  // loudly: this repo has already shipped a guard that accepted a doubled row as two
+  // clean observations, and a pairing step that shrugs would repeat that defect.
+  const byTurn = new Map([[1, new Map()], [2, new Map()]])
+  for (const row of rows) {
+    const pairs = byTurn.get(row.turn)
+    if (!pairs) continue
+    const key = `${row.condition} ${row.trial}`
+    if (pairs.has(key)) {
+      throw new Error(
+        `found more than one turn ${row.turn} row for condition ${row.condition} trial ${row.trial}; ` +
+        'a doubled row is not two observations, and pairing over it would let a silently dropped row pass'
+      )
+    }
+    pairs.set(key, row)
+  }
+  const turnOne = byTurn.get(1)
+  const turnTwo = byTurn.get(2)
+  if (turnTwo.size === 0) {
+    throw new Error(
+      'assertTurn2CarriedTurn1 found no turn 2 rows to pair; a vacuous pass here would wave through ' +
+      'the forked-session failure this check exists to catch'
+    )
+  }
+  for (const [key, row] of turnOne) {
+    if (!turnTwo.has(key)) {
+      throw new Error(
+        `condition ${row.condition} trial ${row.trial} has a turn 1 row but no turn 2 row; ` +
+        'a pair missing its second turn was silently dropped and cannot be validated'
+      )
+    }
+  }
+  for (const [key, two] of turnTwo) {
+    const one = turnOne.get(key)
+    if (!one) {
+      throw new Error(
+        `turn 2 row for condition ${two.condition} trial ${two.trial} has no matching turn 1 row; ` +
+        'an unpaired turn 2 means a row was silently dropped or mislabelled, and the input-growth ' +
+        'comparison cannot run without its partner'
+      )
+    }
+    // Negated comparison, as in the sibling check: a missing or non-numeric
+    // inputTokens makes this false and throws, instead of passing on NaN.
+    if (!(two.inputTokens > one.inputTokens)) {
+      throw new Error(
+        `condition ${two.condition} trial ${two.trial}: turn 2's total input is ${two.inputTokens} ` +
+        `against turn 1's ${one.inputTokens} — not strictly larger, so turn 2 did not carry turn 1's ` +
+        'exchange in its input and the session was not resumed. Most likely --resume forked a fresh ' +
+        'session whose byte-identical prefix was served from turn 1\'s cache entry, which is why the ' +
+        'cache-read check alone cannot catch this. The amortization figures describe two cold ' +
+        'sessions rather than one session\'s second turn, and are meaningless.'
+      )
+    }
+  }
+}
+
 // Calibration: on current lean+opus data a styled port-default turn measures 5 output
 // tokens against a baseline of 101-106 — a fraction near 0.05. 0.5 leaves an order of
 // magnitude of headroom for normal variation while still catching a styled arm that

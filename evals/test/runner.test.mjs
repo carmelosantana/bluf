@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
-import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, MAX_STYLED_FRACTION_OF_BASELINE } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, MAX_STYLED_FRACTION_OF_BASELINE } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -1177,12 +1177,122 @@ test('assertTurn2ReadFromCache flags a single bad row among many good ones', () 
   )
 })
 
+// A pair of rows with the total-input field assertTurn2CarriedTurn1 compares. Defaults
+// model the resumed shape: turn 2 carries turn 1's exchange, so its total input is
+// strictly larger than turn 1's.
+function pairedRows (condition, trial = 1, { turn1Input = 6810, turn2Input = 6930 } = {}) {
+  return [
+    amortRow(condition, 1, condition === 'baseline' ? 104 : 5, trial, { inputTokens: turn1Input }),
+    amortRow(condition, 2, condition === 'baseline' ? 104 : 5, trial, { inputTokens: turn2Input })
+  ]
+}
+
+test('assertTurn2CarriedTurn1 passes when every turn 2 input strictly exceeds its turn 1 partner', () => {
+  const rows = [
+    ...pairedRows('baseline', 1),
+    ...pairedRows('baseline', 2),
+    ...pairedRows('bluf', 1),
+    ...pairedRows('bluf-terse', 1)
+  ]
+  assert.equal(assertTurn2CarriedTurn1(rows), undefined)
+})
+
+test('assertTurn2CarriedTurn1 throws on the forked shape: turn 2 input equal to turn 1', () => {
+  // The likeliest silent failure: --resume forks a fresh session, which re-sends a
+  // byte-identical prefix. The API serves it from turn 1's cache entry, so the
+  // cache-read check passes — but the total input does not grow, because the fork
+  // never carried turn 1's exchange.
+  const rows = pairedRows('bluf', 2, { turn1Input: 6810, turn2Input: 6810 })
+  assert.throws(
+    () => assertTurn2CarriedTurn1(rows),
+    (err) => {
+      assert.match(err.message, /bluf/, 'must name the condition')
+      assert.match(err.message, /trial 2/, 'must name the trial')
+      assert.match(err.message, /6810/, 'must state both input totals')
+      assert.match(err.message, /did not carry/, 'must state the mechanism')
+      assert.match(err.message, /not resumed/, 'must state that the session was not resumed')
+      assert.match(err.message, /fork/, 'must name the likeliest cause')
+      assert.match(err.message, /cold sessions/, 'must state the consequence for the figures')
+      return true
+    }
+  )
+})
+
+test('assertTurn2CarriedTurn1 throws when a turn 2 row has no turn 1 partner', () => {
+  const [, turnTwoOnly] = pairedRows('bluf-terse', 3)
+  const rows = [...pairedRows('bluf', 1), turnTwoOnly]
+  assert.throws(
+    () => assertTurn2CarriedTurn1(rows),
+    (err) => {
+      assert.match(err.message, /bluf-terse/, 'must name the condition')
+      assert.match(err.message, /trial 3/, 'must name the trial')
+      assert.match(err.message, /no matching turn 1/, 'must say the pairing failed')
+      return true
+    }
+  )
+})
+
+test('assertTurn2CarriedTurn1 throws when a turn 1 row has no turn 2 partner', () => {
+  // The mirror image: a silently dropped turn 2 row must not shrink the comparison.
+  const [turnOneOnly] = pairedRows('bluf-terse', 3)
+  const rows = [...pairedRows('bluf', 1), turnOneOnly]
+  assert.throws(
+    () => assertTurn2CarriedTurn1(rows),
+    /bluf-terse.*trial 3|trial 3.*bluf-terse/
+  )
+})
+
+test('assertTurn2CarriedTurn1 throws on a duplicate (condition, trial, turn) row', () => {
+  const rows = [...pairedRows('bluf', 1), ...pairedRows('bluf', 1)]
+  assert.throws(
+    () => assertTurn2CarriedTurn1(rows),
+    (err) => {
+      assert.match(err.message, /more than one/, 'must say the row is doubled')
+      assert.match(err.message, /bluf/, 'must name the condition')
+      assert.match(err.message, /trial 1/, 'must name the trial')
+      return true
+    }
+  )
+})
+
+test('assertTurn2CarriedTurn1 flags a single forked pair among many resumed ones', () => {
+  const rows = [
+    ...pairedRows('baseline', 1),
+    ...pairedRows('bluf', 1),
+    ...pairedRows('bluf', 2, { turn1Input: 6810, turn2Input: 6805 }),
+    ...pairedRows('bluf-terse', 1)
+  ]
+  assert.throws(
+    () => assertTurn2CarriedTurn1(rows),
+    (err) => {
+      assert.match(err.message, /bluf/, 'must name the offending condition')
+      assert.match(err.message, /trial 2/, 'must name the offending trial')
+      assert.match(err.message, /6805/, 'must state the offending input total')
+      return true
+    }
+  )
+})
+
+test('assertTurn2CarriedTurn1 refuses to pass vacuously when there are no turn 2 rows', () => {
+  assert.throws(() => assertTurn2CarriedTurn1([]), /no turn 2 rows/)
+})
+
+test('assertTurn2CarriedTurn1 throws rather than passes on a missing inputTokens', () => {
+  // The negated comparison must turn NaN into a loud failure, not a silent pass.
+  const rows = pairedRows('bluf', 1)
+  delete rows[1].inputTokens
+  assert.throws(() => assertTurn2CarriedTurn1(rows), /bluf/)
+})
+
 // Must-not-regress: the intended paid run, simulated end to end with an injected
 // executor and zero API calls. 3 conditions x 3 trials through runAmortizationPair
 // with a realistic tier shape — turn 1 writes the prefix to cache, turn 2 reads it
 // back and writes only a small block for the appended exchange — must produce 18
-// rows that every driver check accepts.
-test('the intended 3x3x2 slice passes the row-count pin and both validity checks', async () => {
+// rows that every driver check accepts. Turn 2's total input (10 uncached + 6800 read
+// + 120 written for the appended exchange = 6930) is strictly larger than turn 1's
+// (10 uncached + 6800 written = 6810), as a genuinely resumed turn's must be — a fork
+// would re-send the same prefix and land at roughly turn 1's total.
+test('the intended 3x3x2 slice passes the row-count pin and every validity check', async () => {
   const turnTwoOutput = {
     baseline: [101, 104, 106],
     bluf: [5, 5, 5],
@@ -1223,6 +1333,7 @@ test('the intended 3x3x2 slice passes the row-count pin and both validity checks
 
   assert.equal(allRows.length, 18, 'the intended slice is 3 conditions x 3 trials x 2 turns')
   assert.equal(assertTurn2ReadFromCache(allRows), undefined)
+  assert.equal(assertTurn2CarriedTurn1(allRows), undefined)
   assert.equal(assertStyledBelowBaseline(allRows), undefined)
 })
 

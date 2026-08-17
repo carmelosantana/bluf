@@ -73,6 +73,47 @@ test('measure-amortization checks the input tier of turn 2 after the money is sp
   )
 })
 
+test('measure-amortization pairs each turn 2 against its turn 1 to catch a forked resume', async () => {
+  const source = await readFile(new URL('../measure-amortization.mjs', import.meta.url), 'utf8')
+
+  const carriedIndex = source.indexOf('assertTurn2CarriedTurn1(')
+  assert.ok(
+    carriedIndex > -1,
+    'the driver must verify each turn 2 carried its turn 1 exchange; a forked --resume re-sends a ' +
+    'byte-identical prefix that the cache-read check accepts, and only the input-growth comparison catches it'
+  )
+  assert.ok(
+    carriedIndex > source.indexOf('allRows.length !== totalCalls'),
+    'the input-growth check belongs with the post-run validity checks, after the row-count pin'
+  )
+})
+
+test('a validity failure names the complete-looking files it leaves on disk', async () => {
+  const source = await readFile(new URL('../measure-amortization.mjs', import.meta.url), 'utf8')
+
+  const invalidIndex = source.indexOf('INVALID SLICE')
+  const cacheCheckIndex = source.indexOf('assertTurn2ReadFromCache(allRows)')
+  const styledCheckIndex = source.indexOf('assertStyledBelowBaseline(allRows)')
+  assert.ok(cacheCheckIndex > -1 && styledCheckIndex > -1, 'both validity checks must run')
+  assert.ok(
+    invalidIndex > -1,
+    'a validity failure leaves all result files on disk with a full row count and nothing marking them ' +
+    'invalid; the operator must be told the files exist and must not be read as a measurement'
+  )
+  assert.ok(
+    invalidIndex > cacheCheckIndex && invalidIndex > styledCheckIndex,
+    'the warning must live on the failure path of the validity checks themselves'
+  )
+  assert.ok(
+    source.indexOf('writtenFiles.map', invalidIndex) > -1 || source.lastIndexOf('writtenFiles.map') > styledCheckIndex,
+    'the warning must name the files by pathname, not gesture at them'
+  )
+  assert.ok(
+    source.indexOf('throw error', invalidIndex) > -1,
+    'the original assertion message is the diagnosis and must be rethrown unchanged, not swallowed or replaced'
+  )
+})
+
 test('measure-amortization warns about the incomplete slice on the path where partial files happen', async () => {
   const source = await readFile(new URL('../measure-amortization.mjs', import.meta.url), 'utf8')
 

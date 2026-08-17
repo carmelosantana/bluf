@@ -4,7 +4,7 @@ import {
   AMORTIZATION_CASE, CONDITIONS, ENVIRONMENTS, MODELS,
   OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, PROMPTS_SHA256,
   loadCases, runAmortizationPair, assertStyledBelowBaseline,
-  assertTurn2ReadFromCache
+  assertTurn2ReadFromCache, assertTurn2CarriedTurn1
 } from './lib/runner.mjs'
 
 // This slice spends real money. Every check below is free and runs before the first
@@ -55,7 +55,9 @@ await mkdir(RESULTS, { recursive: true })
 // A prior run — completed with a different TRIALS, or aborted partway — may have left
 // amortization files behind, and a run that then aborts before overwriting all of them
 // leaves a slice that silently mixes vintages. Delete exactly the files this run will
-// write, so that any amortization file on disk afterwards is unambiguously this run's.
+// write — the OVERHEAD_MODEL file for each condition — so that any amortization file
+// for THIS model on disk afterwards is unambiguously this run's. An amortization file
+// for a different model is outside the rm's scope and survives it.
 // This is a free action: it sits below every free gate (an aborted gate leaves prior
 // results untouched) and above the first paid call.
 const targetFor = condition => new URL(`amortization-${OVERHEAD_MODEL}-${condition}.jsonl`, RESULTS)
@@ -130,15 +132,36 @@ if (allRows.length !== totalCalls) {
   )
 }
 
-// The two real validity checks. Both run after the money is spent — that is their job,
-// not a defect: they convert a quiet false success into a loud abort (see the comment on
-// assertTurn2ReadFromCache). First: did each resumed turn 2 actually read the cached
-// prefix back? Every other guard is output-token only, and the input tier is the figure
-// this whole slice exists to measure.
-assertTurn2ReadFromCache(allRows)
+// The real validity checks. All run after the money is spent — that is their job, not a
+// defect: they convert a quiet false success into a loud abort (see the comment on
+// assertTurn2ReadFromCache).
+try {
+  // First: did each resumed turn 2 actually read the cached prefix back? Every other
+  // guard is output-token only, and the input tier is the figure this whole slice
+  // exists to measure.
+  assertTurn2ReadFromCache(allRows)
 
-// Second: styled turn-2 output measured against the baseline arm this slice just
-// bought, rather than against a hardcoded ceiling.
-assertStyledBelowBaseline(allRows)
+  // Second: did each turn 2 carry turn 1's exchange? A forked --resume re-sends a
+  // byte-identical prefix that the cache serves back, so it passes the check above;
+  // only the input-growth comparison against its own turn 1 catches it.
+  assertTurn2CarriedTurn1(allRows)
+
+  // Third: styled turn-2 output measured against the baseline arm this slice just
+  // bought, rather than against a hardcoded ceiling.
+  assertStyledBelowBaseline(allRows)
+} catch (error) {
+  // On this path every result file is on disk with its full row count — a slice that
+  // looks finished and is not. Nothing inside the files marks them invalid, so the
+  // operator must be told in words. The rethrown assertion message is the diagnosis;
+  // this warning only adds what it cannot know: which files it leaves behind.
+  console.error(
+    '\nINVALID SLICE: this run wrote its complete result files before validation failed:\n' +
+    writtenFiles.map(path => `  ${path}`).join('\n') + '\n' +
+    'They hold a complete-looking slice that failed a validity check (the error below is the ' +
+    'diagnosis). Do NOT read them as a measurement — delete them, or fix the cause and re-run ' +
+    'the slice (a fresh run clears them itself).'
+  )
+  throw error
+}
 
 console.log('\nDone. The figure that matters is turn 2: which tier the style overhead lands in.')
