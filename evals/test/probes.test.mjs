@@ -144,9 +144,10 @@ test('the config-leak table reproduces every figure quoted from it', async () =>
 })
 
 test('every config-leak row resolved to the model it requested', async () => {
-  // modelUsage carries an auxiliary claude-haiku-4-5 call whose tokens are inside the result
-  // event's usage totals. Reading its first key reports haiku as canonical; these fields exist
-  // so that misreading cannot recur silently.
+  // modelUsage carries an auxiliary claude-haiku-4-5 call billed alongside the real work. The
+  // result event's usage totals cover only the requested model, so the auxiliary call
+  // contaminates no measured figure — but reading modelUsage's first key reports haiku as
+  // canonical. These fields exist so that misreading cannot recur silently.
   for (const row of await readJsonl('config-leak.jsonl')) {
     assert.equal(row.model, 'claude-opus-5')
     assert.equal(row.canonicalModel, 'claude-opus-5', `${row.configuration} did not resolve to its requested model`)

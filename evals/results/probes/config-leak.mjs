@@ -67,10 +67,11 @@ for (const configuration of selected) {
 
   const usage = payload.usage
   // modelUsage carries MORE THAN THE REQUESTED MODEL. Every observed call also bills a small
-  // auxiliary claude-haiku-4-5 request (about 529 input / 16 output), and the result event's
-  // `usage` totals INCLUDE it. Recording only the first key silently reports haiku as the
-  // canonical model; recording the whole map keeps both the resolution check and the
-  // contamination visible.
+  // auxiliary claude-haiku-4-5 request (about 529 input / 16 output) alongside the real work.
+  // The result event's `usage` totals cover ONLY the requested model, so the auxiliary call
+  // contaminates no measured figure — but recording only the first key silently reports haiku
+  // as the canonical model; recording the whole map keeps both the resolution check and the
+  // auxiliary billing visible.
   const modelUsage = payload.modelUsage ?? {}
   const requested = modelUsage[MODEL]
   const row = {

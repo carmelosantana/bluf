@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
 import { createHash } from 'node:crypto'
-import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, CLEAN_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256, parseProvenance, assertModelResolved } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, CLEAN_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256, AMORTIZATION_CASE, STYLED_MAX_OUTPUT_TOKENS, buildAmortizationArgs, assertTurnLooksStyled, runAmortizationPair, assertStyledBelowBaseline, assertTurn2ReadFromCache, assertTurn2CarriedTurn1, assertTurn1WasCold, MAX_STYLED_FRACTION_OF_BASELINE, assertStyleOverheadPresent, MIN_STYLE_OVERHEAD_TOKENS, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256, parseProvenance, assertModelResolved, settingSourcesOf } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -1780,7 +1780,13 @@ test('runCase installs the style before spending, in the clean environment only'
 })
 
 const modelUsage = {
-  'claude-haiku-4-5-20251001': { outputTokens: 16, canonicalModel: 'claude-haiku-4-5' },
+  'claude-haiku-4-5-20251001': {
+    inputTokens: 529,
+    cacheReadInputTokens: 0,
+    cacheCreationInputTokens: 0,
+    outputTokens: 16,
+    canonicalModel: 'claude-haiku-4-5'
+  },
   'claude-opus-5': { outputTokens: 253, canonicalModel: 'claude-opus-5' }
 }
 
@@ -1791,7 +1797,33 @@ test('parseProvenance reads the requested model, not the first key', () => {
 
   assert.equal(provenance.canonicalModel, 'claude-opus-5')
   assert.deepEqual(provenance.modelsBilled, ['claude-haiku-4-5-20251001', 'claude-opus-5'])
+  assert.equal(provenance.auxiliaryInputTokens, 529)
   assert.equal(provenance.auxiliaryOutputTokens, 16)
+})
+
+test('parseProvenance throws when an auxiliary output count is missing, naming the model', () => {
+  // Summing an absent field yields NaN, which JSON.stringify writes to the committed row
+  // as null — a contaminated row indistinguishable from a clean one. The throw must name
+  // the offending model so the operator knows which billed entry is malformed.
+  const malformed = {
+    'claude-haiku-4-5-20251001': { inputTokens: 529, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, canonicalModel: 'claude-haiku-4-5' },
+    'claude-opus-5': { outputTokens: 253, canonicalModel: 'claude-opus-5' }
+  }
+  assert.throws(
+    () => parseProvenance({ modelUsage: malformed }, { model: 'claude-opus-5' }),
+    /modelUsage\['claude-haiku-4-5-20251001'\]\.outputTokens is not a finite number/
+  )
+})
+
+test('parseProvenance throws when an auxiliary input tier is missing, naming the model', () => {
+  const malformed = {
+    'claude-haiku-4-5-20251001': { inputTokens: 529, cacheReadInputTokens: 0, outputTokens: 16, canonicalModel: 'claude-haiku-4-5' },
+    'claude-opus-5': { outputTokens: 253, canonicalModel: 'claude-opus-5' }
+  }
+  assert.throws(
+    () => parseProvenance({ modelUsage: malformed }, { model: 'claude-opus-5' }),
+    /modelUsage\['claude-haiku-4-5-20251001'\]\.cacheCreationInputTokens is not a finite number/
+  )
 })
 
 test('parseProvenance throws when the requested model was never billed', () => {
@@ -1839,6 +1871,7 @@ test('runCase records provenance on every row', async () => {
 
   assert.equal(row.canonicalModel, 'claude-opus-5')
   assert.deepEqual(row.modelsBilled, ['claude-haiku-4-5-20251001', 'claude-opus-5'])
+  assert.equal(row.auxiliaryInputTokens, 529)
   assert.equal(row.auxiliaryOutputTokens, 16)
   assert.equal(row.styleSha256, STYLE_SHA256)
   assert.deepEqual(row.settingSources, ['project'])
@@ -1864,4 +1897,38 @@ test('runCase records an empty settingSources outside the clean environment', as
 
   const row = await runCase(caseRow, 'bluf', 'claude-opus-5', 'full', 1, { execute: fakeRun })
   assert.deepEqual(row.settingSources, [])
+})
+
+test('runCase records an empty settingSources in the lean environment', async () => {
+  // lean is the environment the overhead sweep actually pays for, so its provenance is
+  // pinned by name rather than left to generalise from the full-environment test.
+  const fakeRun = async () => ({
+    modelUsage,
+    usage: {
+      input_tokens: 10,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 5000,
+      cache_creation: { ephemeral_1h_input_tokens: 5000, ephemeral_5m_input_tokens: 0 },
+      output_tokens: 253
+    },
+    result: 'x'
+  })
+  const caseRow = { id: 'port-default', category: 'short-lookup', prompt: 'what port?' }
+
+  const row = await runCase(caseRow, 'bluf', 'claude-opus-5', 'lean', 1, { execute: fakeRun })
+  assert.deepEqual(row.settingSources, [])
+})
+
+test('settingSourcesOf throws a diagnosable error when --setting-sources has no value', () => {
+  // A trailing --setting-sources would otherwise crash with "Cannot read properties of
+  // undefined (reading 'split')" — an error naming neither the flag nor the environment.
+  ENVIRONMENTS['broken-test-only'] = ['--strict-mcp-config', '--setting-sources']
+  try {
+    assert.throws(
+      () => settingSourcesOf('broken-test-only'),
+      /environment broken-test-only passes --setting-sources as its final argument/
+    )
+  } finally {
+    delete ENVIRONMENTS['broken-test-only']
+  }
 })

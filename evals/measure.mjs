@@ -2,7 +2,7 @@ import { writeFile, mkdir, readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import {
   CONDITIONS, MODELS, ENVIRONMENTS, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL,
-  OVERHEAD_CASES, PROMPTS_SHA256, loadCases, runCase, rotate
+  OVERHEAD_CASES, PROMPTS_SHA256, loadCases, runCase, rotate, readCliVersion
 } from './lib/runner.mjs'
 import { compare, formatReport } from './lib/report.mjs'
 
@@ -66,6 +66,13 @@ for (const [label, environment] of [['MAIN_ENVIRONMENT', MAIN_ENVIRONMENT], ['OV
     )
   }
 }
+
+// Warm the CLI-version cache before any money is spent. runCase awaits readCliVersion
+// AFTER its paid call returns, so a broken claude binary discovered there throws away a
+// row that was already paid for — and that row never reaches allRows, so the
+// unpersisted-row accounting below cannot even report the loss. `claude --version` is a
+// free local query, so failing here costs nothing.
+await readCliVersion()
 
 const rows = {}
 

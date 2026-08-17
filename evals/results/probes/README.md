@@ -43,9 +43,13 @@ wild.
 
 **A measurement trap recorded here so it is not rediscovered.** The result event's `modelUsage`
 holds **more than the requested model**: the `no-user-settings` and `clean` calls also billed a
-small `claude-haiku-4-5` request (529 input / 16 output), and the result event's `usage` totals
-include it. Reading `Object.keys(modelUsage)[0]` therefore reports haiku as the canonical model.
-The `modelsBilled` and `auxiliaryOutputTokens` fields in each row exist to keep that visible.
+small `claude-haiku-4-5` request (529 input / 16 output) alongside the real work. The trap is
+that reading `Object.keys(modelUsage)[0]` therefore reports haiku as the canonical model. The
+result event's `usage` totals cover **only the requested model** — measured on 2026-08-17, a
+`clean` call returned `usage.input_tokens` 2 against a `modelUsage` input sum of 531 (opus 2 +
+haiku 529) and `usage.output_tokens` 237 against a `modelUsage` output sum of 253 (opus 237 +
+haiku 16) — so the auxiliary call does not contaminate any measured figure. The `modelsBilled`
+and `auxiliaryOutputTokens` fields in each row exist to keep the auxiliary billing visible.
 
 ## `cleanroom-trial-{1,2,3}.json` — the isolation replication
 

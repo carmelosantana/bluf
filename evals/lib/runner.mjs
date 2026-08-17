@@ -164,10 +164,12 @@ export function assertNotErrored (payload, { caseId, condition } = {}) {
 
 // payload.modelUsage carries MORE THAN THE REQUESTED MODEL. Clean-environment calls have
 // been observed billing an auxiliary claude-haiku-4-5 request (about 529 input, 16 output)
-// alongside the real work, and the result event's `usage` totals include it. Reading the
-// first key therefore reports haiku as the canonical model for an opus call — a mistake
-// already made twice in this project. Read the requested model's entry; record the rest so
-// the contamination is visible rather than silently folded into the totals.
+// alongside the real work. The result event's `usage` totals cover ONLY the requested
+// model (measured: usage.input_tokens 2 against a modelUsage input sum of 531, and
+// usage.output_tokens 237 against 253), so the auxiliary call does not contaminate any
+// measured figure. The trap is reading the first key of modelUsage, which reports haiku
+// as the canonical model for an opus call — a mistake already made twice in this project.
+// Read the requested model's entry; record the rest so the auxiliary billing stays visible.
 export function parseProvenance (payload, { model }) {
   const modelUsage = payload.modelUsage
   if (!modelUsage || typeof modelUsage !== 'object') {
@@ -183,12 +185,30 @@ export function parseProvenance (payload, { model }) {
       'Either the request was substituted wholesale or the model key changed shape.'
     )
   }
+  // Same silent-zero class as parseUsage's tokenField: an absent or malformed count summed
+  // as-is becomes NaN, which JSON.stringify writes to the committed row as null — a
+  // contaminated row indistinguishable from a clean one, with no guard firing.
+  const auxiliaryField = (name, entry, field) => {
+    const value = entry[field]
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error(
+        `modelUsage['${name}'].${field} is not a finite number: ${JSON.stringify(value)}; ` +
+        'an unknown auxiliary token count cannot be recorded as zero or null'
+      )
+    }
+    return value
+  }
+  const auxiliary = Object.entries(modelUsage).filter(([name]) => name !== model)
   return {
     canonicalModel: requested.canonicalModel,
     modelsBilled: Object.keys(modelUsage).sort(),
-    auxiliaryOutputTokens: Object.entries(modelUsage)
-      .filter(([name]) => name !== model)
-      .reduce((sum, [, use]) => sum + use.outputTokens, 0)
+    auxiliaryInputTokens: auxiliary.reduce((sum, [name, use]) =>
+      sum +
+      auxiliaryField(name, use, 'inputTokens') +
+      auxiliaryField(name, use, 'cacheReadInputTokens') +
+      auxiliaryField(name, use, 'cacheCreationInputTokens'), 0),
+    auxiliaryOutputTokens: auxiliary.reduce((sum, [name, use]) =>
+      sum + auxiliaryField(name, use, 'outputTokens'), 0)
   }
 }
 
@@ -205,14 +225,16 @@ export function assertModelResolved (provenance, { model }) {
 }
 
 // Read once per process, not per call: 260 subprocess spawns to read a constant would be
-// waste, and the version cannot change mid-sweep.
-let cliVersionCache = null
-export async function readCliVersion () {
-  if (cliVersionCache === null) {
-    const { stdout } = await run('claude', ['--version'], { maxBuffer: 1024 * 1024 })
-    cliVersionCache = stdout.trim()
+// waste, and the version cannot change mid-sweep. The cache holds the in-flight PROMISE,
+// not the resolved string, so concurrent callers share one spawn instead of racing past a
+// still-null cache and each spawning their own.
+let cliVersionPromise = null
+export function readCliVersion () {
+  if (cliVersionPromise === null) {
+    cliVersionPromise = run('claude', ['--version'], { maxBuffer: 1024 * 1024 })
+      .then(({ stdout }) => stdout.trim())
   }
-  return cliVersionCache
+  return cliVersionPromise
 }
 
 export const STYLE_FILE = new URL('../../output-styles/bluf.md', import.meta.url)
@@ -291,10 +313,18 @@ export async function runCase (caseRow, condition, model, environment, trial = 1
 
 // Derived from the environment's own argv rather than hard-coded, so a change to
 // ENVIRONMENTS cannot leave the recorded provenance describing the previous behaviour.
-function settingSourcesOf (environment) {
+export function settingSourcesOf (environment) {
   const args = ENVIRONMENTS[environment]
   const index = args.indexOf('--setting-sources')
-  return index === -1 ? [] : args[index + 1].split(',')
+  if (index === -1) return []
+  const value = args[index + 1]
+  if (value === undefined) {
+    throw new Error(
+      `environment ${environment} passes --setting-sources as its final argument, with no value; ` +
+      'its settingSources provenance cannot be derived from a malformed argv'
+    )
+  }
+  return value.split(',')
 }
 
 // port-default is the amortization case because it has the widest styled/unstyled gap of
