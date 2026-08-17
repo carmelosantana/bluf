@@ -33,10 +33,42 @@ export function median (values) {
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
 }
 
-export function compare (baselineRows, candidateRows) {
-  if (baselineRows.length === 0) {
-    throw new Error('refusing to compare: baseline has no rows, so there is nothing to compare')
+// One value per side for model and environment, and the two sides must agree on both:
+// pairing a fable baseline against an opus candidate would produce a cross-model "saving"
+// that measures the models, not the style. `condition` is checked within each side only —
+// differing across the sides IS the comparison.
+function assertHomogeneous (baselineRows, candidateRows) {
+  const distinct = (rows, field) => [...new Set(rows.map(row => row[field]))].sort()
+  for (const field of ['model', 'environment', 'condition']) {
+    for (const [side, rows] of [['baseline', baselineRows], ['candidate', candidateRows]]) {
+      const values = distinct(rows, field)
+      if (values.length > 1) {
+        throw new Error(
+          `refusing to compare: ${side} rows mix ${field}s [${values.join(', ')}]. ` +
+          'Each side of a comparison must come from a single run configuration.'
+        )
+      }
+    }
   }
+  for (const field of ['model', 'environment']) {
+    if (baselineRows.length === 0 || candidateRows.length === 0) continue
+    const [base] = distinct(baselineRows, field)
+    const [cand] = distinct(candidateRows, field)
+    if (base !== cand) {
+      throw new Error(
+        `refusing to compare: baseline was measured with ${field} "${base}" but ` +
+        `candidate with ${field} "${cand}". Both sides must share one ${field}.`
+      )
+    }
+  }
+}
+
+// The coverage guards shared by compare() and perTrialMedianOutputSaved(): homogeneous
+// sides, equal (case, trial) key MULTISETS (a duplicate on either side is a count
+// mismatch, not a silent overwrite), and uniform trial coverage across cases.
+// Returns the shared trial count.
+function assertComparable (baselineRows, candidateRows) {
+  assertHomogeneous(baselineRows, candidateRows)
 
   const baseCounts = countByKey(baselineRows)
   const candCounts = countByKey(candidateRows)
@@ -80,7 +112,17 @@ export function compare (baselineRows, candidateRows) {
       )
     }
   }
-  const trials = expectedTrials.size
+  return expectedTrials.size
+}
+
+export function compare (baselineRows, candidateRows) {
+  if (baselineRows.length === 0) {
+    throw new Error('refusing to compare: baseline has no rows, so there is nothing to compare')
+  }
+
+  const trials = assertComparable(baselineRows, candidateRows)
+
+  const caseIds = [...new Set(baselineRows.map(row => row.caseId))]
 
   const perCase = caseIds.map(caseId => {
     const base = baselineRows.filter(row => row.caseId === caseId)
@@ -266,32 +308,39 @@ export function breakEven ({ outputSaved, inputAdded }) {
   return inputAdded / outputSaved
 }
 
-// Output tokens saved per turn, as a positive number. Computed as the median of the
-// per-trial means, matching the README's Variance section, which aggregates within a trial
-// and then summarises across trials. The pooled mean and pooled median disagree with this
-// and with each other by enough to flip a model's verdict, so the statistic is pinned here
-// rather than chosen at each call site.
+// Output tokens saved per turn: positive when the style removed output, negative when it
+// added output — nothing here forces a sign, and a loss must surface as one. Computed as
+// the median of the per-trial means, matching the README's Variance section, which
+// aggregates within a trial and then summarises across trials. The pooled mean and pooled
+// median disagree with this and with each other by enough to flip a model's verdict, so
+// the statistic is pinned here rather than chosen at each call site.
 export function perTrialMedianOutputSaved (baselineRows, candidateRows) {
-  const rowKey = (row) => JSON.stringify([row.caseId, row.trial])
-  const baseline = new Map(baselineRows.map(row => [rowKey(row), row]))
-  const perTrial = new Map()
-
-  for (const row of candidateRows) {
-    const pair = baseline.get(rowKey(row))
-    if (!pair) {
-      throw new Error(`no baseline row for ${row.caseId} trial ${row.trial}`)
-    }
-    const deltas = perTrial.get(row.trial) ?? []
-    deltas.push(pair.outputTokens - row.outputTokens)
-    perTrial.set(row.trial, deltas)
-  }
-
-  if (perTrial.size === 0) {
+  if (candidateRows.length === 0) {
     throw new Error('perTrialMedianOutputSaved requires at least one candidate row')
   }
 
+  assertComparable(baselineRows, candidateRows)
+
+  // The multiset guard above has established that both sides carry identical (case, trial)
+  // keys, so each trial's mean delta is the trial's summed baseline output minus its summed
+  // candidate output, over the number of case observations in that trial. Summing within
+  // the trial (rather than pairing row objects) keeps a (case, trial) key duplicated on
+  // BOTH sides — which the guard permits, as compare() does — from depending on which
+  // duplicate pairs with which.
+  const perTrial = new Map()
+  const tally = (rows, sign, countRows) => {
+    for (const row of rows) {
+      const entry = perTrial.get(row.trial) ?? { saved: 0, observations: 0 }
+      entry.saved += sign * row.outputTokens
+      if (countRows) entry.observations += 1
+      perTrial.set(row.trial, entry)
+    }
+  }
+  tally(baselineRows, 1, false)
+  tally(candidateRows, -1, true)
+
   const trialMeans = [...perTrial.values()]
-    .map(deltas => deltas.reduce((total, delta) => total + delta, 0) / deltas.length)
+    .map(({ saved, observations }) => saved / observations)
 
   return median(trialMeans)
 }

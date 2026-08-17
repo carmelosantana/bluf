@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import {
   compare, formatReport, median,
   TIER_FIELDS, requireTiers, breakEven, perTrialMedianOutputSaved
@@ -321,20 +322,27 @@ test('breakEven rejects a negative input overhead', () => {
 })
 
 test('perTrialMedianOutputSaved medians the per-trial means, not the pooled deltas', () => {
-  // Two cases, three trials. Trial 2 carries an outlier that a pooled mean would
-  // absorb into the headline and a pooled median would hide entirely.
+  // Three cases, three trials, chosen so every candidate statistic disagrees.
+  // Per-trial saved deltas (baseline - candidate):
+  //   trial 1: a 0,  b 10, c 80   -> mean 30, median 10
+  //   trial 2: a 20, b 30, c 100  -> mean 50, median 30
+  //   trial 3: a 40, b 50, c 75   -> mean 55, median 50
+  // median of trial means (the pinned statistic): median(30, 50, 55) = 50
+  // median of trial medians would return:         median(10, 30, 50) = 30
+  // pooled mean would return:                     405 / 9            = 45
+  // pooled median would return: median(0,10,20,30,40,50,75,80,100)   = 40
+  // A regression to any of the other three fails with its own distinct number.
   const baseline = [
-    row('a', 'baseline', 100, 100, 1), row('b', 'baseline', 100, 100, 1),
-    row('a', 'baseline', 100, 100, 2), row('b', 'baseline', 900, 100, 2),
-    row('a', 'baseline', 100, 100, 3), row('b', 'baseline', 100, 100, 3)
+    row('a', 'baseline', 100, 100, 1), row('b', 'baseline', 200, 100, 1), row('c', 'baseline', 300, 100, 1),
+    row('a', 'baseline', 100, 100, 2), row('b', 'baseline', 200, 100, 2), row('c', 'baseline', 300, 100, 2),
+    row('a', 'baseline', 100, 100, 3), row('b', 'baseline', 200, 100, 3), row('c', 'baseline', 300, 100, 3)
   ]
   const candidate = [
-    row('a', 'bluf', 50, 100, 1), row('b', 'bluf', 50, 100, 1),
-    row('a', 'bluf', 50, 100, 2), row('b', 'bluf', 50, 100, 2),
-    row('a', 'bluf', 60, 100, 3), row('b', 'bluf', 60, 100, 3)
+    row('a', 'bluf', 100, 100, 1), row('b', 'bluf', 190, 100, 1), row('c', 'bluf', 220, 100, 1),
+    row('a', 'bluf', 80, 100, 2), row('b', 'bluf', 170, 100, 2), row('c', 'bluf', 200, 100, 2),
+    row('a', 'bluf', 60, 100, 3), row('b', 'bluf', 150, 100, 3), row('c', 'bluf', 225, 100, 3)
   ]
 
-  // trial means: (50+50)/2 = 50, (50+850)/2 = 450, (40+40)/2 = 40 -> median 50
   assert.equal(perTrialMedianOutputSaved(baseline, candidate), 50)
 })
 
@@ -342,9 +350,124 @@ test('perTrialMedianOutputSaved throws when a candidate row has no baseline pair
   const baseline = [row('a', 'baseline', 100, 100, 1)]
   const candidate = [row('a', 'bluf', 50, 100, 1), row('b', 'bluf', 50, 100, 1)]
 
-  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /no baseline row for b/)
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /"b",1/)
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /0x in baseline/)
 })
 
 test('perTrialMedianOutputSaved throws on empty candidate rows', () => {
   assert.throws(() => perTrialMedianOutputSaved([], []), /requires at least one candidate row/)
+})
+
+test('perTrialMedianOutputSaved refuses candidate rows that are a subset of the baseline', () => {
+  const baseline = [row('a', 'baseline', 100, 100, 1), row('b', 'baseline', 200, 100, 1)]
+  const candidate = [row('a', 'bluf', 50, 100, 1)]
+
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /"b",1/)
+})
+
+test('perTrialMedianOutputSaved refuses ragged trial coverage', () => {
+  // Trial 2 covers only case b. Averaging it as if it were a full sweep would let
+  // one case's delta stand in for the whole trial.
+  const baseline = [
+    row('a', 'baseline', 100, 100, 1), row('b', 'baseline', 200, 100, 1),
+    row('b', 'baseline', 200, 100, 2)
+  ]
+  const candidate = [
+    row('a', 'bluf', 50, 100, 1), row('b', 'bluf', 100, 100, 1),
+    row('b', 'bluf', 100, 100, 2)
+  ]
+
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /trial coverage is not uniform/)
+})
+
+test('perTrialMedianOutputSaved refuses a duplicated candidate (caseId, trial) row', () => {
+  const baseline = [row('a', 'baseline', 100, 100, 1)]
+  const candidate = [row('a', 'bluf', 50, 100, 1), row('a', 'bluf', 40, 100, 1)]
+
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /"a",1/)
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /1x in baseline but 2x in candidate/)
+})
+
+test('perTrialMedianOutputSaved refuses a duplicated baseline (caseId, trial) row', () => {
+  const baseline = [row('a', 'baseline', 900, 100, 1), row('a', 'baseline', 100, 100, 1)]
+  const candidate = [row('a', 'bluf', 50, 100, 1)]
+
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /2x in baseline but 1x in candidate/)
+})
+
+test('perTrialMedianOutputSaved refuses rows that mix models within one condition', () => {
+  const baseline = [
+    row('a', 'baseline', 100, 100, 1),
+    { ...row('b', 'baseline', 200, 100, 1), model: 'claude-opus-5' }
+  ]
+  const candidate = [
+    row('a', 'bluf', 50, 100, 1),
+    { ...row('b', 'bluf', 100, 100, 1), model: 'claude-opus-5' }
+  ]
+
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /claude-fable-5/)
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /claude-opus-5/)
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /model/)
+})
+
+test('perTrialMedianOutputSaved refuses baseline and candidate measured on different models', () => {
+  const baseline = [row('a', 'baseline', 100, 100, 1)]
+  const candidate = [{ ...row('a', 'bluf', 50, 100, 1), model: 'claude-opus-5' }]
+
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /model/)
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /claude-opus-5/)
+})
+
+test('perTrialMedianOutputSaved refuses baseline and candidate measured in different environments', () => {
+  const baseline = [row('a', 'baseline', 100, 100, 1)]
+  const candidate = [{ ...row('a', 'bluf', 50, 100, 1), environment: 'full' }]
+
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /environment/)
+})
+
+test('perTrialMedianOutputSaved refuses rows that mix conditions within one side', () => {
+  const baseline = [row('a', 'baseline', 100, 100, 1), row('b', 'baseline', 200, 100, 1)]
+  const candidate = [row('a', 'bluf', 50, 100, 1), row('b', 'bluf-terse', 100, 100, 1)]
+
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /condition/)
+})
+
+test('compare refuses rows that mix models within one condition', () => {
+  const base = [
+    row('a', 'baseline', 200),
+    { ...row('b', 'baseline', 200), model: 'claude-opus-5' }
+  ]
+  const cand = [
+    row('a', 'bluf', 100),
+    { ...row('b', 'bluf', 100), model: 'claude-opus-5' }
+  ]
+  assert.throws(() => compare(base, cand), /model/)
+})
+
+test('breakEven rejects non-finite inputs', () => {
+  assert.throws(() => breakEven({ outputSaved: NaN, inputAdded: 2030 }), /finite/)
+  assert.throws(() => breakEven({ outputSaved: 500, inputAdded: Infinity }), /finite/)
+  assert.throws(() => breakEven({ outputSaved: undefined, inputAdded: 2030 }), /finite/)
+  assert.throws(() => breakEven({}), /finite/)
+})
+
+test('the published input-overhead constants trace to the committed lean measurements', async () => {
+  // 2030 (bluf) and 2320 (bluf-terse) are quoted in every published break-even ratio.
+  // They are the median inputTokens overhead on the single-turn port-default case in
+  // the lean environment, relative to the lean baseline. This test recomputes both
+  // from the committed result files so the constants cannot silently drift from the
+  // evidence. Read-only: it must never write under evals/results/.
+  const read = async file => (await readFile(new URL(`../results/${file}`, import.meta.url), 'utf8'))
+    .trim().split('\n').map(line => JSON.parse(line))
+  const medianInput = rows => median(
+    rows.filter(r => r.caseId === 'port-default').map(r => r.inputTokens)
+  )
+
+  const baseline = medianInput(await read('lean-claude-opus-5-baseline.jsonl'))
+  const bluf = medianInput(await read('lean-claude-opus-5-bluf.jsonl'))
+  const terse = medianInput(await read('lean-claude-opus-5-bluf-terse.jsonl'))
+
+  assert.equal(baseline, 4837)
+  assert.equal(bluf - baseline, 2030)
+  assert.equal(terse - baseline, 2320)
 })
