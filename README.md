@@ -88,7 +88,7 @@ It adds grammar compression on top of the base style:
 
 **It cuts more on aggregate, but not uniformly, and it is not strictly better.** It costs more input than the base style (+2,320 per turn vs +2,030), and it loses on individual cases: on opus, `actions-workflow` measured 715 output tokens under terse against 499 under BLUF, and `docker-cache-miss` measured 3,840 against 3,525. Compressed grammar is also harder to skim for some readers, which no token count captures.
 
-**Every terse figure in this README was measured before a later edit to `bluf-terse.md`, and has not been re-measured.** The shipped file is 207 bytes larger than the one measured: its Compression block previously said only that its rules "apply on top of everything above", which contradicted the shared body's instruction to keep articles explicit, so the override is now stated outright. That makes the terse input overhead marginally higher than the published +2,320, and its break-even ratios correspondingly marginally worse. The base BLUF figures are unaffected — `bluf.md` has not changed since it was measured.
+**The terse figures were measured before a 207-byte edit to `bluf-terse.md` and have not been re-measured**, so its real overhead is slightly above the published +2,320. The edit fixed a rule contradiction about articles. `bluf.md` is unchanged, so the base figures are unaffected.
 
 ## Measured results
 
