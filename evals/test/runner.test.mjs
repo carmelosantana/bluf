@@ -251,3 +251,54 @@ test('rotate returns an empty list rather than dividing by zero', () => {
 test('rotate refuses a non-integer offset', () => {
   assert.throws(() => rotate(['a', 'b'], 1.5), /integer/)
 })
+
+test('parseUsage returns the three input tiers separately', () => {
+  const usage = parseUsage({
+    usage: {
+      input_tokens: 12,
+      cache_read_input_tokens: 117119,
+      cache_creation_input_tokens: 6500,
+      output_tokens: 5
+    },
+    result: 'hello'
+  })
+
+  assert.equal(usage.inputUncached, 12)
+  assert.equal(usage.inputCacheRead, 117119)
+  assert.equal(usage.inputCacheWrite, 6500)
+})
+
+test('parseUsage tiers sum to the legacy inputTokens field', () => {
+  const usage = parseUsage({
+    usage: {
+      input_tokens: 12,
+      cache_read_input_tokens: 117119,
+      cache_creation_input_tokens: 6500,
+      output_tokens: 5
+    },
+    result: 'hello'
+  })
+
+  assert.equal(
+    usage.inputUncached + usage.inputCacheRead + usage.inputCacheWrite,
+    usage.inputTokens,
+    'the tier split must reconcile with the summed figure every stored row already uses'
+  )
+  assert.equal(usage.inputTokens, 123631)
+  assert.equal(usage.totalTokens, 123636)
+})
+
+test('parseUsage rejects a non-numeric tier rather than coercing it', () => {
+  assert.throws(
+    () => parseUsage({
+      usage: {
+        input_tokens: 12,
+        cache_read_input_tokens: 'lots',
+        cache_creation_input_tokens: 0,
+        output_tokens: 5
+      },
+      result: 'hello'
+    }),
+    /cache_read_input_tokens is not a finite number/
+  )
+})

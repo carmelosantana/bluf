@@ -75,10 +75,14 @@ export function parseUsage (payload) {
     return value
   }
 
-  const inputTokens =
-    tokenField('input_tokens') +
-    tokenField('cache_read_input_tokens') +
-    tokenField('cache_creation_input_tokens')
+  // These three bill at different rates — roughly 1x for uncached input, 0.1x for a cache
+  // read, and 1.25x-2x for a cache write. Summing them into one number, as this function
+  // used to, makes a row impossible to price and is what produced the retracted cost claim
+  // in the README. inputTokens keeps the summed meaning so stored rows stay comparable.
+  const inputUncached = tokenField('input_tokens')
+  const inputCacheRead = tokenField('cache_read_input_tokens')
+  const inputCacheWrite = tokenField('cache_creation_input_tokens')
+  const inputTokens = inputUncached + inputCacheRead + inputCacheWrite
   const outputTokens = tokenField('output_tokens')
 
   const result = payload.result ?? ''
@@ -88,6 +92,9 @@ export function parseUsage (payload) {
 
   return {
     inputTokens,
+    inputUncached,
+    inputCacheRead,
+    inputCacheWrite,
     outputTokens,
     totalTokens: inputTokens + outputTokens,
     chars: result.length
