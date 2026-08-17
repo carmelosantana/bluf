@@ -6,10 +6,14 @@ import { join } from 'node:path'
 
 const run = promisify(execFile)
 
+// The VALUES must equal the `name:` frontmatter in output-styles/ byte for byte.
+// A mismatch does not throw: claude falls back to the default style, so the sweep
+// measures Default against Default and reports it as a result. The style.test.mjs
+// assertions that pin these two strings are the only thing that catches it.
 export const CONDITIONS = {
   baseline: 'Default',
-  'less-chatty': 'Less Chatty',
-  'less-chatty-terse': 'Less Chatty (terse)'
+  bluf: 'BLUF',
+  'bluf-terse': 'BLUF (terse)'
 }
 
 export const MODELS = ['claude-fable-5', 'claude-opus-5']
@@ -21,6 +25,12 @@ export const ENVIRONMENTS = {
 
 export const OVERHEAD_CASES = ['port-default', 'docker-cache-miss']
 
+// Every published number rests on these twelve prompts, and an edit to them silently
+// invalidates the committed results without changing a line of code. The pin makes that
+// edit fail a test, so changing the case set has to be a deliberate, reviewed act that
+// updates this constant and re-runs the sweep. Update it ONLY alongside a fresh sweep.
+export const PROMPTS_SHA256 = '84cb69746c89478090ff7923388c7eadbd66997f4193f9370cbd490640785364'
+
 export const MAIN_ENVIRONMENT = 'full'
 export const OVERHEAD_ENVIRONMENT = 'lean'
 // Pinned because the lean flags (--strict-mcp-config with an empty --mcp-config)
@@ -28,6 +38,16 @@ export const OVERHEAD_ENVIRONMENT = 'lean'
 // the same model here is what holds the model constant and keeps the overhead
 // comparison valid — do not "fix" this to a different model.
 export const OVERHEAD_MODEL = 'claude-opus-5'
+
+// Rotates a condition list so a different condition leads on each case. Without
+// this, whichever condition sorts first would always run against a cold cache and
+// always absorb the cache-creation cost, biasing the total-token column.
+export function rotate (items, by) {
+  if (items.length === 0) return []
+  if (!Number.isInteger(by)) throw new Error(`rotate requires an integer offset, got: ${JSON.stringify(by)}`)
+  const offset = ((by % items.length) + items.length) % items.length
+  return [...items.slice(offset), ...items.slice(0, offset)]
+}
 
 export function buildArgs (prompt, styleName, model, environment) {
   if (!model) throw new Error('buildArgs requires an explicit model; an unpinned run is not reproducible')
@@ -90,7 +110,7 @@ export async function runCase (caseRow, condition, model, environment, trial = 1
   if (!(condition in CONDITIONS)) {
     throw new Error(`unknown condition: ${condition}; valid conditions are: ${Object.keys(CONDITIONS).join(', ')}`)
   }
-  const cwd = await mkdtemp(join(tmpdir(), 'less-chatty-eval-'))
+  const cwd = await mkdtemp(join(tmpdir(), 'bluf-eval-'))
   const args = buildArgs(caseRow.prompt, CONDITIONS[condition], model, environment)
   const { stdout } = await run('claude', args, { cwd, maxBuffer: 32 * 1024 * 1024 })
   const payload = JSON.parse(stdout)

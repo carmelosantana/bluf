@@ -1,5 +1,5 @@
-export const START = '<!-- LESS-CHATTY:SHARED-BODY:START -->'
-export const END = '<!-- LESS-CHATTY:SHARED-BODY:END -->'
+export const START = '<!-- BLUF:SHARED-BODY:START -->'
+export const END = '<!-- BLUF:SHARED-BODY:END -->'
 
 export function extractSharedBody (text) {
   const start = text.indexOf(START)
@@ -24,8 +24,8 @@ export function checkDrift (mainText, terseText) {
       ok: false,
       message: [
         `shared bodies diverge at line ${i + 1}`,
-        `  less-chatty.md:       ${JSON.stringify(mainLines[i] ?? null)}`,
-        `  less-chatty-terse.md: ${JSON.stringify(terseLines[i] ?? null)}`
+        `  bluf.md:       ${JSON.stringify(mainLines[i] ?? null)}`,
+        `  bluf-terse.md: ${JSON.stringify(terseLines[i] ?? null)}`
       ].join('\n')
     }
   }

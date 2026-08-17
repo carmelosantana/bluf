@@ -1,2 +1,0 @@
-{"caseId":"port-default","category":"short-lookup","trial":1,"condition":"baseline","model":"claude-opus-5","environment":"lean","inputTokens":4848,"outputTokens":5,"totalTokens":4853,"chars":5}
-{"caseId":"docker-cache-miss","category":"long-list","trial":1,"condition":"baseline","model":"claude-opus-5","environment":"lean","inputTokens":4850,"outputTokens":4273,"totalTokens":9123,"chars":4587}

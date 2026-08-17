@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { START, END, extractSharedBody, checkDrift } from '../lib/drift.mjs'
 
-const MAIN = new URL('../../output-styles/less-chatty.md', import.meta.url)
-const TERSE = new URL('../../output-styles/less-chatty-terse.md', import.meta.url)
+const MAIN = new URL('../../output-styles/bluf.md', import.meta.url)
+const TERSE = new URL('../../output-styles/bluf-terse.md', import.meta.url)
 
 test('extractSharedBody returns only the fenced body', () => {
   const text = `---\nname: X\n---\n${START}\nBODY\n${END}\ntail`

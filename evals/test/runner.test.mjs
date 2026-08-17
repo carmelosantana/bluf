@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
-import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase } from '../lib/runner.mjs'
+import { CONDITIONS, MODELS, ENVIRONMENTS, OVERHEAD_CASES, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL, buildArgs, parseUsage, loadCases, runCase, rotate, PROMPTS_SHA256 } from '../lib/runner.mjs'
 
 test('baseline pins Default explicitly and never omits the setting', () => {
   assert.equal(CONDITIONS.baseline, 'Default')
@@ -13,21 +13,21 @@ test('baseline pins Default explicitly and never omits the setting', () => {
 })
 
 test('the lean environment isolates MCP without touching global config', () => {
-  const args = buildArgs('hi', 'Less Chatty', 'claude-fable-5', 'lean')
+  const args = buildArgs('hi', 'BLUF', 'claude-fable-5', 'lean')
   assert.ok(args.includes('--strict-mcp-config'))
   assert.deepEqual(args.slice(args.indexOf('--mcp-config'), args.indexOf('--mcp-config') + 2),
     ['--mcp-config', '{"mcpServers":{}}'])
 })
 
 test('the full environment adds no isolation flags', () => {
-  const args = buildArgs('hi', 'Less Chatty', 'claude-fable-5', 'full')
+  const args = buildArgs('hi', 'BLUF', 'claude-fable-5', 'full')
   assert.equal(args.includes('--strict-mcp-config'), false)
   assert.equal(args.includes('--mcp-config'), false)
 })
 
 test('buildArgs rejects an unknown environment', () => {
-  assert.throws(() => buildArgs('hi', 'Less Chatty', 'claude-fable-5', 'nope'), /environment/)
-  assert.throws(() => buildArgs('hi', 'Less Chatty', 'claude-fable-5'), /environment/)
+  assert.throws(() => buildArgs('hi', 'BLUF', 'claude-fable-5', 'nope'), /environment/)
+  assert.throws(() => buildArgs('hi', 'BLUF', 'claude-fable-5'), /environment/)
 })
 
 test('OVERHEAD_CASES names two real case ids', async () => {
@@ -61,18 +61,18 @@ test('MODELS lists both models under test in order', () => {
 })
 
 test('buildArgs pins the model explicitly', () => {
-  const args = buildArgs('hi', 'Less Chatty', 'claude-opus-5', 'lean')
+  const args = buildArgs('hi', 'BLUF', 'claude-opus-5', 'lean')
   assert.deepEqual(args.slice(args.indexOf('--model'), args.indexOf('--model') + 2),
     ['--model', 'claude-opus-5'])
 })
 
 test('buildArgs refuses to build without a model', () => {
-  assert.throws(() => buildArgs('hi', 'Less Chatty', undefined, 'lean'), /model/)
-  assert.throws(() => buildArgs('hi', 'Less Chatty', '', 'lean'), /model/)
+  assert.throws(() => buildArgs('hi', 'BLUF', undefined, 'lean'), /model/)
+  assert.throws(() => buildArgs('hi', 'BLUF', '', 'lean'), /model/)
 })
 
 test('buildArgs requests print mode and JSON output', () => {
-  const args = buildArgs('what is 2 + 2', 'Less Chatty', 'claude-fable-5', 'lean')
+  const args = buildArgs('what is 2 + 2', 'BLUF', 'claude-fable-5', 'lean')
   assert.ok(args.includes('-p'))
   assert.deepEqual(args.slice(args.indexOf('--output-format'), args.indexOf('--output-format') + 2),
     ['--output-format', 'json'])
@@ -117,7 +117,7 @@ test('loadCases reads the shipped case file', async () => {
 })
 
 test('runCase throws on an errored response even when the CLI exits 0', async () => {
-  const binDir = await mkdtemp(join(tmpdir(), 'less-chatty-fake-claude-'))
+  const binDir = await mkdtemp(join(tmpdir(), 'bluf-fake-claude-'))
   const payload = {
     is_error: true,
     subtype: 'error_during_execution',
@@ -156,8 +156,8 @@ test('runCase rejects an unknown condition before invoking anything', async () =
     (err) => {
       assert.match(err.message, /baselien/)
       assert.match(err.message, /baseline/)
-      assert.match(err.message, /less-chatty/)
-      assert.match(err.message, /less-chatty-terse/)
+      assert.match(err.message, /bluf/)
+      assert.match(err.message, /bluf-terse/)
       return true
     }
   )
@@ -206,4 +206,48 @@ test('parseUsage treats a missing result as zero chars and rejects a non-string 
     () => parseUsage({ result: 42, usage: { input_tokens: 1, output_tokens: 2 } }),
     /result/
   )
+})
+
+test('rotate returns the list unchanged at offset zero', () => {
+  assert.deepEqual(rotate(['baseline', 'bluf', 'bluf-terse'], 0), ['baseline', 'bluf', 'bluf-terse'])
+})
+
+test('rotate advances the leading element by the offset', () => {
+  assert.deepEqual(rotate(['baseline', 'bluf', 'bluf-terse'], 1), ['bluf', 'bluf-terse', 'baseline'])
+  assert.deepEqual(rotate(['baseline', 'bluf', 'bluf-terse'], 2), ['bluf-terse', 'baseline', 'bluf'])
+})
+
+test('rotate wraps rather than running off the end', () => {
+  assert.deepEqual(rotate(['baseline', 'bluf', 'bluf-terse'], 3), ['baseline', 'bluf', 'bluf-terse'])
+  assert.deepEqual(rotate(['baseline', 'bluf', 'bluf-terse'], 13), ['bluf', 'bluf-terse', 'baseline'])
+})
+
+test('rotate handles a negative offset without producing holes', () => {
+  assert.deepEqual(rotate(['a', 'b', 'c'], -1), ['c', 'a', 'b'])
+})
+
+test('rotate gives every condition the leading slot across a full cycle', () => {
+  // This is the property the sweep depends on: over consecutive cases, no single
+  // condition permanently occupies the first slot and absorbs the cache-creation cost.
+  const conditions = Object.keys(CONDITIONS)
+  const leaders = new Set()
+  for (let index = 0; index < conditions.length; index += 1) {
+    leaders.add(rotate(conditions, index)[0])
+  }
+  assert.equal(leaders.size, conditions.length)
+})
+
+test('rotate preserves every element, never dropping or duplicating one', () => {
+  const conditions = Object.keys(CONDITIONS)
+  for (let index = 0; index < 7; index += 1) {
+    assert.deepEqual([...rotate(conditions, index)].sort(), [...conditions].sort())
+  }
+})
+
+test('rotate returns an empty list rather than dividing by zero', () => {
+  assert.deepEqual(rotate([], 3), [])
+})
+
+test('rotate refuses a non-integer offset', () => {
+  assert.throws(() => rotate(['a', 'b'], 1.5), /integer/)
 })

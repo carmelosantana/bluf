@@ -15,6 +15,24 @@ function sum (rows, field) {
   return rows.reduce((total, row) => total + row[field], 0)
 }
 
+// Sums within a trial before collapsing, so a duplicated (case, trial) row — which
+// the multiset guard permits as long as both conditions carry it — cannot be
+// mistaken for two independent observations.
+function byTrial (rows, field) {
+  const totals = new Map()
+  for (const row of rows) {
+    totals.set(row.trial, (totals.get(row.trial) ?? 0) + row[field])
+  }
+  return [...totals.entries()].sort((a, b) => a[0] - b[0])
+}
+
+export function median (values) {
+  if (values.length === 0) throw new Error('median of an empty set is undefined')
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
 export function compare (baselineRows, candidateRows) {
   if (baselineRows.length === 0) {
     throw new Error('refusing to compare: baseline has no rows, so there is nothing to compare')
@@ -73,12 +91,28 @@ export function compare (baselineRows, candidateRows) {
     const candidateTotal = sum(cand, 'totalTokens')
     const deltaTotal = candidateTotal - baselineTotal
 
+    // Paired per trial: trial 1 of the candidate is compared against trial 1 of the
+    // baseline, so the spread reported is the spread of the EFFECT, not the spread of
+    // the two conditions measured independently. The multiset guard above has already
+    // established that both conditions cover the same trial numbers.
+    const baseByTrial = byTrial(base, 'outputTokens')
+    const candByTrial = byTrial(cand, 'outputTokens')
+    const trialDeltas = baseByTrial.map(([trial, baseValue]) => {
+      const candEntry = candByTrial.find(([candTrial]) => candTrial === trial)
+      return candEntry[1] - baseValue
+    })
+
     return {
       caseId,
       category: base[0].category,
       baselineOutput,
       candidateOutput,
       deltaOutput: candidateOutput - baselineOutput,
+      baselineOutputMedian: median(baseByTrial.map(([, value]) => value)),
+      candidateOutputMedian: median(candByTrial.map(([, value]) => value)),
+      deltaOutputMedian: median(trialDeltas),
+      deltaOutputMin: Math.min(...trialDeltas),
+      deltaOutputMax: Math.max(...trialDeltas),
       baselineTotal,
       candidateTotal,
       deltaTotal,
@@ -115,20 +149,55 @@ export function formatReport (comparison, { condition, model, environment }) {
   lines.push('')
   lines.push('## Per case')
   lines.push('')
-  lines.push('| Case | Category | Output (base) | Output (cand) | Δ output | Total (base) | Total (cand) | Δ total |')
-  lines.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |')
-  for (const row of perCase) {
-    lines.push(
-      `| ${row.caseId} | ${row.category} | ${row.baselineOutput} | ${row.candidateOutput} | ` +
-      `${signed(row.deltaOutput)} | ${row.baselineTotal} | ${row.candidateTotal} | ${signed(row.deltaTotal)} |`
-    )
+
+  if (trials === 1) {
+    // Single trial: median, min and max all collapse to the one observation, so a
+    // range column would imply a spread that was never measured.
+    lines.push('| Case | Category | Output (base) | Output (cand) | Δ output | Total (base) | Total (cand) | Δ total |')
+    lines.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |')
+    for (const row of perCase) {
+      lines.push(
+        `| ${row.caseId} | ${row.category} | ${row.baselineOutput} | ${row.candidateOutput} | ` +
+        `${signed(row.deltaOutput)} | ${row.baselineTotal} | ${row.candidateTotal} | ${signed(row.deltaTotal)} |`
+      )
+    }
+  } else {
+    // Output columns are medians across trials and the delta range is paired per
+    // trial. Total columns stay summed, because the aggregate percentage below is
+    // token-weighted and has to divide summed totals.
+    lines.push('| Case | Category | Output (base, med) | Output (cand, med) | Δ output (med) | Δ output range | Total (base) | Total (cand) | Δ total |')
+    lines.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |')
+    for (const row of perCase) {
+      lines.push(
+        `| ${row.caseId} | ${row.category} | ${row.baselineOutputMedian} | ${row.candidateOutputMedian} | ` +
+        `${signed(row.deltaOutputMedian)} | ${signed(row.deltaOutputMin)} to ${signed(row.deltaOutputMax)} | ` +
+        `${row.baselineTotal} | ${row.candidateTotal} | ${signed(row.deltaTotal)} |`
+      )
+    }
   }
 
   lines.push('')
   lines.push('## Aggregate')
   lines.push('')
-  lines.push(`- Output tokens: ${totals.baselineOutput} to ${totals.candidateOutput} (${signed(totals.deltaOutput)})`)
-  lines.push(`- Total tokens: ${totals.baselineTotal} to ${totals.candidateTotal} (${signed(totals.deltaTotal)})`)
+
+  // Divided by trials so the figures read as one sweep over the case set rather than
+  // as n sweeps stacked. The percentage is unaffected — it divides two sums that were
+  // both scaled by the same n — but the absolute numbers would otherwise be n times
+  // larger than any single run and could not be quoted directly.
+  const perTrial = value => Math.round(value / trials)
+  const pct = (delta, base) => base === 0 ? 'n/a' : `${(delta / base * 100).toFixed(1)}%`
+
+  lines.push(
+    `- Output tokens per sweep: ${perTrial(totals.baselineOutput)} to ${perTrial(totals.candidateOutput)} ` +
+    `(${signed(perTrial(totals.deltaOutput))}, ${pct(totals.deltaOutput, totals.baselineOutput)})`
+  )
+  lines.push(
+    `- Total tokens per sweep: ${perTrial(totals.baselineTotal)} to ${perTrial(totals.candidateTotal)} ` +
+    `(${signed(perTrial(totals.deltaTotal))})`
+  )
+  if (trials > 1) {
+    lines.push(`- Summed across all ${trials} trials: output ${totals.baselineOutput} to ${totals.candidateOutput}`)
+  }
   lines.push('')
 
   if (totals.netNegativeCases.length > 0) {

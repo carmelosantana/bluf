@@ -1,7 +1,7 @@
 {
-  "name": "less-chatty",
-  "version": "0.1.0",
-  "description": "A Claude Code output style that leads with conclusions and puts depth below.",
+  "name": "bluf",
+  "version": "0.2.0",
+  "description": "Bottom Line Up Front — a Claude Code output style that leads with the conclusion and cuts filler.",
   "type": "module",
   "private": true,
   "license": "MIT",

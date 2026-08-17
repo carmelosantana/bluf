@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { PROMPTS_SHA256 } from '../lib/runner.mjs'
 
 const FILE = new URL('../prompts.jsonl', import.meta.url)
 
@@ -46,4 +48,16 @@ test('categories match the planned distribution', async () => {
 
 test('there are 12 cases', async () => {
   assert.equal((await load()).length, 12)
+})
+
+test('prompts.jsonl matches the committed hash pin', async () => {
+  // Every published figure rests on this exact case set. An edit that slips through
+  // silently invalidates the committed results while leaving them looking comparable,
+  // so changing the prompts has to be a deliberate act that updates PROMPTS_SHA256
+  // and re-runs the sweep. If this fails, that is the decision to make — not a
+  // constant to quietly refresh.
+  const digest = createHash('sha256')
+    .update(await readFile(new URL('../prompts.jsonl', import.meta.url)))
+    .digest('hex')
+  assert.equal(digest, PROMPTS_SHA256)
 })

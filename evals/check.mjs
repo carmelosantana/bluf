@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { checkDrift } from './lib/drift.mjs'
 
-const main = await readFile(new URL('../output-styles/less-chatty.md', import.meta.url), 'utf8')
-const terse = await readFile(new URL('../output-styles/less-chatty-terse.md', import.meta.url), 'utf8')
+const main = await readFile(new URL('../output-styles/bluf.md', import.meta.url), 'utf8')
+const terse = await readFile(new URL('../output-styles/bluf-terse.md', import.meta.url), 'utf8')
 
 let result
 try {
