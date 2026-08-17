@@ -88,6 +88,8 @@ It adds grammar compression on top of the base style:
 
 **It cuts more on aggregate, but not uniformly, and it is not strictly better.** It costs more input than the base style (+2,320 per turn vs +2,030), and it loses on individual cases: on opus, `actions-workflow` measured 715 output tokens under terse against 499 under BLUF, and `docker-cache-miss` measured 3,840 against 3,525. Compressed grammar is also harder to skim for some readers, which no token count captures.
 
+**Every terse figure in this README was measured before a later edit to `bluf-terse.md`, and has not been re-measured.** The shipped file is 207 bytes larger than the one measured: its Compression block previously said only that its rules "apply on top of everything above", which contradicted the shared body's instruction to keep articles explicit, so the override is now stated outright. That makes the terse input overhead marginally higher than the published +2,320, and its break-even ratios correspondingly marginally worse. The base BLUF figures are unaffected — `bluf.md` has not changed since it was measured.
+
 ## Measured results
 
 Median output tokens per case across 3 trials, full environment. Source: [`evals/results/report.md`](evals/results/report.md), which also carries the per-case delta ranges. That file's own aggregate lines quote −37.1%, −42.0%, −30.9%, and −41.1% — a different statistic again, the pooled token-weighted percentage (all trials' styled output summed over all trials' baseline output), which weights the longest cases most heavily. The headline figures are per-trial medians instead; the two statistics are computed from the same rows and agree in direction on every condition.
