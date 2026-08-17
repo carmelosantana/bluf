@@ -92,3 +92,42 @@ trials. The output-reduction claim comes from the 12-case sweep in `report.md`, 
 An earlier version of this slice aborted a valid run on a turn-2 output ceiling for exactly this
 reason, and the unstyled arm has separately measured 5 output tokens on turn 1, identical to a
 styled answer.
+
+## Environments, and what the committed rows carry
+
+Rows record the environment they were measured in. The three differ in what they exclude,
+and the distinction matters for reading any absolute figure.
+
+- **`full`** — no isolation flags. Inherits the operator's MCP servers and user settings.
+- **`lean`** — `--strict-mcp-config` with an empty MCP config. Excludes MCP servers, still
+  inherits user settings.
+- **`clean`** — also passes `--setting-sources project`, excluding the operator's user
+  settings entirely, and installs the style at project level inside the run's temp
+  directory so it remains loadable.
+
+One provenance note before the numbers. Except for the preflight figure marked below, the
+figures in this section are design-time exploratory measurements taken on the author's
+machine, and their raw rows are **not committed to this repository** — unlike every figure
+in `report.md`, they cannot be reproduced from the files here. They are kept as
+orientation, not as evidence at this directory's usual bar.
+
+**Every row committed before the `clean` environment existed carries the operator's user
+settings**, measured at 1,248 input tokens on the author's machine — plugin and MCP
+configuration present in every arm. Because it is present in both arms, paired deltas cancel
+it and the published output-reduction figures are unaffected; a clean-room replication during
+design produced a median of −36.5% on claude-opus-5, with the published −30.9% inside its
+range, and reproduced the input overhead at a median of 2,033 tokens across 29 observations.
+
+What those rows cannot support is an **absolute** figure that transfers to another machine.
+Read `full` and `lean` input totals as specific to the machine that produced them.
+
+One clean-environment figure **is** reproducible from this repository: the paid preflight
+(`npm run preflight`) was run against the commit that added it and measured a +2,034-token
+input overhead in the clean environment, with output collapsing from 349 to 5 tokens on the
+`port-default` case with `claude-opus-5`. Anyone can re-run `npm run preflight` and
+reproduce it for the cost of two calls.
+
+One further caveat for anyone re-running: the clean environment is **noisier**. Across three
+clean-room trials the baseline output sums were 21,298 / 24,673 / 27,332 — a 28% spread,
+against 3.2% for the same model in `full`. The tooling-heavy context appears to stabilise the
+baseline. Budget more trials, not fewer.
