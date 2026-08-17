@@ -4,8 +4,8 @@
 
 - Cuts assistant output tokens by a median of **35.0%** on claude-fable-5 and **30.9%** on claude-opus-5. The terse variant cuts **39.2%** and **38.5%**. Measured on 12 Claude Code-shaped prompts, 3 trials per case, in a full ~124k-token environment.
 - **Every one of the 12 trial-level measurements came out negative.** The direction is not in question; the size is. Per-trial ranges are −44.0% to −30.7% (fable) and −32.7% to −29.0% (opus). See [Variance](#variance).
-- Costs input tokens on every turn: **+2,030** (BLUF) or **+2,320** (terse), measured to within 3 tokens across trials. Prompt caching reduces that cost per session. It does not remove it.
-- Net cost is real: a median of **+1,580 to +1,890 total tokens per turn** depending on model and variant. This style buys shorter, denser answers. It does not buy a smaller bill.
+- Costs input tokens: **+2,031** (BLUF) or **+2,321** (terse) per turn, measured to within 7 tokens across trials. On the first turn of a session that is a cache **write**; from the second turn on it is a cache **read** of the same size.
+- **Costs money on turn 1, saves money on every turn after.** Break-even is 6.6×–10.6× output:input for a one-turn session and 0.33×–0.53× in steady state. No prices are quoted here — multiply by your own and see [What it costs](#what-it-costs).
 - 6 of the 48 per-case measurements have trial ranges that straddle zero, meaning the style's effect on those cases is not distinguishable from run-to-run noise even at 3 trials.
 - Version **0.1.0** of these rules made Opus **32.2% more verbose**. Measuring across models caught it. See [The 0.1.0 regression](#the-010-regression-on-opus).
 
@@ -129,11 +129,89 @@ The pattern is that the largest, most open-ended cases are the least predictable
 
 ### What it costs
 
-**Input overhead, per turn: +2,030 (BLUF), +2,320 (terse).** Measured by comparing input tokens on the `port-default` case in a lean environment. This is the tightest number in the project — across three trials it varied by 3 tokens.
+**Output saved per turn.** Per-trial medians, from the 12-case sweep:
 
-**Median total-token change, per turn: +1,673 (fable BLUF), +1,886 (fable terse), +1,583 (opus BLUF), +1,674 (opus terse).** Less than the input overhead, because output savings offset part of it. Whether the trade is worth it depends on your input-to-output price ratio, your cache hit rate, and how much you value reading less.
+| Model | Variant | Output tokens saved |
+| --- | --- | ---: |
+| claude-fable-5 | BLUF | 384 |
+| claude-fable-5 | terse | 445 |
+| claude-opus-5 | BLUF | 565 |
+| claude-opus-5 | terse | 707 |
 
-The total figures are medians rather than sums because 2 of the 216 measured turns carry a cold-cache artifact where cache creation was billed in full at a cache boundary — 248,344 and 245,184 input tokens against a 123,917 median. Interleaving the conditions was expected to reduce this and did not. Medians ignore it; sums do not, which is why an earlier version of this README could not report a total-token figure at all. Output tokens are reported per response by the API and carry no such artifact.
+Those are rounded for display. Break-even below divides by the **unrounded** medians —
+383.9167, 444.5, 564.5833, 706.75 — because dividing by the rounded figures shifts two of the
+four ratios. `perTrialMedianOutputSaved` returns the raw value for that reason.
+
+The statistic is the median of the per-trial means, matching the [Variance](#variance) section.
+The pooled mean and the pooled median disagree with it, and with each other, by enough to
+change a model's verdict — so `perTrialMedianOutputSaved` in `evals/lib/report.mjs` pins it
+rather than leaving the choice to each call site.
+
+**Input added, split by how it bills.** From `npm run measure:amortization` — 18 calls, two
+turns of one session per condition, on `port-default` in the lean environment:
+
+| Variant | Turn | Cache write | Cache read | Total input added |
+| --- | ---: | ---: | ---: | ---: |
+| BLUF | 1 | **+2,031** | 0 | +2,031 |
+| BLUF | 2+ | −263 | **+2,031** | +1,768 |
+| terse | 1 | **+2,321** | 0 | +2,321 |
+| terse | 2+ | −263 | **+2,321** | +2,058 |
+
+Every write measured 1-hour TTL; the 5-minute figure was 0 in all 18 rows.
+
+**This split is the whole reason the earlier claim was wrong.** Uncached input, cache reads, and
+cache writes bill at different rates, and 1-hour and 5-minute writes differ again. The harness
+used to sum all of them into one `inputTokens` field before storing it, which makes a row
+impossible to price at all. Only `evals/results/amortization-*.jsonl` carries the split.
+
+**The −263 on turn 2 is a real saving, not noise.** Turn 1's styled answer was 263 output tokens
+shorter, so there was less of it to write into the prefix that turn 2 reads. An output saving is
+billed twice — once as output, and again as the next turn's cache write.
+
+**Break-even.** The output:input price ratio at which the input the style adds is exactly paid
+for by the output it removes. Two figures, because the first turn of a session and every turn
+after it are not the same trade:
+
+| Model | Variant | One-turn session | Steady state (turn 2+) |
+| --- | --- | ---: | ---: |
+| claude-fable-5 | BLUF | 10.58× | 0.53× |
+| claude-fable-5 | terse | 10.44× | 0.52× |
+| claude-opus-5 | BLUF | 7.19× | 0.36× |
+| claude-opus-5 | terse | 6.57× | 0.33× |
+
+Above the ratio the style saves money; below it, it costs money. So a **single-turn** session is
+a loss unless output costs you more than about 7–11× input, while **every turn after the first**
+is a win unless output costs you *less* than about a third of input — which no pricing does.
+
+The steady-state column is deliberately **conservative: it ignores the −263 write saving.**
+Counting that saving makes the steady-state input delta negative, meaning the style would be
+cheaper on the input side alone before any output saving is counted. The table does not claim
+that, because the write saving scales with the previous turn's output saving and was measured on
+one case.
+
+Converting a cache-read token to a base-input token requires a **price multiplier this project
+did not measure.** The table above uses Anthropic's published structure — cache reads at 0.1× base
+input, 1-hour writes at 2×. Those are published pricing, cited, not a measurement of ours. The
+measurement is the token counts; the multipliers are the reader's to check. **No currency figure
+appears anywhere in this repository**, deliberately: a ratio built from measured tokens cannot go
+stale, and a dollar figure we never measured would be exactly the unverifiable claim this project
+exists to object to.
+
+**How long the first turn takes to pay back.** At an output:input ratio of 5×, the first turn's
+net loss is recovered after **0.34 to 1.25 further turns** depending on model and variant —
+soonest on opus terse, longest on fable BLUF. Any session longer than about three turns is
+ahead.
+
+**Total tokens, which is not a cost figure.** Median total-token change per turn: +1,673 (fable
+BLUF), +1,886 (fable terse), +1,583 (opus BLUF), +1,674 (opus terse). Read this as a **rate-limit
+and context-budget** number, because that is what raw token counts govern. It is **not** a cost
+proxy: it adds four differently-priced quantities as though they were interchangeable. Use the
+break-even table above for anything involving money.
+
+The total figures are medians rather than sums because 2 of the 216 measured turns carry a
+cold-cache artifact where cache creation was billed in full at a cache boundary — 248,344 and
+245,184 input tokens against a 123,917 median. Interleaving the conditions was expected to
+reduce this and did not. Medians ignore it; sums do not.
 
 ### Variance
 
@@ -208,6 +286,26 @@ TRIALS=3 npm run measure
 **`TRIALS=3 npm run measure` makes 234 live API calls and costs roughly $48–54.** It is not part of `npm test` and nothing runs it by accident. It rewrites `evals/results/`. Omit `TRIALS` for a single-trial run of 78 calls, which is cheaper and correspondingly less trustworthy.
 
 **Install the styles before measuring.** The sweep selects each condition by style name. If the two files are not in `~/.claude/output-styles/`, every condition silently resolves to the default and you measure Default against Default. Run the install step above first. The prompt set is pinned by SHA-256 and the sweep refuses to run if it has been edited.
+
+## Corrections
+
+**The cost claim, corrected before first release.** Earlier drafts of this README stated that
+total tokens rise and therefore the style *"does not buy a smaller bill."* The token count was
+measured. The conclusion did not follow from it: the harness stored input tokens as a single
+sum of three classes that bill at different rates, so no row in the original dataset could be
+priced at all. The claim was replaced with the break-even table above, and the harness now
+stores the three tiers separately.
+
+A second error travelled with it. The break-even figures first circulated for internal review
+were computed from **means** of per-turn output deltas, while every headline percentage in this
+README uses **medians**. At an output:input ratio of 5×, the mean figures say all four
+combinations save money and the median figures say fable does not. A verdict that flips on the
+choice of statistic is not a verdict, so the statistic is now pinned in code.
+
+Nothing was published under the old claim; this section is not a public correction. It is here
+because a project whose premise is that the prior art published unverifiable numbers cannot
+quietly delete its own and present the result as having been right all along. Same reason the
+retracted 0.1.0 result archive is kept byte for byte.
 
 ## Credits
 
