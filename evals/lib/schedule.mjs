@@ -1,7 +1,17 @@
 import { rotate } from './runner.mjs'
 
-// Pinned worst-case adjacency overlap between any two of five trials, measured with the
-// generator below. It exists so that swapping the shuffle for something weaker — a rotation,
+// Schedule generation, version 2: trial-major — a trial is a whole sweep of every case,
+// with the case order reshuffled per trial and the condition rotation keyed on case AND
+// trial. Version 1 was case-major with a case's repetitions adjacent and the rotation
+// keyed on the case alone, so cross-trial ranges from the two generations measure
+// different things and are not comparable. Result rows carry this number so a reader
+// can tell which schedule produced them.
+export const SCHEDULE_VERSION = 2
+
+// Pinned worst-case adjacency overlap between any two of five trials over the 12-case
+// set in prompts.jsonl, measured with the generator below. The ceiling is specific to
+// that pairing — 12 cases, trials 1 through 5 — and must be re-measured if the case set
+// grows. It exists so that swapping the shuffle for something weaker — a rotation,
 // or a per-trial offset into a fixed stride — fails a test instead of quietly reinstating the
 // order effect the shuffle removes. An earlier design shared 10 of 11 adjacencies.
 export const MAX_SHARED_ADJACENCY = 4
@@ -38,11 +48,22 @@ export function permuteCases (cases, trial) {
 // emerging from nested loops. The trial loop is OUTERMOST: a trial is a whole sweep of every
 // case, which is what makes repeated trials repeated measurements.
 export function scheduleSweep ({ cases, conditions, trials }) {
-  const indexOf = new Map(cases.map((caseRow, index) => [caseRow.id, index]))
+  if (!Number.isInteger(trials) || trials < 1) {
+    throw new Error(`scheduleSweep requires a trials count that is an integer >= 1, got: ${JSON.stringify(trials)}`)
+  }
+  if (!Array.isArray(cases) || cases.length === 0) {
+    throw new Error(`scheduleSweep requires a non-empty cases array, got: ${JSON.stringify(cases)}`)
+  }
+  if (!Array.isArray(conditions) || conditions.length === 0) {
+    throw new Error(`scheduleSweep requires a non-empty conditions array, got: ${JSON.stringify(conditions)}`)
+  }
+  // Keyed on the case OBJECT, not its id: an id-keyed map would silently collapse two
+  // cases sharing an id into the last one, running it twice and the other never.
+  const indexOf = new Map(cases.map((caseRow, index) => [caseRow, index]))
   const schedule = []
   for (let trial = 1; trial <= trials; trial += 1) {
     for (const caseRow of permuteCases(cases, trial)) {
-      const caseIndex = indexOf.get(caseRow.id)
+      const caseIndex = indexOf.get(caseRow)
       // Keyed on the case's ORIGINAL index plus the trial. Keying on its position in the
       // permuted order cancels the trial term algebraically with two conditions, so every
       // case would lead with the same condition in every trial and one condition would

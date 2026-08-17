@@ -10,6 +10,17 @@ the headline percentages, the results table, the variance ranges — trace to th
 Its input-cost and break-even figures trace to the amortization slice below, and its
 0.1.0 regression figures to the archive below.
 
+## Schedule versions
+
+Rows written by `npm run measure` carry a `scheduleVersion` field recording which
+execution schedule produced them. Version 1 was case-major: a case's repetitions ran
+back to back, with the condition rotation keyed on the case alone. Version 2 is
+trial-major: a trial is a whole sweep of every case, in an order reshuffled per trial,
+with the rotation keyed on case and trial — so cross-trial ranges under version 2
+measure independent sweeps, while under version 1 they measured back-to-back repeats.
+The two generations' cross-trial ranges are therefore not comparable. Committed rows
+that predate the field are version 1.
+
 ## The 0.1.0 archive
 
 `report-0.1.0.md` and the `-v1.jsonl` files record the **retracted** first rule set — the

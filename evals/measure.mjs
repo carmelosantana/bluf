@@ -4,7 +4,7 @@ import {
   CONDITIONS, MODELS, ENVIRONMENTS, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL,
   OVERHEAD_CASES, PROMPTS_SHA256, loadCases, runCase, readCliVersion
 } from './lib/runner.mjs'
-import { scheduleSweep } from './lib/schedule.mjs'
+import { scheduleSweep, SCHEDULE_VERSION } from './lib/schedule.mjs'
 import { compare, formatReport } from './lib/report.mjs'
 
 // Every sweep below spends real money. All cheap validation happens up here,
@@ -96,7 +96,10 @@ try {
   // baseline calls, then all twelve styled calls, which confounded the condition with
   // elapsed time: any drift over the sweep's runtime landed entirely on the later
   // conditions. Running the conditions for one case back to back means drift hits them
-  // equally. The order is also rotated per case so no condition permanently occupies
+  // equally. A trial is now a whole sweep of every case — the schedule is trial-major,
+  // with the case order reshuffled per trial — so repeated trials are repeated
+  // measurements of the sweep rather than back-to-back repeats of one case. The order
+  // is also rotated per case and trial so no condition permanently occupies
   // the first slot, where it would always be the one paying cache-creation cost.
   for (const model of MODELS) {
     rows[model] = Object.fromEntries(Object.keys(ENVIRONMENTS).map(environment => [environment, {}]))
@@ -104,10 +107,12 @@ try {
       rows[model][MAIN_ENVIRONMENT][condition] = []
     }
 
-    const byId = new Map(cases.map(caseRow => [caseRow.id, caseRow]))
     for (const entry of scheduleSweep({ cases, conditions: Object.keys(CONDITIONS), trials: TRIALS })) {
       process.stderr.write(`${MAIN_ENVIRONMENT} ${model} ${entry.condition} trial ${entry.trial} ${entry.caseId}\n`)
-      const row = await runCase(byId.get(entry.caseId), entry.condition, model, MAIN_ENVIRONMENT, entry.trial)
+      const row = await runCase(cases[entry.caseIndex], entry.condition, model, MAIN_ENVIRONMENT, entry.trial)
+      // The schedule is the driver's concern, not the runner's, so the version is
+      // stamped here rather than in runCase — see SCHEDULE_VERSION in lib/schedule.mjs.
+      row.scheduleVersion = SCHEDULE_VERSION
       rows[model][MAIN_ENVIRONMENT][entry.condition].push(row)
       allRows.push(row)
     }
@@ -134,14 +139,15 @@ try {
     rows[OVERHEAD_MODEL][OVERHEAD_ENVIRONMENT][condition] = []
   }
 
-  // Interleaved and rotated for the same reason as the main sweep. It matters more
-  // here: this sweep exists to isolate the style's input-token overhead, so a
-  // systematic cache-cost difference between conditions would land directly on the
-  // number it is measuring.
-  const overheadById = new Map(overheadCases.map(caseRow => [caseRow.id, caseRow]))
+  // Interleaved and rotated for the same reason as the main sweep, and likewise
+  // trial-major: a trial is a whole sweep of both cases, with the rotation keyed on
+  // case and trial. It matters more here: this sweep exists to isolate the style's
+  // input-token overhead, so a systematic cache-cost difference between conditions
+  // would land directly on the number it is measuring.
   for (const entry of scheduleSweep({ cases: overheadCases, conditions: Object.keys(CONDITIONS), trials: TRIALS })) {
     process.stderr.write(`${OVERHEAD_ENVIRONMENT} ${OVERHEAD_MODEL} ${entry.condition} trial ${entry.trial} ${entry.caseId}\n`)
-    const row = await runCase(overheadById.get(entry.caseId), entry.condition, OVERHEAD_MODEL, OVERHEAD_ENVIRONMENT, entry.trial)
+    const row = await runCase(overheadCases[entry.caseIndex], entry.condition, OVERHEAD_MODEL, OVERHEAD_ENVIRONMENT, entry.trial)
+    row.scheduleVersion = SCHEDULE_VERSION
     rows[OVERHEAD_MODEL][OVERHEAD_ENVIRONMENT][entry.condition].push(row)
     allRows.push(row)
   }

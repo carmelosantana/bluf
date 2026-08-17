@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { permuteCases, scheduleSweep, MAX_SHARED_ADJACENCY } from '../lib/schedule.mjs'
+import { permuteCases, scheduleSweep, MAX_SHARED_ADJACENCY, SCHEDULE_VERSION } from '../lib/schedule.mjs'
 
 const cases = Array.from({ length: 12 }, (_, i) => ({ id: `case-${i}` }))
 const adjacencies = order => new Set(order.slice(1).map((id, i) => `${order[i]}>${id}`))
@@ -29,7 +29,8 @@ test('permuteCases does not merely rotate one cycle', () => {
 
   for (let i = 0; i < orders.length; i += 1) {
     for (let j = i + 1; j < orders.length; j += 1) {
-      const shared = [...adjacencies(orders[i])].filter(pair => adjacencies(orders[j]).has(pair)).length
+      const other = adjacencies(orders[j])
+      const shared = [...adjacencies(orders[i])].filter(pair => other.has(pair)).length
       assert.ok(
         shared <= MAX_SHARED_ADJACENCY,
         `trials ${i + 1} and ${j + 1} share ${shared} adjacent pairs, above the pinned ceiling`
@@ -65,6 +66,7 @@ test('scheduleSweep reports the ORIGINAL case index, not the permuted position',
   // The condition rotation keys on this. Keying on the permuted position cancels the
   // trial term algebraically and reinstates the confound.
   const schedule = scheduleSweep({ cases, conditions: ['baseline', 'bluf'], trials: 2 })
+  assert.equal(schedule.length, 12 * 2 * 2, 'an empty schedule must not pass this test vacuously')
 
   for (const entry of schedule) {
     assert.equal(entry.caseId, cases[entry.caseIndex].id)
@@ -85,8 +87,59 @@ test('scheduleSweep keeps a case contiguous within a trial', () => {
   // equally. That property is why the existing sweep interleaves; it must survive.
   // Valid only because there are exactly two conditions — do not generalise it.
   const schedule = scheduleSweep({ cases, conditions: ['baseline', 'bluf'], trials: 2 })
+  assert.equal(schedule.length, 12 * 2 * 2, 'an empty schedule must not pass this test vacuously')
   for (let i = 0; i < schedule.length; i += 2) {
     assert.equal(schedule[i].caseId, schedule[i + 1].caseId)
     assert.notEqual(schedule[i].condition, schedule[i + 1].condition)
   }
+})
+
+test('scheduleSweep schedules every (trial, case, condition) tuple exactly once', () => {
+  // The multiset property, pinned directly: a schedule that keeps the right LENGTH but
+  // substitutes a duplicate run of one case for another would pass the coverage and
+  // contiguity tests above while measuring one case twice and another not at all.
+  const conditions = ['baseline', 'bluf']
+  const trials = 3
+  const schedule = scheduleSweep({ cases, conditions, trials })
+  assert.equal(schedule.length, trials * cases.length * conditions.length)
+
+  const counts = new Map()
+  for (const entry of schedule) {
+    const key = `${entry.trial}|${entry.caseId}|${entry.condition}`
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  for (let trial = 1; trial <= trials; trial += 1) {
+    const covered = new Set(
+      schedule.filter(entry => entry.trial === trial).map(entry => entry.caseId)
+    )
+    assert.equal(covered.size, cases.length, `trial ${trial} must cover every case`)
+    for (const caseRow of cases) {
+      for (const condition of conditions) {
+        const key = `${trial}|${caseRow.id}|${condition}`
+        assert.equal(counts.get(key), 1, `expected exactly one run of ${key}, got ${counts.get(key) ?? 0}`)
+      }
+    }
+  }
+})
+
+test('scheduleSweep rejects a trials count that is not a positive integer', () => {
+  for (const trials of [0, -5, undefined, NaN, 2.5, '2']) {
+    assert.throws(
+      () => scheduleSweep({ cases, conditions: ['baseline', 'bluf'], trials }),
+      /trials count/,
+      `trials: ${JSON.stringify(trials)} must throw, not produce a silent or truncated schedule`
+    )
+  }
+})
+
+test('scheduleSweep rejects empty or missing cases and conditions', () => {
+  assert.throws(() => scheduleSweep({ cases: [], conditions: ['baseline', 'bluf'], trials: 2 }), /cases array/)
+  assert.throws(() => scheduleSweep({ conditions: ['baseline', 'bluf'], trials: 2 }), /cases array/)
+  assert.throws(() => scheduleSweep({ cases, conditions: [], trials: 2 }), /conditions array/)
+  assert.throws(() => scheduleSweep({ cases, trials: 2 }), /conditions array/)
+})
+
+test('SCHEDULE_VERSION is exported and is a positive integer', () => {
+  assert.ok(Number.isInteger(SCHEDULE_VERSION), 'SCHEDULE_VERSION must be an integer')
+  assert.ok(SCHEDULE_VERSION >= 1, 'SCHEDULE_VERSION must be positive')
 })
