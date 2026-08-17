@@ -70,6 +70,14 @@ export function assertHomogeneous (baselineRows, candidateRows) {
 // mismatch, not a silent overwrite), and uniform trial coverage across cases.
 // Returns the shared trial count.
 function assertComparable (baselineRows, candidateRows) {
+  // With both sides empty every check below passes vacuously and the final
+  // `expectedTrials.size` crashes with a bare TypeError. Refuse up front with a
+  // real message instead. (compare() and perTrialMedianOutputSaved() each guard
+  // one empty side themselves; this covers callers that guard neither.)
+  if (baselineRows.length === 0 && candidateRows.length === 0) {
+    throw new Error('refusing to compare: both sides are empty, so there is nothing to compare')
+  }
+
   assertHomogeneous(baselineRows, candidateRows)
 
   const baseCounts = countByKey(baselineRows)
@@ -164,9 +172,21 @@ export function compare (baselineRows, candidateRows) {
     }
   })
 
+  // One value per category, plus the clustered range when there are enough
+  // clusters to resample. Attached here (rather than computed inside
+  // formatReport) because formatReport receives this comparison, not the rows.
+  const perCategory = clusterPairedDeltas(baselineRows, candidateRows)
+
   return {
     trials,
     perCase,
+    clustered: {
+      perCategory,
+      // clusteredInterval refuses a single cluster — rightly, since resampling
+      // one cluster yields a zero-width range that reads as certainty — so a
+      // single-category comparison carries no interval rather than a fake one.
+      interval: perCategory.size >= 2 ? clusteredInterval(baselineRows, candidateRows) : null
+    },
     totals: {
       baselineOutput: sum(perCase, 'baselineOutput'),
       candidateOutput: sum(perCase, 'candidateOutput'),
@@ -181,6 +201,13 @@ export function compare (baselineRows, candidateRows) {
 
 function signed (n) {
   return n > 0 ? `+${n}` : String(n)
+}
+
+// Cluster means are averages over unequal bucket sizes, so unlike every other
+// figure in the report they are not integers. One decimal is enough: the
+// interval is indicative, and more digits would imply precision it lacks.
+function round1 (n) {
+  return Math.round(n * 10) / 10
 }
 
 export function formatReport (comparison, { condition, model, environment }) {
@@ -254,6 +281,46 @@ export function formatReport (comparison, { condition, model, environment }) {
     }
   } else {
     lines.push('No net-negative cases.')
+  }
+
+  // The word "range" is reserved for the multi-cluster branch: a single-trial,
+  // single-case report must not claim any spread (a test pins this), and the
+  // indicative range genuinely is one only when there are clusters to resample.
+  const { perCategory, interval } = comparison.clustered
+  lines.push('')
+  lines.push('## Category clusters')
+  lines.push('')
+  lines.push(
+    `Cases within a category behave alike, so the paired output deltas collapse to ` +
+    `${perCategory.size} cluster${perCategory.size === 1 ? '' : 's'} (one per category) ` +
+    'before any spread is estimated. Mean output tokens saved per cluster ' +
+    `(baseline minus ${condition}; positive is a saving):`
+  )
+  lines.push('')
+  for (const [category, mean] of perCategory) {
+    lines.push(`- \`${category}\`: ${signed(round1(mean))}`)
+  }
+  lines.push('')
+  if (interval === null) {
+    lines.push(
+      'Only 1 cluster was measured, so no interval is reported: resampling a single ' +
+      'cluster returns that cluster every time, and a zero-width figure would read as certainty.'
+    )
+  } else {
+    lines.push(
+      `- Point estimate (mean of the ${interval.clusters} cluster means): ` +
+      `${signed(round1(interval.point))} output tokens saved per response`
+    )
+    lines.push(
+      `- Indicative range: ${signed(round1(interval.low))} to ${signed(round1(interval.high))} ` +
+      `(seeded cluster bootstrap, ${CLUSTER_BOOTSTRAP_RESAMPLES} resamples, 2.5th to 97.5th percentile)`
+    )
+    lines.push('')
+    lines.push(
+      `This range is indicative, not a confidence interval: ${interval.clusters} clusters is far ` +
+      'below the few dozen at which cluster-robust methods become reliable. Read it together ' +
+      'with the per-cluster values above, which show how thin the evidence is.'
+    )
   }
 
   lines.push('')
@@ -345,4 +412,96 @@ export function perTrialMedianOutputSaved (baselineRows, candidateRows) {
     .map(({ saved, observations }) => saved / observations)
 
   return median(trialMeans)
+}
+
+export const CLUSTER_BOOTSTRAP_RESAMPLES = 2000
+
+// The 12 prompts fall into 5 categories and prompts within a category behave alike, so they
+// are not 12 independent draws. Collapsing each category to one value is what stops the
+// report treating correlated prompts as independent evidence.
+export function clusterPairedDeltas (baselineRows, candidateRows) {
+  assertComparable(baselineRows, candidateRows)
+
+  const paired = new Map()
+  for (const baseline of baselineRows) {
+    const candidate = candidateRows.find(row =>
+      row.caseId === baseline.caseId && row.trial === baseline.trial)
+    if (!candidate) continue
+    // Bucketing by baseline.category alone would let a row whose category label disagrees
+    // across the two sweeps be silently absorbed into the baseline's bucket — a plausible
+    // number from rows that did not measure the same prompt set.
+    if (candidate.category !== baseline.category) {
+      throw new Error(
+        `cannot cluster: case ${baseline.caseId}/trial ${baseline.trial} is categorised ` +
+        `"${baseline.category}" in the baseline but "${candidate.category}" in the candidate; ` +
+        'the two sweeps did not run the same prompt set'
+      )
+    }
+    // A string outputTokens would subtract "successfully" ("300" - "100" === 200) and a
+    // missing one would propagate NaN into the published range — both are the vacuous-pass
+    // bug class this repository keeps refinding, so malformed tokens throw instead.
+    for (const [side, row] of [['baseline', baseline], ['candidate', candidate]]) {
+      if (typeof row.outputTokens !== 'number' || !Number.isFinite(row.outputTokens)) {
+        throw new Error(
+          `cannot cluster: ${side} row ${row.caseId}/trial ${row.trial} has a non-numeric ` +
+          `outputTokens (${JSON.stringify(row.outputTokens)})`
+        )
+      }
+    }
+    const bucket = paired.get(baseline.category) ?? []
+    bucket.push(baseline.outputTokens - candidate.outputTokens)
+    paired.set(baseline.category, bucket)
+  }
+  if (paired.size === 0) {
+    throw new Error('no baseline row could be paired with a candidate row; there is nothing to cluster')
+  }
+
+  return new Map([...paired].map(([category, deltas]) =>
+    [category, deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length]))
+}
+
+// Seeded so a report re-rendered from the same rows is byte-identical. A figure that moves
+// when you look at it twice is not evidence. Deliberately NOT shared with the mulberry32 in
+// evals/lib/schedule.mjs: the two seeds serve different purposes, and importing the
+// scheduler's generator here would let a retuning of the schedule's seeding silently change
+// the published statistic.
+function seededRandom (seed) {
+  let state = seed >>> 0
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0
+    let t = state
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+// Resamples CLUSTERS with replacement, not cases. Reported as an indicative range: five
+// clusters is far below where cluster-robust methods are considered reliable, and calling
+// this a confidence interval would claim a precision the design cannot support.
+export function clusteredInterval (baselineRows, candidateRows, { resamples = CLUSTER_BOOTSTRAP_RESAMPLES } = {}) {
+  const clusters = clusterPairedDeltas(baselineRows, candidateRows)
+  const values = [...clusters.values()]
+  if (values.length < 2) {
+    throw new Error(
+      `refusing to build an interval from ${values.length} cluster: resampling one cluster returns ` +
+      'that cluster every time, producing a zero-width range that would read as certainty.'
+    )
+  }
+
+  const random = seededRandom(values.length * 1000 + Math.round(values[0]))
+  const means = []
+  for (let i = 0; i < resamples; i += 1) {
+    let total = 0
+    for (let k = 0; k < values.length; k += 1) total += values[Math.floor(random() * values.length)]
+    means.push(total / values.length)
+  }
+  means.sort((a, b) => a - b)
+
+  return {
+    point: values.reduce((sum, value) => sum + value, 0) / values.length,
+    low: means[Math.floor(resamples * 0.025)],
+    high: means[Math.floor(resamples * 0.975)],
+    clusters: values.length
+  }
 }

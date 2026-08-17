@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import {
   compare, formatReport, median,
-  TIER_FIELDS, requireTiers, breakEven, perTrialMedianOutputSaved
+  TIER_FIELDS, requireTiers, breakEven, perTrialMedianOutputSaved,
+  clusterPairedDeltas, clusteredInterval
 } from '../lib/report.mjs'
 
 function row (caseId, condition, outputTokens, inputTokens = 100, trial = 1) {
@@ -564,4 +565,95 @@ test('the lean single-shot sweep independently corroborates the amortization-der
 
   assert.equal(baseline, 4837)
   assert.equal(bluf - baseline, 2030)
+})
+
+const rowsFor = (condition, outputs) =>
+  outputs.map(([caseId, category, trial, outputTokens]) =>
+    ({ caseId, category, trial, condition, outputTokens }))
+
+const BASE = rowsFor('baseline', [
+  ['a', 'short-lookup', 1, 300], ['b', 'short-lookup', 1, 320],
+  ['c', 'multi-step', 1, 900], ['d', 'multi-step', 1, 880],
+  ['e', 'long-list', 1, 600], ['f', 'long-list', 1, 640]
+])
+const BLUF = rowsFor('bluf', [
+  ['a', 'short-lookup', 1, 100], ['b', 'short-lookup', 1, 120],
+  ['c', 'multi-step', 1, 700], ['d', 'multi-step', 1, 680],
+  ['e', 'long-list', 1, 500], ['f', 'long-list', 1, 540]
+])
+
+test('clusterPairedDeltas returns one value per category, not per case', () => {
+  const clusters = clusterPairedDeltas(BASE, BLUF)
+
+  assert.deepEqual([...clusters.keys()].sort(), ['long-list', 'multi-step', 'short-lookup'])
+  assert.equal(clusters.get('short-lookup'), 200)
+  assert.equal(clusters.get('multi-step'), 200)
+  assert.equal(clusters.get('long-list'), 100)
+})
+
+test('clusteredInterval is deterministic', () => {
+  const first = clusteredInterval(BASE, BLUF)
+  const second = clusteredInterval(BASE, BLUF)
+  assert.deepEqual(first, second)
+})
+
+test('clusteredInterval brackets its point estimate and reports the cluster count', () => {
+  const interval = clusteredInterval(BASE, BLUF)
+
+  assert.equal(interval.clusters, 3)
+  assert.ok(interval.low <= interval.point)
+  assert.ok(interval.point <= interval.high)
+})
+
+test('clusteredInterval resamples clusters, not cases', () => {
+  // With 3 clusters whose values are 200/200/100, every resample is a multiset of those
+  // three numbers, so no bound can fall outside them. Resampling the 6 CASES instead would
+  // produce values between the per-case extremes and break this.
+  const interval = clusteredInterval(BASE, BLUF)
+
+  assert.ok(interval.low >= 100, `low ${interval.low} escaped the cluster values`)
+  assert.ok(interval.high <= 200, `high ${interval.high} escaped the cluster values`)
+})
+
+test('clusteredInterval refuses a single cluster rather than reporting a zero-width interval', () => {
+  const oneCluster = BASE.filter(row => row.category === 'multi-step')
+  const oneClusterCandidate = BLUF.filter(row => row.category === 'multi-step')
+
+  assert.throws(
+    () => clusteredInterval(oneCluster, oneClusterCandidate),
+    /1 cluster/
+  )
+})
+
+test('clusteredInterval inherits the comparability guards', () => {
+  assert.throws(() => clusteredInterval([], []), /./)
+})
+
+test('formatReport shows the interval and every cluster value', () => {
+  const rendered = formatReport(compare(BASE, BLUF), {
+    condition: 'bluf', model: 'claude-opus-5', environment: 'clean'
+  })
+
+  assert.match(rendered, /clusters/i)
+  assert.match(rendered, /short-lookup/)
+  assert.match(rendered, /indicative/i, 'the report must not imply a confidence interval')
+})
+
+test('clusterPairedDeltas refuses a category that disagrees across conditions', () => {
+  // Same (caseId, trial) multisets, so the coverage guards pass — but case 'a' claims a
+  // different category in each sweep. Bucketing it by the baseline's label would return
+  // a plausible-looking mean built from rows that did not measure the same prompt set.
+  const base = rowsFor('baseline', [['a', 'short-lookup', 1, 300], ['b', 'multi-step', 1, 900]])
+  const cand = rowsFor('bluf', [['a', 'options', 1, 100], ['b', 'multi-step', 1, 700]])
+
+  assert.throws(() => clusterPairedDeltas(base, cand), /categorised|category/)
+})
+
+test('clusterPairedDeltas refuses non-numeric outputTokens instead of coercing', () => {
+  // "300" - "100" is 200 in JavaScript, so a sweep that recorded tokens as strings would
+  // cluster into perfectly plausible numbers. Unknown is not a number.
+  const base = rowsFor('baseline', [['a', 'short-lookup', 1, '300'], ['b', 'multi-step', 1, 900]])
+  const cand = rowsFor('bluf', [['a', 'short-lookup', 1, '100'], ['b', 'multi-step', 1, 700]])
+
+  assert.throws(() => clusterPairedDeltas(base, cand), /non-numeric/)
 })
