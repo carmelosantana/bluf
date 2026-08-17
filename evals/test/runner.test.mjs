@@ -41,12 +41,15 @@ test('MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT and CLEAN_ENVIRONMENT are real envi
   assert.ok(MAIN_ENVIRONMENT in ENVIRONMENTS)
   assert.ok(OVERHEAD_ENVIRONMENT in ENVIRONMENTS)
   assert.ok(CLEAN_ENVIRONMENT in ENVIRONMENTS)
-  // Since the 0.3.0 move into the clean room, MAIN_ENVIRONMENT IS CLEAN_ENVIRONMENT —
-  // this test used to assert they differed, which described the pre-move topology.
-  // The invariant that must survive the move is that the two sweeps never share an
-  // environment, because both feed the same result-file naming.
+  // Since the 0.3.0 move into the clean room, the main sweep IS the clean sweep — this
+  // test used to assert they differed, which described the pre-move topology.
+  assert.equal(MAIN_ENVIRONMENT, CLEAN_ENVIRONMENT)
+  // The invariant that must survive the move: the two sweeps never share an environment,
+  // because both feed the same ${environment}-${model}-${condition}.jsonl result naming —
+  // if they matched, the two-case overhead sweep would overwrite the twelve-case main
+  // sweep's opus files. (With the equality above, this also keeps the overhead sweep out
+  // of the clean environment.)
   assert.notEqual(MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT)
-  assert.notEqual(OVERHEAD_ENVIRONMENT, CLEAN_ENVIRONMENT)
 })
 
 test('OVERHEAD_MODEL is one of the models under test', () => {
@@ -1934,14 +1937,4 @@ test('settingSourcesOf throws a diagnosable error when --setting-sources has no 
   } finally {
     delete ENVIRONMENTS['broken-test-only']
   }
-})
-
-test('the main sweep runs in the clean environment', () => {
-  assert.equal(MAIN_ENVIRONMENT, CLEAN_ENVIRONMENT)
-})
-
-test('the overhead sweep must NOT share an environment with the main sweep', () => {
-  // Both feed the same ${environment}-${model}-${condition}.jsonl naming. If they matched,
-  // the two-case overhead sweep would overwrite the twelve-case main sweep's opus files.
-  assert.notEqual(OVERHEAD_ENVIRONMENT, MAIN_ENVIRONMENT)
 })

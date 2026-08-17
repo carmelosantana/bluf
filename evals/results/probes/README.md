@@ -6,7 +6,7 @@ committed so the figures quoted in `../README.md` trace to data rather than to m
 **These are probes, not sweeps.** They were run by ad-hoc scripts, not by `evals/measure.mjs`;
 they carry no tier split, no interleaving, and no rotation; and each configuration in
 `config-leak.jsonl` is a single observation. Read them as orientation. The measured claims this
-project publishes come from `../report.md`.
+project publishes come from `../report-0.2.0.md`.
 
 ## `config-leak.jsonl` — what each isolation flag excludes
 

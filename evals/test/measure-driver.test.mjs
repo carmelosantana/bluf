@@ -37,7 +37,44 @@ test('every free validation still sits above the first paid call', () => {
   const firstPaid = source.indexOf('await runCase(')
   assert.ok(firstPaid > -1)
 
-  for (const guard of ['PROMPTS_SHA256', 'MAX_TRIALS', 'OVERHEAD_CASES']) {
-    assert.ok(source.indexOf(guard) < firstPaid, `${guard} validation must precede any spending`)
+  for (const guard of ['PROMPTS_SHA256', 'MAX_TRIALS', 'OVERHEAD_CASES', 'assertOverwritesAllowed']) {
+    const index = source.indexOf(guard)
+    assert.ok(index > -1, `${guard} validation must exist`)
+    assert.ok(index < firstPaid, `${guard} validation must precede any spending`)
   }
+})
+
+test('the tracked-overwrite gate runs before the first paid call', () => {
+  // The gate is free and the loss it prevents is unrecoverable: committed result rows
+  // are the evidence behind published claims, and the sweep writes its files
+  // unconditionally. A gate below the first runCase would spend money before checking.
+  const gate = source.indexOf('assertOverwritesAllowed(')
+  const firstPaid = source.indexOf('await runCase(')
+  assert.ok(gate > -1, 'measure.mjs must gate on tracked result files')
+  assert.ok(firstPaid > -1)
+  assert.ok(gate < firstPaid, 'the overwrite gate must precede any spending')
+  // The gate must cover every path the run writes, not a hand-kept subset: the planned
+  // list has to come from the same constants the write loops interpolate.
+  assert.ok(source.includes('plannedSweepFiles('), 'the planned files must be enumerated by the shared pure function')
+  assert.ok(source.includes('process.env[OVERWRITE_ALLOWLIST_VAR]'),
+    'the escape hatch must be read through the named allowlist variable, never an ad-hoc string')
+})
+
+test('the overhead sweep verifies the style reached the model after paying for it', () => {
+  // ENVIRONMENTS.lean passes no --setting-sources, so the lean arm loads the style from
+  // the operator's user-level ~/.claude/output-styles install — runCase's project-style
+  // install and assertion are clean-environment-only, and preflight exercises the clean
+  // environment only. Without a post-payment check here, a missing user-level install
+  // makes all 20 lean calls measure Default against Default and report success.
+  const overheadWrite = source.indexOf('${OVERHEAD_ENVIRONMENT}-${OVERHEAD_MODEL}-${condition}.jsonl')
+  assert.ok(overheadWrite > -1, 'the overhead write loop must exist')
+  const overheadLoop = source.indexOf('for (const caseRow of overheadCases)', overheadWrite)
+  assert.ok(overheadLoop > -1, 'the overhead style check must loop per overhead case, after the write block')
+  const call = source.indexOf('assertStyleOverheadPresent(', overheadLoop)
+  assert.ok(call > -1, 'the overhead sweep must verify the style applied')
+  // After the write block so a throw still leaves the paid rows persisted, but inside
+  // the try so the incomplete-sweep accounting still fires.
+  const catchIndex = source.indexOf('} catch (error) {')
+  assert.ok(catchIndex > -1)
+  assert.ok(call < catchIndex, 'the overhead style check must sit inside the try, before the failure accounting')
 })

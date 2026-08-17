@@ -15,7 +15,7 @@ the commands below give the value that works today.
 ## Illustrative before/after pair
 
 These two are a separate capture, taken after a measured sweep. **They are not rows in
-`report.md`.** Run-to-run variation puts the same prompt and model at different figures on
+`report-0.2.0.md`.** Run-to-run variation puts the same prompt and model at different figures on
 different days; this pair happened to land at 586 → 183.
 
 Prompt: `In git, what does --no-ff do on a merge?`
@@ -46,4 +46,4 @@ filename says `claude-fable-5`.
 | `port-default` | A short answer must stay short, with no bullet block | three-line threshold |
 
 Token counts for these were not recorded at capture time; they are illustrative of shape,
-not of size. For sizes, use `report.md`.
+not of size. For sizes, use `report-0.2.0.md`.

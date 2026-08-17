@@ -9,7 +9,7 @@
 - 4 of the 24 per-case measurements have trial ranges that straddle zero, meaning the style's effect on those cases is not distinguishable from run-to-run noise even at 3 trials.
 - Version **0.1.0** of these rules made Opus **32.2% more verbose**. Measuring across models caught it. See [The 0.1.0 regression](#the-010-regression-on-opus).
 
-All numbers come from [`evals/results/`](evals/results/), committed in this repo — [`report.md`](evals/results/report.md) (four sections for the 12-case full-environment sweep, two for a 2-case lean-environment sweep), and the session-amortization slice (the cache write/read splits behind the input-cost and break-even figures) from the `amortization-*.jsonl` files. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
+All numbers come from [`evals/results/`](evals/results/), committed in this repo — [`report-0.2.0.md`](evals/results/report-0.2.0.md) (four sections for the 12-case full-environment sweep, two for a 2-case lean-environment sweep), and the session-amortization slice (the cache write/read splits behind the input-cost and break-even figures) from the `amortization-*.jsonl` files. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
 
 ## Before / after
 
@@ -82,7 +82,7 @@ An evaluated compression variant — grammar compression layered on top of these
 
 ## Measured results
 
-Median output tokens per case across 3 trials, full environment. Source: [`evals/results/report.md`](evals/results/report.md), which also carries the per-case delta ranges, plus the retired terse variant's sections. That file's aggregate lines for BLUF quote −37.1% and −30.9% — a different statistic again, the pooled token-weighted percentage (all trials' styled output summed over all trials' baseline output), which weights the longest cases most heavily. The headline figures are per-trial medians instead; the two statistics are computed from the same rows and agree in direction on every condition.
+Median output tokens per case across 3 trials, full environment. Source: [`evals/results/report-0.2.0.md`](evals/results/report-0.2.0.md), which also carries the per-case delta ranges, plus the retired terse variant's sections. That file's aggregate lines for BLUF quote −37.1% and −30.9% — a different statistic again, the pooled token-weighted percentage (all trials' styled output summed over all trials' baseline output), which weights the longest cases most heavily. The headline figures are per-trial medians instead; the two statistics are computed from the same rows and agree in direction on every condition.
 
 | Case | Category | fable base | fable BLUF | opus base | opus BLUF |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -104,7 +104,7 @@ The bottom row sums the per-case medians. It does not exactly reproduce the head
 
 The style loses on some rows. On fable, `docker-cache-miss` came out **+457** output tokens with BLUF — the median of the per-trial paired deltas, the pinned statistic, which here reads worse than the +305 a reader gets by differencing the table's two medians (2,038 → 2,343). On opus, `cjs-to-esm` came out **+438**, where the two statistics agree. Those rows are in the table and in the aggregates.
 
-`report.md` also carries the one committed aggregate that points the other way. Its 2-case lean-environment sweep — the environment-overhead measurement, not part of the headline claim — measured BLUF on opus at **+13.4% output** (+560 tokens per sweep), driven by `docker-cache-miss`: +299 at the median, with a −637 to +2,315 trial range. Two cases, one model, in an environment the headline figures do not cover — but it is the aggregate a skeptic will find first, and it is the same `docker-cache-miss` failure the full-environment fable row shows above.
+`report-0.2.0.md` also carries the one committed aggregate that points the other way. Its 2-case lean-environment sweep — the environment-overhead measurement, not part of the headline claim — measured BLUF on opus at **+13.4% output** (+560 tokens per sweep), driven by `docker-cache-miss`: +299 at the median, with a −637 to +2,315 trial range. Two cases, one model, in an environment the headline figures do not cover — but it is the aggregate a skeptic will find first, and it is the same `docker-cache-miss` failure the full-environment fable row shows above.
 
 ### Where the effect is not distinguishable from noise
 
@@ -294,16 +294,16 @@ npm test
 ```
 
 ```bash
-TRIALS=3 npm run measure
+TRIALS=5 npm run measure
 ```
 
 ```bash
 npm run measure:amortization
 ```
 
-`npm test` runs 217 tests with zero dependencies on Node 22+.
+`npm test` runs 256 tests with zero dependencies on Node 22+.
 
-**`TRIALS=3 npm run measure` makes 156 live API calls and costs real money** — the last full run, which still carried a third condition at 234 calls, cost roughly $48–54. It is not part of `npm test` and nothing runs it by accident. It rewrites `evals/results/`. Omit `TRIALS` for a single-trial run of 52 calls, which is cheaper and correspondingly less trustworthy.
+**`TRIALS=5 npm run measure` makes 260 live API calls and costs real money** — 12 cases × 2 conditions × 5 trials × 2 models in the clean environment (240 calls), plus 2 overhead cases × 2 conditions × 5 trials in the lean environment (20). The only measured cost figure is for a different design and does not transfer: the last full run — 3 trials, full environment, still carrying a third condition at 234 calls — cost roughly $48–54. The sweep is not part of `npm test` and nothing runs it by accident. It refuses to start while any file it would write is tracked by git, so committed evidence has to be preserved under a versioned name (or sacrificed by name via an environment variable the refusal message documents) before it rewrites `evals/results/`. Omit `TRIALS` for a single-trial run of 52 calls, which is cheaper and correspondingly less trustworthy.
 
 **`npm run measure:amortization` makes 12 live API calls** — 2 conditions × 3 trials × 2 turns, on claude-opus-5 — and also spends real money, though far less than the sweep. It regenerates the input half of the break-even table: the per-tier cache write/read splits in `evals/results/amortization-*.jsonl`. It, too, runs only when you invoke it.
 

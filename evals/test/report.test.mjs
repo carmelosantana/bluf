@@ -557,8 +557,10 @@ test('the lean single-shot sweep independently corroborates the amortization-der
     rows.filter(r => r.caseId === 'port-default').map(r => r.inputTokens)
   )
 
-  const baseline = medianInput(await readResultRows('lean-claude-opus-5-baseline.jsonl'))
-  const bluf = medianInput(await readResultRows('lean-claude-opus-5-bluf.jsonl'))
+  // The -0.2.0 suffix preserves the 3-trial schedule-version-1 lean rows the 0.2.0
+  // figures cite; the unsuffixed names are what the next sweep writes.
+  const baseline = medianInput(await readResultRows('lean-claude-opus-5-baseline-0.2.0.jsonl'))
+  const bluf = medianInput(await readResultRows('lean-claude-opus-5-bluf-0.2.0.jsonl'))
 
   assert.equal(baseline, 4837)
   assert.equal(bluf - baseline, 2030)

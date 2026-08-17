@@ -37,7 +37,8 @@ not minimum tokens at any cost, so the launch ships one style.
 - `amortization-claude-opus-5-bluf-terse.jsonl` — the session-amortization slice
 - the `less-chatty-terse-v1` files — the retracted 0.1.0 run under the project's
   working name
-- the terse sections of `evals/results/report.md`
+- the terse sections of `evals/results/report-0.2.0.md` — the terse variant is not a
+  condition in any newer run, so no future `report.md` will carry them
 
 Those rows carry `condition: "bluf-terse"`, a value no longer present in the live
 `CONDITIONS` table in `evals/lib/runner.mjs`. That is expected: the harness validates

@@ -1,5 +1,8 @@
 import { writeFile, mkdir, readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { fileURLToPath } from 'node:url'
 import {
   CONDITIONS, MODELS, ENVIRONMENTS, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL,
   OVERHEAD_CASES, PROMPTS_SHA256, loadCases, runCase, readCliVersion,
@@ -7,6 +10,9 @@ import {
 } from './lib/runner.mjs'
 import { scheduleSweep, SCHEDULE_VERSION } from './lib/schedule.mjs'
 import { compare, formatReport } from './lib/report.mjs'
+import { plannedSweepFiles, assertOverwritesAllowed, OVERWRITE_ALLOWLIST_VAR } from './lib/overwrite-gate.mjs'
+
+const run = promisify(execFile)
 
 // Every sweep below spends real money. All cheap validation happens up here,
 // before the first paid runCase call.
@@ -72,6 +78,42 @@ for (const [label, environment] of [['MAIN_ENVIRONMENT', MAIN_ENVIRONMENT], ['OV
       'Without this check an invalid OVERHEAD_ENVIRONMENT would only fail after the whole main sweep had run.'
     )
   }
+}
+
+// Gate: never start a sweep that would overwrite committed measurement evidence. The
+// result files are written unconditionally below, so any of them that git tracks is a
+// published-claim citation one successful run away from destruction — the loss is
+// silent, and the replacement rows (different trial count, schedule version, CLI
+// version) are not equivalent evidence. Enumerating the doomed paths and checking
+// them against git is free; recovering destroyed rows is not possible. The escape
+// hatch is deliberate and auditable: OVERWRITE_ALLOWLIST_VAR must name each file,
+// never a bare boolean. `git ls-files --error-unmatch` exits non-zero for an
+// untracked path (or outside a git checkout entirely, where there is no committed
+// evidence to protect), so a failure means the path is safe to write.
+{
+  const planned = plannedSweepFiles({
+    models: MODELS,
+    conditions: Object.keys(CONDITIONS),
+    mainEnvironment: MAIN_ENVIRONMENT,
+    overheadEnvironment: OVERHEAD_ENVIRONMENT,
+    overheadModel: OVERHEAD_MODEL
+  })
+  const trackedFiles = []
+  for (const name of planned) {
+    try {
+      await run('git', ['ls-files', '--error-unmatch', '--', fileURLToPath(new URL(`./${name}`, RESULTS))], {
+        cwd: fileURLToPath(new URL('.', import.meta.url))
+      })
+      trackedFiles.push(name)
+    } catch {
+      // untracked: nothing committed at this path, so the sweep may write it
+    }
+  }
+  assertOverwritesAllowed({
+    plannedFiles: planned,
+    trackedFiles,
+    allowValue: process.env[OVERWRITE_ALLOWLIST_VAR]
+  })
 }
 
 // Warm the CLI-version cache before any money is spent. runCase awaits readCliVersion
@@ -189,6 +231,24 @@ try {
     )
     for (const row of rows[OVERHEAD_MODEL][OVERHEAD_ENVIRONMENT][condition]) persisted.add(row)
     writtenFiles.push(target.pathname)
+  }
+
+  // Same post-payment style check as the main sweep, and it matters MORE here: the lean
+  // environment passes no --setting-sources, so this arm loads the style from the
+  // operator's user-level ~/.claude/output-styles install, which runCase never verifies —
+  // installProjectStyle and its on-disk assertion are clean-environment-only, and
+  // `npm run preflight` exercises the clean environment only. Without this, a missing or
+  // stale user-level install makes all 20 lean calls measure Default against Default and
+  // report the overhead figure as fiction. Per case, with a synthesised turn 1, positioned
+  // after the write block, for the reasons documented on the main sweep's check above:
+  // a throw here still leaves the paid rows persisted and accounted for.
+  for (const caseRow of overheadCases) {
+    assertStyleOverheadPresent(
+      Object.values(rows[OVERHEAD_MODEL][OVERHEAD_ENVIRONMENT])
+        .flatMap(list => list
+          .filter(row => row.caseId === caseRow.id)
+          .map(row => ({ ...row, turn: 1 })))
+    )
   }
 } catch (error) {
   // Every row already collected but not yet written to a result file would otherwise

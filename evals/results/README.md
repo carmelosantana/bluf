@@ -4,15 +4,26 @@ Two things, kept apart on purpose — plus one retired experiment, labelled belo
 
 ## The current measurement
 
-The `bluf`-named `.jsonl` files are the 0.2.0 rules, measured at three trials per case
-with conditions interleaved. The project README's output-side figures — the headline
-percentages, the results table, the variance ranges — trace to these files. Its
-input-cost and break-even figures trace to the amortization slice below, and its
-0.1.0 regression figures to the archive below.
+The unsuffixed `full-claude-*-baseline.jsonl` and `full-claude-*-bluf.jsonl` files, together
+with the preserved `lean-claude-opus-5-*-0.2.0.jsonl` pair below, are the 0.2.0 rules,
+measured at three trials per case with conditions interleaved. The project README's
+output-side figures — the headline percentages, the results table, the variance ranges —
+trace to these files. Its input-cost and break-even figures trace to the amortization slice
+below, and its 0.1.0 regression figures to the archive below.
 
-`report-0.2.0.md` is the three-trial `full`-environment report those files produced. It is kept
-under a versioned name because `npm run measure` writes `report.md` unconditionally, and the
-0.2.0 measurement is evidence for claims the README still makes.
+`report-0.2.0.md` is the three-trial report those files produced — its main sections measured
+in the `full` environment, its two lean sections in `lean`. It is kept under a versioned name
+because `npm run measure` writes `report.md` unconditionally, and the 0.2.0 measurement is
+evidence for claims the README still makes.
+
+`lean-claude-opus-5-baseline-0.2.0.jsonl` and `lean-claude-opus-5-bluf-0.2.0.jsonl` are the
+three-trial, schedule-version-1 lean rows behind the 0.2.0 lean figures — the source of the
++13.4% output / +560-token lean aggregate the project README quotes, and of the lean sections
+inside `report-0.2.0.md`. They carry the version suffix for the same reason the report does,
+following the `-v1` precedent: the overhead sweep in `npm run measure` writes
+`lean-claude-opus-5-baseline.jsonl` and `lean-claude-opus-5-bluf.jsonl` unconditionally, and
+its replacement rows (five trials, schedule version 2, new provenance fields) would not be
+the rows those figures cite.
 
 ## Schedule versions
 
@@ -38,7 +49,7 @@ Two things about them:
   project's working name when the run happened. The files are preserved byte for byte
   rather than relabelled, because rewriting stored measurement records to match a name
   chosen afterwards is the kind of tidying that quietly destroys provenance.
-- **They are not methodologically comparable to `report.md`.** The 0.1.0 run was a single
+- **They are not methodologically comparable to `report-0.2.0.md`.** The 0.1.0 run was a single
   trial per case with each condition run as a contiguous block, which confounds the
   condition with elapsed time. The 0.2.0 run is three trials with conditions interleaved
   and rotated. The +32.2% regression is far enough outside the measured drift band to
@@ -54,7 +65,8 @@ The `bluf-terse` files are the full evaluation of a compression variant that was
 - `lean-claude-opus-5-bluf-terse.jsonl` — its 2-case lean-environment sweep
 - `amortization-claude-opus-5-bluf-terse.jsonl` — its arm of the amortization slice
 - the `less-chatty-terse-v1` files — its rows in the retracted 0.1.0 archive above
-- the terse sections of `report.md`
+- the terse sections of `report-0.2.0.md` — the terse variant is not a condition in any
+  newer run, so no future `report.md` will carry them
 
 It saved more output tokens than base BLUF but hurt consistency and skimmability — it
 lost to BLUF outright on some cases, and compressed grammar is harder prose — and a
@@ -103,7 +115,7 @@ aborts loudly instead of printing a plausible number.
 
 **Output tokens in this slice are not a style measurement.** Turn 2 re-asks a question just
 answered, so its length is noise — the unstyled arm measured 181, 33, and 194 across three
-trials. The output-reduction claim comes from the 12-case sweep in `report.md`, not from here.
+trials. The output-reduction claim comes from the 12-case sweep in `report-0.2.0.md`, not from here.
 An earlier version of this slice aborted a valid run on a turn-2 output ceiling for exactly this
 reason, and the unstyled arm has separately measured 5 output tokens on turn 1, identical to a
 styled answer.
@@ -124,7 +136,7 @@ The figures below are **design-time probes, not sweeps** — single observations
 scripts, without tier splits, interleaving, or rotation. Their raw rows are committed under
 [`probes/`](probes/), and `evals/test/probes.test.mjs` recomputes every one of them from that
 data, so they are traceable even though they are not measurements at this directory's usual bar.
-Read them as orientation; the published claims come from `report.md`.
+Read them as orientation; the published claims come from `report-0.2.0.md`.
 
 **Every row committed before the `clean` environment existed carries the operator's user
 settings**, and they are not small: measured against the same prompt and model, the operator's
