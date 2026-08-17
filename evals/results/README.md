@@ -121,11 +121,19 @@ range, and reproduced the input overhead at a median of 2,033 tokens across 29 o
 What those rows cannot support is an **absolute** figure that transfers to another machine.
 Read `full` and `lean` input totals as specific to the machine that produced them.
 
-One clean-environment figure **is** reproducible from this repository: the paid preflight
-(`npm run preflight`) was run against the commit that added it and measured a +2,034-token
-input overhead in the clean environment, with output collapsing from 349 to 5 tokens on the
-`port-default` case with `claude-opus-5`. Anyone can re-run `npm run preflight` and
-reproduce it for the cost of two calls.
+One clean-environment figure **is** re-derivable from this repository, and it is the only one
+here that is. The paid preflight (`npm run preflight`) was run against the commit that added
+it and measured a **+2,034-token** input overhead in the clean environment, with output
+collapsing from 349 to 5 tokens on the `port-default` case with `claude-opus-5`. Anyone can
+re-run it for the cost of two calls.
+
+Two limits on that figure, so it is not read for more than it is worth. It is a **single
+observation**, not a median — the design-time probes put the clean-environment overhead
+between 2,028 and 2,038, and +2,034 sits inside that band, but one call establishes no
+spread. And a re-run reproduces the **effect**, not these exact numbers: the overhead is
+near-deterministic because it is the style's own text, while the output figures are
+generated and will vary. What `npm run preflight` guarantees on a re-run is that the style
+reached the model at all.
 
 One further caveat for anyone re-running: the clean environment is **noisier**. Across three
 clean-room trials the baseline output sums were 21,298 / 24,673 / 27,332 — a 28% spread,
