@@ -1,0 +1,170 @@
+[
+ {
+  "id": "port-default",
+  "category": "short-lookup",
+  "base": {
+   "output": 216,
+   "input": 23332,
+   "chars": 527
+  },
+  "bluf": {
+   "output": 5,
+   "input": 25361,
+   "chars": 5
+  }
+ },
+ {
+  "id": "git-no-ff",
+  "category": "short-lookup",
+  "base": {
+   "output": 664,
+   "input": 23332,
+   "chars": 1639
+  },
+  "bluf": {
+   "output": 79,
+   "input": 25366,
+   "chars": 238
+  }
+ },
+ {
+  "id": "to-sorted",
+  "category": "short-lookup",
+  "base": {
+   "output": 360,
+   "input": 23341,
+   "chars": 890
+  },
+  "bluf": {
+   "output": 47,
+   "input": 25371,
+   "chars": 135
+  }
+ },
+ {
+  "id": "health-endpoint",
+  "category": "multi-step",
+  "base": {
+   "output": 1366,
+   "input": 23353,
+   "chars": 2881
+  },
+  "bluf": {
+   "output": 699,
+   "input": 25391,
+   "chars": 1847
+  }
+ },
+ {
+  "id": "actions-workflow",
+  "category": "multi-step",
+  "base": {
+   "output": 1145,
+   "input": 23351,
+   "chars": 2088
+  },
+  "bluf": {
+   "output": 557,
+   "input": 25382,
+   "chars": 576
+  }
+ },
+ {
+  "id": "cjs-to-esm",
+  "category": "multi-step",
+  "base": {
+   "output": 3549,
+   "input": 23348,
+   "chars": 7737
+  },
+  "bluf": {
+   "output": 5324,
+   "input": 25378,
+   "chars": 4984
+  }
+ },
+ {
+  "id": "401-no-evidence",
+  "category": "debug-partial-evidence",
+  "base": {
+   "output": 1098,
+   "input": 23362,
+   "chars": 1742
+  },
+  "bluf": {
+   "output": 393,
+   "input": 25396,
+   "chars": 427
+  }
+ },
+ {
+  "id": "ci-exit-1",
+  "category": "debug-partial-evidence",
+  "base": {
+   "output": 1601,
+   "input": 47542,
+   "chars": 1965
+  },
+  "bluf": {
+   "output": 576,
+   "input": 25380,
+   "chars": 664
+  }
+ },
+ {
+  "id": "scheduled-jobs",
+  "category": "options",
+  "base": {
+   "output": 2344,
+   "input": 23334,
+   "chars": 3969
+  },
+  "bluf": {
+   "output": 1459,
+   "input": 25365,
+   "chars": 1657
+  }
+ },
+ {
+  "id": "shared-types",
+  "category": "options",
+  "base": {
+   "output": 2374,
+   "input": 23344,
+   "chars": 4467
+  },
+  "bluf": {
+   "output": 2208,
+   "input": 25379,
+   "chars": 1885
+  }
+ },
+ {
+  "id": "security-headers",
+  "category": "long-list",
+  "base": {
+   "output": 2802,
+   "input": 23338,
+   "chars": 4557
+  },
+  "bluf": {
+   "output": 2098,
+   "input": 25373,
+   "chars": 2554
+  }
+ },
+ {
+  "id": "docker-cache-miss",
+  "category": "long-list",
+  "base": {
+   "output": 3779,
+   "input": 23337,
+   "chars": 4153
+  },
+  "bluf": {
+   "output": 5032,
+   "input": 25371,
+   "chars": 4327
+  }
+ }
+]

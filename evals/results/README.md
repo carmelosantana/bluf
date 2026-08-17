@@ -105,44 +105,59 @@ and the distinction matters for reading any absolute figure.
   settings entirely, and installs the style at project level inside the run's temp
   directory so it remains loadable.
 
-One provenance note before the numbers. Every figure in this section, the preflight figure
-included, is an exploratory measurement taken on the author's machine, and their raw rows
-are **not committed to this repository** — unlike every figure in `report.md`, none of them
-can be reproduced from the files here. They are kept as orientation, not as evidence at
-this directory's usual bar.
+The figures below are **design-time probes, not sweeps** — single observations from ad-hoc
+scripts, without tier splits, interleaving, or rotation. Their raw rows are committed under
+[`probes/`](probes/), and `evals/test/probes.test.mjs` recomputes every one of them from that
+data, so they are traceable even though they are not measurements at this directory's usual bar.
+Read them as orientation; the published claims come from `report.md`.
 
 **Every row committed before the `clean` environment existed carries the operator's user
-settings**, measured at 1,248 input tokens on the author's machine — plugin and MCP
-configuration present in every arm.
-Because it is present in both arms, it is an additive constant on the **input** side and paired
-input deltas cancel it. That argument does not transfer to output tokens, which are generated
-behaviour rather than an additive term — this harness's own notes record leaked plugin config
-making one arm invoke a tool call the other did not. What supports the published
-output-reduction figures against this is weaker and worth stating as such: a design-time
-clean-room replication on claude-opus-5 produced a median of −36.5%, larger than the published
-−30.9% and in the same direction, across trials measuring −13.2%, −36.5% and −41.0%. The same
-probes reproduced the input overhead at a median of 2,033 tokens across 29 observations. None of
-those rows are committed here.
+settings**, and they are not small: measured against the same prompt and model, the operator's
+user settings are worth **98,284 input tokens** and their MCP servers 116,766, the two
+overlapping because user settings are where MCP servers are configured. Excluding both leaves
+3,598. A figure of "1,248 tokens of operator config" appeared in earlier drafts of this
+repository; it reproduces at **1,243**, but it never meant what it said — it is the remainder of
+user settings *after* their MCP content is already excluded, not their cost. See
+[`probes/README.md`](probes/README.md).
+
+Because that configuration is present in both arms, it is an additive constant on the **input**
+side and paired input deltas cancel it. That argument does not transfer to output tokens, which
+are generated behaviour rather than an additive term — this harness's own notes record leaked
+plugin config making one arm invoke a tool call the other did not. What supports the published
+output-reduction figures against this is weaker and worth stating as such: an isolation
+replication on claude-opus-5 produced a median of **−36.5%**, larger than the published −30.9%
+and in the same direction, across trials measuring −13.2%, −36.5% and −41.0%, and reproduced the
+input overhead at a median of **2,033 tokens across 29 in-band observations**.
+
+Two things about that replication, both of which limit it. It was **not** run in the `clean`
+environment described above — its script passes `--setting-sources project` but not
+`--strict-mcp-config`, so MCP servers were still loaded, and its baseline input sits with the
+`no-user-settings` configuration rather than the `clean` one. And its overhead figure excludes 7
+of 36 pairs whose two arms were in different cache states. That is a post-hoc filter, so the
+rule, the count, and every excluded row are written down in `probes/README.md` and asserted by a
+test.
 
 What those rows cannot support is an **absolute** figure that transfers to another machine.
 Read `full` and `lean` input totals as specific to the machine that produced them.
 
-The preflight figure's rows are not committed either — `evals/preflight.mjs` writes no rows,
-it only prints. What sets it apart is not traceability but that anyone can re-run it for the
-cost of two calls and watch the check pass or fail for themselves. The paid preflight
+The preflight figure below is the one clean-environment number produced by shipped code rather
+than a probe script, though `evals/preflight.mjs` writes no rows — it only prints. What sets it
+apart is that anyone can re-run it for the cost of two calls and watch the check pass or fail for
+themselves. The paid preflight
 (`npm run preflight`) was run against the commit that added it and measured a **+2,034-token**
 input overhead in the clean environment, with output collapsing from 349 to 5 tokens on the
 `port-default` case with `claude-opus-5`.
 
 Two limits on that figure, so it is not read for more than it is worth. It is a **single
-observation**, not a median — the design-time probes put the clean-environment overhead
-between 2,028 and 2,038, and +2,034 sits inside that band, but one call establishes no
-spread. And a re-run reproduces the **effect**, not these exact numbers: the overhead is
-near-deterministic because it is the style's own text, while the output figures are
-generated and will vary. What `npm run preflight` guarantees on a re-run is that the style
-reached the model at all.
+observation**, not a median — the probes put the style overhead between 2,028 and 2,038 and
++2,034 sits inside that band, but those probes ran with MCP servers loaded, and one call
+establishes no spread either way. And a re-run reproduces the **effect**, not these exact
+numbers: the overhead is near-deterministic because it is the style's own text, while the output
+figures are generated and will vary. Four `clean` observations recorded input of 3,588 / 3,597 /
+3,598 against outputs of 223 / 1,767 / 64,342 — the last a runaway to a one-line question. What
+`npm run preflight` guarantees on a re-run is that the style reached the model at all.
 
-One further caveat for anyone re-running: the clean environment is **noisier**. Across three
-clean-room trials the baseline output sums were 21,298 / 24,673 / 27,332 — a 28% spread,
+One further caveat for anyone re-running: an isolated environment is **noisier**. Across three
+replication trials the baseline output sums were 21,298 / 24,673 / 27,332 — a 28% spread,
 against 3.2% for the same model in `full`. The tooling-heavy context appears to stabilise the
 baseline. Budget more trials, not fewer.
