@@ -2,8 +2,9 @@ import { writeFile, mkdir, readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import {
   CONDITIONS, MODELS, ENVIRONMENTS, MAIN_ENVIRONMENT, OVERHEAD_ENVIRONMENT, OVERHEAD_MODEL,
-  OVERHEAD_CASES, PROMPTS_SHA256, loadCases, runCase, rotate, readCliVersion
+  OVERHEAD_CASES, PROMPTS_SHA256, loadCases, runCase, readCliVersion
 } from './lib/runner.mjs'
+import { scheduleSweep } from './lib/schedule.mjs'
 import { compare, formatReport } from './lib/report.mjs'
 
 // Every sweep below spends real money. All cheap validation happens up here,
@@ -103,15 +104,12 @@ try {
       rows[model][MAIN_ENVIRONMENT][condition] = []
     }
 
-    for (const [index, caseRow] of cases.entries()) {
-      for (let trial = 1; trial <= TRIALS; trial += 1) {
-        for (const condition of rotate(Object.keys(CONDITIONS), index)) {
-          process.stderr.write(`${MAIN_ENVIRONMENT} ${model} ${condition} trial ${trial} ${caseRow.id}\n`)
-          const row = await runCase(caseRow, condition, model, MAIN_ENVIRONMENT, trial)
-          rows[model][MAIN_ENVIRONMENT][condition].push(row)
-          allRows.push(row)
-        }
-      }
+    const byId = new Map(cases.map(caseRow => [caseRow.id, caseRow]))
+    for (const entry of scheduleSweep({ cases, conditions: Object.keys(CONDITIONS), trials: TRIALS })) {
+      process.stderr.write(`${MAIN_ENVIRONMENT} ${model} ${entry.condition} trial ${entry.trial} ${entry.caseId}\n`)
+      const row = await runCase(byId.get(entry.caseId), entry.condition, model, MAIN_ENVIRONMENT, entry.trial)
+      rows[model][MAIN_ENVIRONMENT][entry.condition].push(row)
+      allRows.push(row)
     }
 
     // Written after the loop: a condition's rows are no longer contiguous.
@@ -140,15 +138,12 @@ try {
   // here: this sweep exists to isolate the style's input-token overhead, so a
   // systematic cache-cost difference between conditions would land directly on the
   // number it is measuring.
-  for (const [index, caseRow] of overheadCases.entries()) {
-    for (let trial = 1; trial <= TRIALS; trial += 1) {
-      for (const condition of rotate(Object.keys(CONDITIONS), index)) {
-        process.stderr.write(`${OVERHEAD_ENVIRONMENT} ${OVERHEAD_MODEL} ${condition} trial ${trial} ${caseRow.id}\n`)
-        const row = await runCase(caseRow, condition, OVERHEAD_MODEL, OVERHEAD_ENVIRONMENT, trial)
-        rows[OVERHEAD_MODEL][OVERHEAD_ENVIRONMENT][condition].push(row)
-        allRows.push(row)
-      }
-    }
+  const overheadById = new Map(overheadCases.map(caseRow => [caseRow.id, caseRow]))
+  for (const entry of scheduleSweep({ cases: overheadCases, conditions: Object.keys(CONDITIONS), trials: TRIALS })) {
+    process.stderr.write(`${OVERHEAD_ENVIRONMENT} ${OVERHEAD_MODEL} ${entry.condition} trial ${entry.trial} ${entry.caseId}\n`)
+    const row = await runCase(overheadById.get(entry.caseId), entry.condition, OVERHEAD_MODEL, OVERHEAD_ENVIRONMENT, entry.trial)
+    rows[OVERHEAD_MODEL][OVERHEAD_ENVIRONMENT][entry.condition].push(row)
+    allRows.push(row)
   }
 
   for (const condition of Object.keys(CONDITIONS)) {
