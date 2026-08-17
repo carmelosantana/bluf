@@ -26,7 +26,18 @@ export const MODELS = ['claude-fable-5', 'claude-opus-5']
 
 export const ENVIRONMENTS = {
   lean: ['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'],
-  full: []
+  full: [],
+  // Excludes the operator's user settings, which carry plugin and MCP configuration.
+  // Measured at 1,248 input tokens on the author's machine — 61% the size of the style
+  // overhead itself, present in every arm. Paired deltas cancel it, which is why the
+  // 0.2.0 figures survive, but absolute numbers were machine-specific and agentic runs
+  // were worse: leaked plugin config made one arm invoke a Skill tool call the other
+  // did not.
+  //
+  // REQUIRES a project-level style install. Output styles live in ~/.claude/output-styles,
+  // a USER source, so this flag alone makes the style unloadable and the sweep measures
+  // Default against Default while reporting success. installProjectStyle() is not optional.
+  clean: ['--setting-sources', 'project', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}']
 }
 
 export const OVERHEAD_CASES = ['port-default', 'docker-cache-miss']

@@ -46,8 +46,8 @@ test('OVERHEAD_MODEL is one of the models under test', () => {
   assert.ok(MODELS.includes(OVERHEAD_MODEL))
 })
 
-test('ENVIRONMENTS defines exactly lean and full', () => {
-  assert.deepEqual(Object.keys(ENVIRONMENTS).sort(), ['full', 'lean'])
+test('ENVIRONMENTS defines exactly clean, full and lean', () => {
+  assert.deepEqual(Object.keys(ENVIRONMENTS).sort(), ['clean', 'full', 'lean'])
 })
 
 test('every condition pins an explicit output style', () => {
@@ -1679,4 +1679,21 @@ test('runAmortizationPair rejects an unknown condition before spending anything'
     ),
     /unknown condition: nonexistent/
   )
+})
+
+test('the clean environment excludes the operator machine config', () => {
+  const args = buildArgs('why?', 'BLUF', 'claude-opus-5', 'clean')
+
+  assert.ok(args.includes('--setting-sources'))
+  assert.equal(args[args.indexOf('--setting-sources') + 1], 'project')
+  assert.ok(args.includes('--strict-mcp-config'), 'clean must also exclude the operator MCP servers')
+})
+
+test('the clean environment does not change full or lean', () => {
+  // The 0.2.0 rows were measured in these two. Changing either retroactively changes
+  // what those committed rows mean.
+  assert.deepEqual(ENVIRONMENTS.full, [])
+  assert.deepEqual(ENVIRONMENTS.lean, ['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'])
+  assert.ok(!ENVIRONMENTS.full.includes('--setting-sources'))
+  assert.ok(!ENVIRONMENTS.lean.includes('--setting-sources'))
 })
