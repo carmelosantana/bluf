@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { compare, formatReport, median } from '../lib/report.mjs'
+import {
+  compare, formatReport, median,
+  TIER_FIELDS, requireTiers, breakEven, perTrialMedianOutputSaved
+} from '../lib/report.mjs'
 
 function row (caseId, condition, outputTokens, inputTokens = 100, trial = 1) {
   return {
@@ -256,4 +259,92 @@ test('formatReport states the aggregate per sweep, not summed across trials', ()
   const text = formatReport(compare(base, cand), { condition: 'bluf', model: 'claude-fable-5', environment: 'lean' })
   assert.match(text, /Output tokens per sweep: 200 to 100/)
   assert.match(text, /-50\.0%/)
+})
+
+test('requireTiers accepts a row carrying every tier', () => {
+  const complete = {
+    caseId: 'port-default',
+    condition: 'bluf',
+    trial: 1,
+    inputUncached: 12,
+    inputCacheRead: 117119,
+    inputCacheWrite: 5169,
+    inputCacheWrite1h: 5169,
+    inputCacheWrite5m: 0
+  }
+
+  assert.equal(requireTiers(complete), complete)
+})
+
+test('requireTiers rejects a row with the summed cache write but no TTL split', () => {
+  // 1h and 5m writes bill at different rates, so the summed figure alone is not priceable.
+  const noSplit = {
+    caseId: 'port-default',
+    condition: 'bluf',
+    trial: 1,
+    inputUncached: 12,
+    inputCacheRead: 117119,
+    inputCacheWrite: 5169
+  }
+
+  assert.throws(() => requireTiers(noSplit), /inputCacheWrite1h/)
+})
+
+test('requireTiers throws on a pre-tier row instead of treating a missing tier as zero', () => {
+  const legacy = { caseId: 'port-default', condition: 'bluf', trial: 1, inputTokens: 123631 }
+
+  assert.throws(() => requireTiers(legacy), /missing token tiers/)
+  assert.throws(() => requireTiers(legacy), /inputUncached/)
+})
+
+test('breakEven returns the output-to-input price ratio where the trade pays off', () => {
+  assert.equal(breakEven({ outputSaved: 500, inputAdded: 2000 }), 4)
+  assert.equal(breakEven({ outputSaved: 2000, inputAdded: 200 }), 0.1)
+})
+
+test('breakEven throws when the style saved no output', () => {
+  assert.throws(
+    () => breakEven({ outputSaved: 0, inputAdded: 2030 }),
+    /undefined when the style saves no output/
+  )
+  assert.throws(
+    () => breakEven({ outputSaved: -120, inputAdded: 2030 }),
+    /undefined when the style saves no output/
+  )
+})
+
+test('breakEven rejects a negative input overhead', () => {
+  assert.throws(
+    () => breakEven({ outputSaved: 500, inputAdded: -10 }),
+    /inputAdded must be >= 0/
+  )
+})
+
+test('perTrialMedianOutputSaved medians the per-trial means, not the pooled deltas', () => {
+  // Two cases, three trials. Trial 2 carries an outlier that a pooled mean would
+  // absorb into the headline and a pooled median would hide entirely.
+  const baseline = [
+    row('a', 'baseline', 100, 100, 1), row('b', 'baseline', 100, 100, 1),
+    row('a', 'baseline', 100, 100, 2), row('b', 'baseline', 900, 100, 2),
+    row('a', 'baseline', 100, 100, 3), row('b', 'baseline', 100, 100, 3)
+  ]
+  const candidate = [
+    row('a', 'bluf', 50, 100, 1), row('b', 'bluf', 50, 100, 1),
+    row('a', 'bluf', 50, 100, 2), row('b', 'bluf', 50, 100, 2),
+    row('a', 'bluf', 60, 100, 3), row('b', 'bluf', 60, 100, 3)
+  ]
+
+  // trial means: (50+50)/2 = 50, (50+850)/2 = 450, (40+40)/2 = 40 -> median 50
+  assert.equal(perTrialMedianOutputSaved(baseline, candidate), 50)
+})
+
+test('perTrialMedianOutputSaved throws when a candidate row has no baseline pair', () => {
+  const baseline = [row('a', 'baseline', 100, 100, 1)]
+  const candidate = [row('a', 'bluf', 50, 100, 1), row('b', 'bluf', 50, 100, 1)]
+
+  assert.throws(() => perTrialMedianOutputSaved(baseline, candidate), /no baseline row for b/)
+})
+
+test('perTrialMedianOutputSaved throws on empty candidate rows', () => {
+  assert.throws(() => perTrialMedianOutputSaved([], []), /requires at least one candidate row/)
 })

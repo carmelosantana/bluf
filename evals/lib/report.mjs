@@ -215,3 +215,83 @@ export function formatReport (comparison, { condition, model, environment }) {
   lines.push('')
   return lines.join('\n')
 }
+
+// Five fields, not three. 1-hour and 5-minute cache writes bill at different rates, so a row
+// carrying only the summed inputCacheWrite cannot be priced — the same defect as summing the
+// three top-level tiers, one level down.
+export const TIER_FIELDS = [
+  'inputUncached',
+  'inputCacheRead',
+  'inputCacheWrite',
+  'inputCacheWrite1h',
+  'inputCacheWrite5m'
+]
+
+// A row measured before tier capture landed has no split. Defaulting the missing tiers to
+// zero would price the style's input overhead at nothing — the most flattering error
+// available, and the same class of mistake as the retracted "does not buy a smaller bill"
+// claim. Unknown is not zero, so this throws.
+export function requireTiers (row) {
+  const missing = TIER_FIELDS.filter(field => typeof row?.[field] !== 'number')
+  if (missing.length > 0) {
+    throw new Error(
+      `cannot price row ${row?.caseId}/${row?.condition}/trial ${row?.trial}: ` +
+      `missing token tiers [${missing.join(', ')}]. Rows measured before tier capture landed ` +
+      'carry only a summed inputTokens field, and treating a missing tier as zero would report ' +
+      'the style overhead as free. Re-measure with the current harness instead.'
+    )
+  }
+  return row
+}
+
+// The output:input price ratio at which the input the style adds is exactly paid for by the
+// output it removes. Below this ratio the style costs money; above it, the style saves money.
+// Deliberately returns a ratio and not a currency amount: this project publishes no prices.
+export function breakEven ({ outputSaved, inputAdded }) {
+  if (!Number.isFinite(outputSaved) || !Number.isFinite(inputAdded)) {
+    throw new Error(
+      `breakEven requires finite numbers, got outputSaved: ${JSON.stringify(outputSaved)}, ` +
+      `inputAdded: ${JSON.stringify(inputAdded)}`
+    )
+  }
+  if (inputAdded < 0) {
+    throw new Error(`inputAdded must be >= 0, got ${inputAdded}`)
+  }
+  if (outputSaved <= 0) {
+    throw new Error(
+      `breakEven is undefined when the style saves no output (outputSaved: ${outputSaved}). ` +
+      'That case loses at every price ratio and must be reported as a loss, not as a large ratio.'
+    )
+  }
+  return inputAdded / outputSaved
+}
+
+// Output tokens saved per turn, as a positive number. Computed as the median of the
+// per-trial means, matching the README's Variance section, which aggregates within a trial
+// and then summarises across trials. The pooled mean and pooled median disagree with this
+// and with each other by enough to flip a model's verdict, so the statistic is pinned here
+// rather than chosen at each call site.
+export function perTrialMedianOutputSaved (baselineRows, candidateRows) {
+  const rowKey = (row) => JSON.stringify([row.caseId, row.trial])
+  const baseline = new Map(baselineRows.map(row => [rowKey(row), row]))
+  const perTrial = new Map()
+
+  for (const row of candidateRows) {
+    const pair = baseline.get(rowKey(row))
+    if (!pair) {
+      throw new Error(`no baseline row for ${row.caseId} trial ${row.trial}`)
+    }
+    const deltas = perTrial.get(row.trial) ?? []
+    deltas.push(pair.outputTokens - row.outputTokens)
+    perTrial.set(row.trial, deltas)
+  }
+
+  if (perTrial.size === 0) {
+    throw new Error('perTrialMedianOutputSaved requires at least one candidate row')
+  }
+
+  const trialMeans = [...perTrial.values()]
+    .map(deltas => deltas.reduce((total, delta) => total + delta, 0) / deltas.length)
+
+  return median(trialMeans)
+}
