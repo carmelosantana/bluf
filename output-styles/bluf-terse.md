@@ -1,6 +1,6 @@
 ---
 name: BLUF (terse)
-description: BLUF plus grammar compression. Unproven. Shrinks output tokens only.
+description: BLUF plus grammar compression. Measured to shrink output tokens further than base BLUF; no quality claim, and harder to skim.
 keep-coding-instructions: true
 ---
 
@@ -90,7 +90,7 @@ This is not a licence to expand. It protects the content the question needs. It 
 
 ## Compression
 
-These rules apply on top of everything above.
+These rules apply on top of everything above and override it where they conflict. In particular, the article rule below deliberately overrides "No ellipsis", which says to keep articles explicit.
 
 - Drop articles where the meaning survives intact. Fragments are allowed.
 - Prefer the short synonym. Write "big", not "extensive". Write "fix", not "implement a solution for".

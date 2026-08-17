@@ -1,9 +1,9 @@
 # BLUF
 
-*Bottom Line Up Front.* A Claude Code output style that leads with the conclusion and cuts filler — measured, including what it costs.
+*Bottom Line Up Front.* A Claude Code output style that leads with the conclusion, written to cut filler — with the output-token reduction measured, including what it costs.
 
 - Cuts assistant output tokens by a median of **35.0%** on claude-fable-5 and **30.9%** on claude-opus-5. The terse variant cuts **39.2%** and **38.5%**. Measured on 12 Claude Code-shaped prompts, 3 trials per case, in a full ~124k-token environment.
-- **Every one of the 12 trial-level measurements came out negative.** The direction is not in question; the size is. Per-trial ranges are −44.0% to −30.7% (fable) and −32.7% to −29.0% (opus). See [Variance](#variance).
+- **Every one of the 12 trial-level measurements came out negative.** On this suite, in this run, the direction was consistent; the size varied. Per-trial ranges are −44.0% to −30.7% (fable) and −32.7% to −29.0% (opus). See [Variance](#variance).
 - Costs input tokens: **+2,030** (BLUF) or **+2,320** (terse) per turn — the median of the per-trial paired differences, the same statistic used for the output-savings figures. The per-trial differences were 2,029–2,037 (BLUF) and 2,319–2,327 (terse) across the amortization run's trials. On the first turn of a session that is a cache **write**; from the second turn on it is a cache **read** of the same size.
 - **At published cache pricing, costs money on turn 1 and saves money on every turn after.** Break-even is 6.6×–10.6× output:input for a one-turn session and 0.33×–0.53× in steady state. No prices are quoted here — multiply by your own and see [What it costs](#what-it-costs).
 - 6 of the 48 per-case measurements have trial ranges that straddle zero, meaning the style's effect on those cases is not distinguishable from run-to-run noise even at 3 trials.
@@ -359,7 +359,7 @@ This style is assembled from prior art, and it exists because that prior art pub
 
 Four issue reporters found the failure modes this style's rules correct:
 
-- [i-have-adhd#99](https://github.com/ayghri/i-have-adhd/issues/99) — a rule that demands a cause pressures the model to invent one. Hence the Errors rule: never supply a plausible cause in place of a confirmed one.
+- [i-have-adhd#99](https://github.com/ayghri/i-have-adhd/issues/99) — a rule that demands a cause pressures the model to invent one. Hence the Errors rule: never supply a plausible cause in place of a confirmed one. The rule reduced this failure mode; it did not eliminate it. Our own shipped sample for it ([`401-no-evidence.claude-opus-5.0.2.0.txt`](evals/results/samples/401-no-evidence.claude-opus-5.0.2.0.txt)) correctly lists four candidate causes without picking one, yet its opening line asserts the request was rejected "before any handler logic ran" — an attribution a 401 status alone does not establish.
 - [i-have-adhd#96](https://github.com/ayghri/i-have-adhd/issues/96), reported by `nbali` — "cap lists at 5" drops relevant findings. Hence: group and rank, never truncate.
 - [i-have-adhd#43](https://github.com/ayghri/i-have-adhd/issues/43), reported by `kuhlsnu` — style rules collide with the harness system prompt. Hence the precedence clause: the harness outranks the style.
 - [i-have-adhd#112](https://github.com/ayghri/i-have-adhd/issues/112) — over-adherence stalls tool use into "want me to?" loops. Hence: do the work instead of asking.
