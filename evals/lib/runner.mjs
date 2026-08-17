@@ -11,11 +11,15 @@ const run = promisify(execFile)
 // The VALUES must equal the `name:` frontmatter in output-styles/ byte for byte.
 // A mismatch does not throw: claude falls back to the default style, so the sweep
 // measures Default against Default and reports it as a result. The style.test.mjs
-// assertions that pin these two strings are the only thing that catches it.
+// assertions that pin these strings are the only thing that catches it.
+//
+// A retired condition (the terse variant, retired before launch — see archive/) is
+// removed from this table so no new sweep spends money on it. Its committed result
+// rows under evals/results/ still carry `condition: "bluf-terse"`; nothing validates
+// stored evidence against this table, only conditions a live run is about to pay for.
 export const CONDITIONS = {
   baseline: 'Default',
-  bluf: 'BLUF',
-  'bluf-terse': 'BLUF (terse)'
+  bluf: 'BLUF'
 }
 
 export const MODELS = ['claude-fable-5', 'claude-opus-5']
@@ -473,7 +477,7 @@ export function assertTurn2CarriedTurn1 (rows) {
 // evals/results/amortization-claude-opus-5-baseline.jsonl: baseline turn-1 input
 // measured 4829/4835/4835 — a 6-token spread across trials — while styled turn-1
 // input measured about 6865 for BLUF (an overhead of about 2,030 tokens) and about
-// 7150 for the terse variant (about 2,320). 1,500 therefore sits far below any real
+// 7150 for the since-retired terse variant (about 2,320). 1,500 therefore sits far below any real
 // overhead and far above the zero a missing style would produce.
 export const MIN_STYLE_OVERHEAD_TOKENS = 1500
 

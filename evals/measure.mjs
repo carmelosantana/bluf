@@ -5,7 +5,6 @@ import {
   OVERHEAD_CASES, PROMPTS_SHA256, loadCases, runCase, rotate
 } from './lib/runner.mjs'
 import { compare, formatReport } from './lib/report.mjs'
-import { checkDrift } from './lib/drift.mjs'
 
 // Every sweep below spends real money. All cheap validation happens up here,
 // before the first paid runCase call.
@@ -25,23 +24,6 @@ if (TRIALS > MAX_TRIALS) {
 }
 
 const RESULTS = new URL('./results/', import.meta.url)
-
-// Gate: never spend tokens measuring style files that have drifted apart.
-let drift
-try {
-  drift = checkDrift(
-    await readFile(new URL('../output-styles/bluf.md', import.meta.url), 'utf8'),
-    await readFile(new URL('../output-styles/bluf-terse.md', import.meta.url), 'utf8')
-  )
-} catch (error) {
-  console.error(error.message)
-  process.exit(1)
-}
-if (!drift.ok) {
-  console.error(drift.message)
-  console.error('refusing to measure drifted style files. run `npm run check`.')
-  process.exit(1)
-}
 
 // Gate: never spend tokens measuring a case set that no longer matches the pin. A
 // silent edit to prompts.jsonl would produce results that look comparable to the
@@ -92,7 +74,7 @@ await mkdir(RESULTS, { recursive: true })
 // Failure-accounting bookkeeping, error reporting ONLY: nothing below alters what is
 // measured, in what order, or what a successful run writes. Rows are only persisted
 // after a model's entire case loop, and parseUsage is deliberately strict, so without
-// this a single malformed payload late in a loop would discard up to 108 paid calls
+// this a single malformed payload late in a loop would discard up to 72 paid calls
 // with a bare stack trace — the sibling driver measure-amortization.mjs already
 // accounts for its paid rows the same way.
 const allRows = []

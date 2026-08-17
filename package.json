@@ -10,7 +10,6 @@
   },
   "scripts": {
     "test": "node --test 'evals/test/*.test.mjs'",
-    "check": "node evals/check.mjs",
     "measure": "node evals/measure.mjs",
     "measure:amortization": "node evals/measure-amortization.mjs"
   }

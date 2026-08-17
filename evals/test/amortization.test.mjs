@@ -20,8 +20,10 @@ test('the amortization constants name a real environment and model', () => {
 })
 
 test('the amortization sweep covers every condition, baseline included', () => {
-  // Without a baseline arm there is nothing to subtract the overhead from.
-  assert.deepEqual(Object.keys(CONDITIONS).sort(), ['baseline', 'bluf', 'bluf-terse'])
+  // Without a baseline arm there is nothing to subtract the overhead from. The terse
+  // variant is retired (see archive/), so the live sweep is two conditions; its
+  // committed rows remain under evals/results/ as stored evidence.
+  assert.deepEqual(Object.keys(CONDITIONS).sort(), ['baseline', 'bluf'])
 })
 
 test('measure-amortization validates the prompt pin before any paid call', async () => {

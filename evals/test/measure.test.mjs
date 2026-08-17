@@ -11,8 +11,8 @@ import { readFile } from 'node:fs/promises'
 test('measure.mjs protects every paid call and dumps unpersisted rows on failure', async () => {
   const source = await readFile(new URL('../measure.mjs', import.meta.url), 'utf8')
 
-  // The drift gate near the top has its own try/catch, so anchor on the paid region:
-  // the try that most closely precedes the first paid call, and the catch after it.
+  // Anchor on the paid region: the try that most closely precedes the first paid
+  // call, and the catch after it.
   const firstPaidIndex = source.indexOf('await runCase(')
   assert.ok(firstPaidIndex > -1, 'the driver must actually run paid cases')
   const tryIndex = source.lastIndexOf('try {', firstPaidIndex)
@@ -20,7 +20,7 @@ test('measure.mjs protects every paid call and dumps unpersisted rows on failure
   assert.ok(
     tryIndex > -1 && tryIndex < firstPaidIndex,
     'every paid runCase call must sit inside a protected region: a strict parseUsage throw on one ' +
-    'malformed payload late in a model loop would otherwise discard up to 108 paid calls with a bare ' +
+    'malformed payload late in a model loop would otherwise discard up to 72 paid calls with a bare ' +
     'stack trace, because rows are only written after the loop completes'
   )
   assert.ok(

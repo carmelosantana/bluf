@@ -2,11 +2,11 @@
 
 *Bottom Line Up Front.* A Claude Code output style that leads with the conclusion, written to cut filler — with the output-token reduction measured, including what it costs.
 
-- Cuts assistant output tokens by a median of **35.0%** on claude-fable-5 and **30.9%** on claude-opus-5. The terse variant cuts **39.2%** and **38.5%**. Measured on 12 Claude Code-shaped prompts, 3 trials per case, in a full ~124k-token environment.
+- Cuts assistant output tokens by a median of **35.0%** on claude-fable-5 and **30.9%** on claude-opus-5. Measured on 12 Claude Code-shaped prompts, 3 trials per case, in a full ~124k-token environment.
 - **Every one of the 12 trial-level measurements came out negative.** On this suite, in this run, the direction was consistent; the size varied. Per-trial ranges are −44.0% to −30.7% (fable) and −32.7% to −29.0% (opus). See [Variance](#variance).
-- Costs input tokens: **+2,030** (BLUF) or **+2,320** (terse) per turn — the median of the per-trial paired differences, the same statistic used for the output-savings figures. The per-trial differences were 2,029–2,037 (BLUF) and 2,319–2,327 (terse) across the amortization run's trials. On the first turn of a session that is a cache **write**; from the second turn on it is a cache **read** of the same size.
-- **At published cache pricing, costs money on turn 1 and saves money on every turn after.** Break-even is 6.6×–10.6× output:input for a one-turn session and 0.33×–0.53× in steady state. No prices are quoted here — multiply by your own and see [What it costs](#what-it-costs).
-- 6 of the 48 per-case measurements have trial ranges that straddle zero, meaning the style's effect on those cases is not distinguishable from run-to-run noise even at 3 trials.
+- Costs input tokens: **+2,030** per turn — the median of the per-trial paired differences, the same statistic used for the output-savings figures. The per-trial differences were 2,029–2,037 across the amortization run's trials. On the first turn of a session that is a cache **write**; from the second turn on it is a cache **read** of the same size.
+- **At published cache pricing, costs money on turn 1 and saves money on every turn after.** Break-even is 7.2×–10.6× output:input for a one-turn session and 0.36×–0.53× in steady state. No prices are quoted here — multiply by your own and see [What it costs](#what-it-costs).
+- 4 of the 24 per-case measurements have trial ranges that straddle zero, meaning the style's effect on those cases is not distinguishable from run-to-run noise even at 3 trials.
 - Version **0.1.0** of these rules made Opus **32.2% more verbose**. Measuring across models caught it. See [The 0.1.0 regression](#the-010-regression-on-opus).
 
 All numbers come from [`evals/results/`](evals/results/), committed in this repo — [`report.md`](evals/results/report.md) (four sections for the 12-case full-environment sweep, two for a 2-case lean-environment sweep), and the session-amortization slice (the cache write/read splits behind the input-cost and break-even figures) from the `amortization-*.jsonl` files. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
@@ -76,41 +76,31 @@ Full text: [`output-styles/bluf.md`](output-styles/bluf.md). In summary:
 - Explicit instructions from the user, the project, a skill, or the harness outrank all of this.
 - A pre-send check deletes announcements, recaps, sidebars, and any section that restates a bullet.
 
-## The terse variant
+## The retired terse variant
 
-It adds grammar compression on top of the base style:
-
-- Drop articles where the meaning survives. Fragments are allowed.
-- Prefer the short synonym.
-- Never invent an abbreviation — the tokenizer splits `cfg` like the full word, so it saves nothing.
-- No arrows. Standard acronyms (DB, API, HTTP) are fine; never coin one.
-- Compression never touches code, quotes, exact strings, or caveats.
-
-**It cuts more on aggregate, but not uniformly, and it is not strictly better.** It costs more input than the base style (+2,320 per turn vs +2,030), and it loses on individual cases: on opus, `actions-workflow` measured 715 output tokens under terse against 499 under BLUF, and `docker-cache-miss` measured 3,840 against 3,525. Compressed grammar is also harder to skim for some readers, which no token count captures.
-
-**The terse figures were measured before a 207-byte edit to `bluf-terse.md` and have not been re-measured**, so its real overhead is slightly above the published +2,320. The edit fixed a rule contradiction about articles. `bluf.md` is unchanged, so the base figures are unaffected.
+An evaluated compression variant — grammar compression layered on top of these rules — saved more output tokens than BLUF but hurt consistency and skimmability, so it was retired before launch. Its rules and its full measurements are preserved under [`archive/`](archive/) and in the `bluf-terse` result files in [`evals/results/`](evals/results/).
 
 ## Measured results
 
-Median output tokens per case across 3 trials, full environment. Source: [`evals/results/report.md`](evals/results/report.md), which also carries the per-case delta ranges. That file's own aggregate lines quote −37.1%, −42.0%, −30.9%, and −41.1% — a different statistic again, the pooled token-weighted percentage (all trials' styled output summed over all trials' baseline output), which weights the longest cases most heavily. The headline figures are per-trial medians instead; the two statistics are computed from the same rows and agree in direction on every condition.
+Median output tokens per case across 3 trials, full environment. Source: [`evals/results/report.md`](evals/results/report.md), which also carries the per-case delta ranges, plus the retired terse variant's sections. That file's aggregate lines for BLUF quote −37.1% and −30.9% — a different statistic again, the pooled token-weighted percentage (all trials' styled output summed over all trials' baseline output), which weights the longest cases most heavily. The headline figures are per-trial medians instead; the two statistics are computed from the same rows and agree in direction on every condition.
 
-| Case | Category | fable base | fable BLUF | fable terse | opus base | opus BLUF | opus terse |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| port-default | short-lookup | 133 | 5 | 5 | 140 | 5 | 5 |
-| git-no-ff | short-lookup | 360 | 112 | 120 | 492 | 114 | 130 |
-| to-sorted | short-lookup | 280 | 78 | 68 | 405 | 52 | 40 |
-| health-endpoint | multi-step | 1,013 | 624 | 551 | 1,833 | 915 | 764 |
-| actions-workflow | multi-step | 686 | 381 | 460 | 1,053 | 499 | 715 |
-| cjs-to-esm | multi-step | 2,323 | 1,800 | 1,526 | 2,934 | 3,372 | 2,989 |
-| 401-no-evidence | debug | 1,144 | 640 | 547 | 1,489 | 650 | 555 |
-| ci-exit-1 | debug | 1,564 | 846 | 954 | 1,567 | 962 | 740 |
-| scheduled-jobs | options | 1,340 | 639 | 523 | 1,872 | 1,149 | 961 |
-| shared-types | options | 1,182 | 716 | 647 | 2,173 | 1,499 | 1,155 |
-| security-headers | long-list | 1,857 | 885 | 777 | 2,856 | 1,978 | 1,688 |
-| docker-cache-miss | long-list | 2,038 | 2,343 | 2,067 | 5,123 | 3,525 | 3,840 |
-| **Sum of medians** | | **13,920** | **9,069** | **8,245** | **21,937** | **14,720** | **13,582** |
+| Case | Category | fable base | fable BLUF | opus base | opus BLUF |
+| --- | --- | ---: | ---: | ---: | ---: |
+| port-default | short-lookup | 133 | 5 | 140 | 5 |
+| git-no-ff | short-lookup | 360 | 112 | 492 | 114 |
+| to-sorted | short-lookup | 280 | 78 | 405 | 52 |
+| health-endpoint | multi-step | 1,013 | 624 | 1,833 | 915 |
+| actions-workflow | multi-step | 686 | 381 | 1,053 | 499 |
+| cjs-to-esm | multi-step | 2,323 | 1,800 | 2,934 | 3,372 |
+| 401-no-evidence | debug | 1,144 | 640 | 1,489 | 650 |
+| ci-exit-1 | debug | 1,564 | 846 | 1,567 | 962 |
+| scheduled-jobs | options | 1,340 | 639 | 1,872 | 1,149 |
+| shared-types | options | 1,182 | 716 | 2,173 | 1,499 |
+| security-headers | long-list | 1,857 | 885 | 2,856 | 1,978 |
+| docker-cache-miss | long-list | 2,038 | 2,343 | 5,123 | 3,525 |
+| **Sum of medians** | | **13,920** | **9,069** | **21,937** | **14,720** |
 
-The bottom row sums the per-case medians. It does not exactly reproduce the headline percentages, because a sum of medians is not the median of sums — it gives −34.8% and −40.8% on fable and −32.9% and −38.1% on opus, against the per-trial medians of −35.0%, −39.2%, −30.9% and −38.5%. The [Variance](#variance) figures are the ones to quote, since they are computed per trial and carry a range.
+The bottom row sums the per-case medians. It does not exactly reproduce the headline percentages, because a sum of medians is not the median of sums — it gives −34.8% on fable and −32.9% on opus, against the per-trial medians of −35.0% and −30.9%. The [Variance](#variance) figures are the ones to quote, since they are computed per trial and carry a range.
 
 The style loses on some rows. On fable, `docker-cache-miss` came out **+457** output tokens with BLUF — the median of the per-trial paired deltas, the pinned statistic, which here reads worse than the +305 a reader gets by differencing the table's two medians (2,038 → 2,343). On opus, `cjs-to-esm` came out **+438**, where the two statistics agree. Those rows are in the table and in the aggregates.
 
@@ -118,16 +108,14 @@ The style loses on some rows. On fable, `docker-cache-miss` came out **+457** ou
 
 ### Where the effect is not distinguishable from noise
 
-Six of the 48 per-case measurements have trial ranges crossing zero — the style made the response shorter on one trial and longer on another:
+Four of the 24 per-case measurements have trial ranges crossing zero — the style made the response shorter on one trial and longer on another:
 
-| Model | Variant | Case | Δ output range |
-| --- | --- | --- | --- |
-| fable-5 | BLUF | docker-cache-miss | −1,049 to +517 |
-| fable-5 | terse | docker-cache-miss | −1,038 to +181 |
-| opus-5 | BLUF | health-endpoint | −1,285 to +63 |
-| opus-5 | BLUF | cjs-to-esm | −988 to +563 |
-| opus-5 | BLUF | ci-exit-1 | −720 to +55 |
-| opus-5 | terse | cjs-to-esm | −1,979 to +311 |
+| Model | Case | Δ output range |
+| --- | --- | --- |
+| fable-5 | docker-cache-miss | −1,049 to +517 |
+| opus-5 | health-endpoint | −1,285 to +63 |
+| opus-5 | cjs-to-esm | −988 to +563 |
+| opus-5 | ci-exit-1 | −720 to +55 |
 
 The pattern is that the largest, most open-ended cases are the least predictable. A short lookup gets reliably shorter; a sprawling refactor question does not.
 
@@ -135,47 +123,45 @@ The pattern is that the largest, most open-ended cases are the least predictable
 
 **Output saved per turn.** The median of the per-trial means, from the 12-case sweep:
 
-| Model | Variant | Output tokens saved |
-| --- | --- | ---: |
-| claude-fable-5 | BLUF | 384 |
-| claude-fable-5 | terse | 445 |
-| claude-opus-5 | BLUF | 565 |
-| claude-opus-5 | terse | 707 |
+| Model | Output tokens saved |
+| --- | ---: |
+| claude-fable-5 | 384 |
+| claude-opus-5 | 565 |
 
 Those are rounded for display. Break-even below divides by the **unrounded** medians —
-383.9167, 444.5, 564.5833, 706.75 — because dividing by the rounded figures shifts two of the
+383.9167 and 564.5833 — because dividing by the rounded figures shifts one of the
 four ratios. `perTrialMedianOutputSaved` returns the raw value for that reason.
 
 The statistic is the median of the per-trial means, matching the [Variance](#variance) section.
 The pooled mean and the pooled median disagree with it, and with each other, by enough to
 change a model's verdict — so `perTrialMedianOutputSaved` in `evals/lib/report.mjs` pins it
 rather than leaving the choice to each call site, and a traceability test in
-`evals/test/report.test.mjs` recomputes every figure in this section — the four medians and
-all eight break-even ratios — through the shipped functions from the committed result files,
+`evals/test/report.test.mjs` recomputes every figure in this section — the two medians and
+all four break-even ratios — through the shipped functions from the committed result files,
 so a re-measure that moves any of them fails a test instead of leaving this README stale.
 
-**Input added, split by how it bills.** From `npm run measure:amortization` — 18 calls, two
-turns of one session per condition, on `port-default` in the lean environment, on
-**claude-opus-5 only**:
+**Input added, split by how it bills.** From the committed amortization slice — two turns of
+one session per condition, on `port-default` in the lean environment, on **claude-opus-5
+only**. The committed run covered three conditions (18 calls), including the retired terse
+arm, whose rows are preserved unchanged; a re-run of `npm run measure:amortization` today
+covers two (12 calls):
 
 | Variant | Turn | Cache write | Cache read | Total input added |
 | --- | ---: | ---: | ---: | ---: |
 | BLUF | 1 | **+2,030** | 0 | +2,030 |
 | BLUF | 2+ | −263 | **+2,030** | +1,767 |
-| terse | 1 | **+2,320** | 0 | +2,320 |
-| terse | 2+ | −263 | **+2,320** | +2,057 |
 
 Every write measured 1-hour TTL; the 5-minute figure was 0 in all 18 rows. And every
 measured turn 1 was **cold** — `inputCacheRead` 0 with a positive cache write in all 9
 turn-1 rows — which is what makes the turn-1 row a cold-write figure at all;
 `assertTurn1WasCold` in `evals/lib/runner.mjs` now enforces that precondition on any re-run.
 
-The **Total input added** column is a raw token count, not a cost figure: the turn-2 rows sum
+The **Total input added** column is a raw token count, not a cost figure: the turn-2 row sums
 a cache write and a cache read, which bill at different rates. Read it as a rate-limit and
 context-budget number, like the total-tokens figure below; for anything involving money, use
-the per-tier columns and the break-even table. The turn-2+ totals are **row sums of the two
-median columns beside them**, not independently computed medians — the pinned statistic, the
-median of the per-trial paired input totals, gives +1,774 (BLUF) and +2,064 (terse), 7 tokens
+the per-tier columns and the break-even table. The turn-2+ total is a **row sum of the two
+median columns beside it**, not an independently computed median — the pinned statistic, the
+median of the per-trial paired input totals, gives +1,774, 7 tokens
 higher, because a sum of medians is not the median of sums.
 
 **This split is the whole reason the earlier claim was wrong.** Uncached input, cache reads, and
@@ -196,22 +182,20 @@ after it are not the same trade. The steady-state column assumes each later turn
 the cache TTL; a gap longer than the TTL re-pays the write. Every measured write carried the
 1-hour TTL.
 
-| Model | Variant | One-turn session | Steady state (turn 2+) |
-| --- | --- | ---: | ---: |
-| claude-fable-5 | BLUF | 10.58× | 0.53× |
-| claude-fable-5 | terse | 10.44× | 0.52× |
-| claude-opus-5 | BLUF | 7.19× | 0.36× |
-| claude-opus-5 | terse | 6.57× | 0.33× |
+| Model | One-turn session | Steady state (turn 2+) |
+| --- | ---: | ---: |
+| claude-fable-5 | 10.58× | 0.53× |
+| claude-opus-5 | 7.19× | 0.36× |
 
 Above the ratio the style saves money; below it, it costs money. So a **single-turn** session is
-a loss unless output costs you more than 6.6×–10.6× input, while **every turn after the first**
-is a win unless output costs you *less* than 0.33×–0.53× of input. On Anthropic's published
+a loss unless output costs you more than 7.2×–10.6× input, while **every turn after the first**
+is a win unless output costs you *less* than 0.36×–0.53× of input. On Anthropic's published
 price list — the same source as the cache multipliers below — every model prices output
 above input; if you buy through another provider, that comparison is yours to check.
 
 One asymmetry in the table's provenance: the output half is measured per model, but the input
 half comes from the opus-only amortization run — there is no fable input measurement in this
-repository. The fable rows reuse the opus-measured +2,030/+2,320 overhead. That transfer is
+repository. The fable row reuses the opus-measured +2,030 overhead. That transfer is
 very likely sound, because the overhead is a property of the style text rather than the model,
 but it is a transfer, not a fable measurement.
 
@@ -233,14 +217,14 @@ measured tokens cannot go stale, and a dollar figure we never measured would be 
 unverifiable claim this project exists to object to.
 
 **How long the first turn takes to pay back.** At an output:input ratio of 5×, the first turn's
-net loss is recovered after **0.34 to 1.25 further turns** depending on model and variant —
-soonest on opus terse, longest on fable BLUF. Every measured combination is ahead by the end of
-its third turn.
+net loss is recovered after **0.47 to 1.25 further turns** depending on model —
+soonest on opus, longest on fable. Both measured models are ahead by the end of
+their third turn.
 
 **Total tokens, which is not a cost figure.** Pooled median total-token change per turn — the
 median over all 36 per-case paired differences in each condition, not the per-trial statistic
-the output-savings figures use: +1,673 (fable BLUF), +1,886 (fable terse), +1,583 (opus BLUF),
-+1,674 (opus terse). The direction is the same under either statistic. Read this as a **rate-limit
+the output-savings figures use: +1,673 (fable) and
++1,583 (opus). The direction is the same under either statistic. Read this as a **rate-limit
 and context-budget** number, because that is what raw token counts govern. It is **not** a cost
 proxy: it adds four differently-priced quantities as though they were interchangeable. Use the
 break-even table above for anything involving money.
@@ -254,12 +238,10 @@ reduce this and did not. Medians ignore it; sums do not.
 
 3 trials per case. The aggregate effect was computed per trial and then summarised, rather than by pooling all trials, so the ranges below reflect real run-to-run spread:
 
-| Model | Variant | Median | Range across trials |
-| --- | --- | ---: | --- |
-| claude-fable-5 | BLUF | −35.0% | −44.0% to −30.7% |
-| claude-fable-5 | terse | −39.2% | −47.2% to −38.1% |
-| claude-opus-5 | BLUF | −30.9% | −32.7% to −29.0% |
-| claude-opus-5 | terse | −38.5% | −46.9% to −37.8% |
+| Model | Median | Range across trials |
+| --- | ---: | --- |
+| claude-fable-5 | −35.0% | −44.0% to −30.7% |
+| claude-opus-5 | −30.9% | −32.7% to −29.0% |
 
 **The baseline itself is unstable, and much more so on fable.** Summed across the 12 cases, the unstyled baseline measured 13,592 / 16,670 / 13,147 output tokens on three consecutive fable trials — a 25.9% spread within a single run. On opus the same figure was 21,741 / 21,911 / 22,434, a 3.2% spread. Any fable number here should be read with that in mind; the opus numbers are considerably firmer despite opus being the model this style used to struggle with.
 
@@ -300,7 +282,6 @@ Nobody asked about port collisions or overrides. In the current run, the unstyle
 - Output styles do not apply to subagents. A subagent runs its own system prompt. A fork is the exception, since it inherits the parent's.
 - An output style takes effect only after `/clear` or a new session. Claude Code reads it once at session start.
 - The style shrinks output tokens and adds input tokens on every turn — but the measurement shows the addition bills as a cache write on the first turn only; every turn after re-reads it as a cache read of the same size instead of re-paying the write. Whether that nets out to a saving is a price-ratio question: see the break-even table in [What it costs](#what-it-costs).
-- The two style files duplicate their shared body, because output styles have no import mechanism. `npm run check` enforces that the shared bodies stay byte-identical.
 - Measured on two models with three trials per case. Your workload is not these 12 prompts.
 - Measured against models as they behaved in August 2026. Baselines drift, and the effect size drifts with them.
 
@@ -311,10 +292,6 @@ npm test
 ```
 
 ```bash
-npm run check
-```
-
-```bash
 TRIALS=3 npm run measure
 ```
 
@@ -322,13 +299,13 @@ TRIALS=3 npm run measure
 npm run measure:amortization
 ```
 
-`npm test` runs 188 tests with zero dependencies on Node 22+. `npm run check` verifies the two style files share a byte-identical body.
+`npm test` runs 192 tests with zero dependencies on Node 22+.
 
-**`TRIALS=3 npm run measure` makes 234 live API calls and costs roughly $48–54.** It is not part of `npm test` and nothing runs it by accident. It rewrites `evals/results/`. Omit `TRIALS` for a single-trial run of 78 calls, which is cheaper and correspondingly less trustworthy.
+**`TRIALS=3 npm run measure` makes 156 live API calls and costs real money** — the last full run, which still carried a third condition at 234 calls, cost roughly $48–54. It is not part of `npm test` and nothing runs it by accident. It rewrites `evals/results/`. Omit `TRIALS` for a single-trial run of 52 calls, which is cheaper and correspondingly less trustworthy.
 
-**`npm run measure:amortization` makes 18 live API calls** — 3 conditions × 3 trials × 2 turns, on claude-opus-5 — and also spends real money, though far less than the sweep. It regenerates the input half of the break-even table: the per-tier cache write/read splits in `evals/results/amortization-*.jsonl`. It, too, runs only when you invoke it.
+**`npm run measure:amortization` makes 12 live API calls** — 2 conditions × 3 trials × 2 turns, on claude-opus-5 — and also spends real money, though far less than the sweep. It regenerates the input half of the break-even table: the per-tier cache write/read splits in `evals/results/amortization-*.jsonl`. It, too, runs only when you invoke it.
 
-**Install the styles before measuring.** The sweep selects each condition by style name. If the two files are not in `~/.claude/output-styles/`, every condition silently resolves to the default and you measure Default against Default. Run the install step above first. The prompt set is pinned by SHA-256 and the sweep refuses to run if it has been edited.
+**Install the style before measuring.** The sweep selects each condition by style name. If `bluf.md` is not in `~/.claude/output-styles/`, the styled condition silently resolves to the default and you measure Default against Default. Run the install step above first. The prompt set is pinned by SHA-256 and the sweep refuses to run if it has been edited.
 
 ## Corrections
 

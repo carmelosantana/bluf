@@ -1,10 +1,18 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import { extractSharedBody, START, END } from '../lib/drift.mjs'
 import { CONDITIONS } from '../lib/runner.mjs'
 
 const MAIN = new URL('../../output-styles/bluf.md', import.meta.url)
+
+// Vestigial markers from the retired terse variant (see archive/README.md). They
+// fenced the body the two style files shared, and a drift check kept those bodies
+// byte-identical. The variant is retired and the check is gone, but the markers MUST
+// stay: every published figure measures bluf.md exactly as committed, so editing the
+// file — even to delete a dead comment — would make every number describe a file that
+// no longer exists.
+const START = '<!-- BLUF:SHARED-BODY:START -->'
+const END = '<!-- BLUF:SHARED-BODY:END -->'
 
 function frontmatter (text) {
   const match = text.match(/^---\n([\s\S]*?)\n---\n/)
@@ -26,20 +34,21 @@ test('main style declares the required frontmatter', async () => {
   assert.ok(fields.description.length > 0, 'description is shown in the /config picker')
 })
 
-test('main style fences a shared body', async () => {
+test('main style keeps its vestigial shared-body markers', async () => {
+  // The measured file must not change: deleting these now-dead comments would
+  // invalidate every published figure without touching a single rule. A missing
+  // marker here means bluf.md was edited, and the README's numbers no longer
+  // describe the shipped file.
   const text = await readFile(MAIN, 'utf8')
   const start = text.indexOf(START)
   const end = text.indexOf(END)
-  assert.notEqual(start, -1, 'missing START marker')
-  assert.notEqual(end, -1, 'missing END marker')
+  assert.notEqual(start, -1, 'missing START marker — bluf.md was edited; the published figures no longer describe this file')
+  assert.notEqual(end, -1, 'missing END marker — bluf.md was edited; the published figures no longer describe this file')
   assert.ok(start < end, 'START must precede END')
 })
 
-test('main style blocks appear in the required order inside the shared body', async () => {
-  // Scans the shared body rather than the whole file: a heading that drifted outside
-  // the markers would not be shared with the terse variant, and scanning the file
-  // would still report it as present and correctly ordered.
-  const body = extractSharedBody(await readFile(MAIN, 'utf8'))
+test('main style blocks appear in the required order', async () => {
+  const text = await readFile(MAIN, 'utf8')
   const headings = [
     '## Precedence',
     '## Never apply these rules to',
@@ -50,28 +59,11 @@ test('main style blocks appear in the required order inside the shared body', as
   ]
   let cursor = -1
   for (const heading of headings) {
-    const at = body.indexOf(heading)
-    assert.notEqual(at, -1, `missing block, or it sits outside the shared body: ${heading}`)
+    const at = text.indexOf(heading)
+    assert.notEqual(at, -1, `missing block: ${heading}`)
     assert.ok(at > cursor, `${heading} is out of order`)
     cursor = at
   }
-})
-
-const TERSE = new URL('../../output-styles/bluf-terse.md', import.meta.url)
-
-test('terse style declares the required frontmatter', async () => {
-  const text = await readFile(TERSE, 'utf8')
-  const fields = frontmatter(text)
-  assert.equal(fields.name, 'BLUF (terse)')
-  assert.equal(fields['keep-coding-instructions'], 'true')
-})
-
-test('terse style appends compression after the shared body', async () => {
-  const text = await readFile(TERSE, 'utf8')
-  assert.ok(
-    text.indexOf(END) < text.indexOf('## Compression'),
-    'compression must sit outside the shared body'
-  )
 })
 
 // The eval selects a style by passing CONDITIONS[condition] as `outputStyle`. If a
@@ -80,9 +72,14 @@ test('terse style appends compression after the shared body', async () => {
 // Nothing else in the suite catches that, and it costs a full paid sweep to discover.
 test('CONDITIONS values match the style name fields exactly', async () => {
   const mainName = frontmatter(await readFile(MAIN, 'utf8')).name
-  const terseName = frontmatter(await readFile(TERSE, 'utf8')).name
 
   assert.equal(CONDITIONS.bluf, mainName)
-  assert.equal(CONDITIONS['bluf-terse'], terseName)
   assert.equal(CONDITIONS.baseline, 'Default')
+})
+
+test('CONDITIONS carries exactly the launch conditions: baseline and bluf', () => {
+  // The terse variant was retired before launch (see archive/). Its committed result
+  // rows still carry condition "bluf-terse"; that is stored evidence, not a live
+  // condition, and it must not reappear here without a deliberate re-measure.
+  assert.deepEqual(Object.keys(CONDITIONS).sort(), ['baseline', 'bluf'])
 })

@@ -1,6 +1,6 @@
 # What is in this directory
 
-Two things, kept apart on purpose.
+Two things, kept apart on purpose — plus one retired experiment, labelled below.
 
 ## The current measurement
 
@@ -29,6 +29,30 @@ Two things about them:
   and rotated. The +32.2% regression is far enough outside the measured drift band to
   survive that difference, but the two reports should not be diffed row by row.
 
+## The terse variant — a retired experiment
+
+The `bluf-terse` files are the full evaluation of a compression variant that was
+**retired before launch** and is no longer shipped:
+
+- `full-claude-fable-5-bluf-terse.jsonl` and `full-claude-opus-5-bluf-terse.jsonl` —
+  its 12-case main sweep
+- `lean-claude-opus-5-bluf-terse.jsonl` — its 2-case lean-environment sweep
+- `amortization-claude-opus-5-bluf-terse.jsonl` — its arm of the amortization slice
+- the `less-chatty-terse-v1` files — its rows in the retracted 0.1.0 archive above
+- the terse sections of `report.md`
+
+It saved more output tokens than base BLUF but hurt consistency and skimmability — it
+lost to BLUF outright on some cases, and compressed grammar is harder prose — and a
+second shipped variant meant a second behaviour to re-validate on every rule change. The
+style file itself is preserved at [`archive/bluf-terse.md`](../../archive/bluf-terse.md),
+with the full rationale in [`archive/README.md`](../../archive/README.md).
+
+These files are preserved byte for byte, like the 0.1.0 archive: they are the evidence
+the variant was evaluated rather than dropped on taste. Their rows carry
+`condition: "bluf-terse"`, a key no longer in the live `CONDITIONS` table in
+`evals/lib/runner.mjs` — expected, because that table validates conditions a new paid
+run is about to spend on, not stored evidence.
+
 ## Samples
 
 `samples/` holds verbatim response text, which the `.jsonl` files do not record. See
@@ -36,7 +60,9 @@ Two things about them:
 
 ## Amortization slice
 
-`amortization-claude-opus-5-*.jsonl` — 18 rows from `npm run measure:amortization`. Two turns
+`amortization-claude-opus-5-*.jsonl` — 18 rows from `npm run measure:amortization`, run when
+the sweep still carried three conditions (6 of the rows belong to the retired terse arm; a
+re-run today covers two conditions and 12 rows). Two turns
 of a single `claude` session per (condition, trial): turn 1 opens it with `--session-id`, turn 2
 re-asks the same prompt with `--resume`. Case `port-default`, lean environment, three trials,
 opus-pinned because `--strict-mcp-config` forces that model.

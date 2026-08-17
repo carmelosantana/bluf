@@ -159,7 +159,6 @@ test('runCase rejects an unknown condition before invoking anything', async () =
       assert.match(err.message, /baselien/)
       assert.match(err.message, /baseline/)
       assert.match(err.message, /bluf/)
-      assert.match(err.message, /bluf-terse/)
       return true
     }
   )
@@ -218,17 +217,17 @@ test('parseUsage treats a missing result as zero chars and rejects a non-string 
 })
 
 test('rotate returns the list unchanged at offset zero', () => {
-  assert.deepEqual(rotate(['baseline', 'bluf', 'bluf-terse'], 0), ['baseline', 'bluf', 'bluf-terse'])
+  assert.deepEqual(rotate(['baseline', 'bluf', 'other'], 0), ['baseline', 'bluf', 'other'])
 })
 
 test('rotate advances the leading element by the offset', () => {
-  assert.deepEqual(rotate(['baseline', 'bluf', 'bluf-terse'], 1), ['bluf', 'bluf-terse', 'baseline'])
-  assert.deepEqual(rotate(['baseline', 'bluf', 'bluf-terse'], 2), ['bluf-terse', 'baseline', 'bluf'])
+  assert.deepEqual(rotate(['baseline', 'bluf', 'other'], 1), ['bluf', 'other', 'baseline'])
+  assert.deepEqual(rotate(['baseline', 'bluf', 'other'], 2), ['other', 'baseline', 'bluf'])
 })
 
 test('rotate wraps rather than running off the end', () => {
-  assert.deepEqual(rotate(['baseline', 'bluf', 'bluf-terse'], 3), ['baseline', 'bluf', 'bluf-terse'])
-  assert.deepEqual(rotate(['baseline', 'bluf', 'bluf-terse'], 13), ['bluf', 'bluf-terse', 'baseline'])
+  assert.deepEqual(rotate(['baseline', 'bluf', 'other'], 3), ['baseline', 'bluf', 'other'])
+  assert.deepEqual(rotate(['baseline', 'bluf', 'other'], 13), ['bluf', 'other', 'baseline'])
 })
 
 test('rotate handles a negative offset without producing holes', () => {
@@ -481,7 +480,7 @@ test('assertTurnLooksStyled ignores turn 2 entirely: a re-asked question\'s outp
   // applied, so the ceiling must not run there at any value.
   assert.equal(assertTurnLooksStyled({ condition: 'bluf', turn: 2, outputTokens: 162 }), undefined)
   assert.equal(assertTurnLooksStyled({ condition: 'bluf', turn: 2, outputTokens: 207 }), undefined)
-  assert.equal(assertTurnLooksStyled({ condition: 'bluf-terse', turn: 2, outputTokens: 104 }), undefined)
+  assert.equal(assertTurnLooksStyled({ condition: 'other-style', turn: 2, outputTokens: 104 }), undefined)
 })
 
 test('assertTurnLooksStyled reports the observation and candidate causes, not a single verdict', () => {
@@ -497,7 +496,7 @@ test('assertTurnLooksStyled reports the observation and candidate causes, not a 
     }
   )
   assert.throws(
-    () => assertTurnLooksStyled({ condition: 'bluf-terse', turn: 1, outputTokens: 104 }),
+    () => assertTurnLooksStyled({ condition: 'other-style', turn: 1, outputTokens: 104 }),
     /turn 1/
   )
 })
@@ -822,9 +821,11 @@ test('assertStyledBelowBaseline passes when every styled median sits far below t
     amortRow('bluf', 2, 5, 1),
     amortRow('bluf', 2, 5, 2),
     amortRow('bluf', 2, 6, 3),
-    amortRow('bluf-terse', 2, 5, 1),
-    amortRow('bluf-terse', 2, 7, 2),
-    amortRow('bluf-terse', 2, 6, 3)
+    // "Styled" is derived from the rows, never a hardcoded list, so a second styled
+    // arm — like the retired terse variant was — must be covered automatically.
+    amortRow('other-style', 2, 5, 1),
+    amortRow('other-style', 2, 7, 2),
+    amortRow('other-style', 2, 6, 3)
   ]
   assert.equal(assertStyledBelowBaseline(rows), undefined)
 })
@@ -878,7 +879,7 @@ test('assertStyledBelowBaseline refuses to pass an empty comparison: no turn 2 r
 
 test('assertStyledBelowBaseline refuses to pass an empty comparison: no baseline rows on turn 2', () => {
   assert.throws(
-    () => assertStyledBelowBaseline([amortRow('bluf', 2, 5), amortRow('bluf-terse', 2, 5), amortRow('baseline', 1, 104)]),
+    () => assertStyledBelowBaseline([amortRow('bluf', 2, 5), amortRow('other-style', 2, 5), amortRow('baseline', 1, 104)]),
     /baseline/
   )
 })
@@ -906,11 +907,11 @@ test('assertStyledBelowBaseline flags the failing condition when others pass', (
     amortRow('bluf', 2, 5, 1),
     amortRow('bluf', 2, 5, 2),
     amortRow('bluf', 2, 6, 3),
-    amortRow('bluf-terse', 2, 104, 1),
-    amortRow('bluf-terse', 2, 106, 2),
-    amortRow('bluf-terse', 2, 105, 3)
+    amortRow('other-style', 2, 104, 1),
+    amortRow('other-style', 2, 106, 2),
+    amortRow('other-style', 2, 105, 3)
   ]
-  assert.throws(() => assertStyledBelowBaseline(rows), /bluf-terse/)
+  assert.throws(() => assertStyledBelowBaseline(rows), /other-style/)
 })
 
 // Finding: survivor bias. A pair that aborts at the ceiling check leaves via the
@@ -1069,14 +1070,13 @@ test('assertStyledBelowBaseline names the median made unusable by a missing outp
   )
 })
 
-// Must-not-regress: the intended run. 3 conditions x 3 trials x 2 turns on
-// port-default, lean, claude-opus-5 — 18 rows shaped exactly as
+// Must-not-regress: the intended run. 2 conditions x 3 trials x 2 turns on
+// port-default, lean, claude-opus-5 — 12 rows shaped exactly as
 // runAmortizationPair emits them — must pass every coverage guard.
-test('assertStyledBelowBaseline passes the intended 3x3x2 port-default run', () => {
+test('assertStyledBelowBaseline passes the intended 2x3x2 port-default run', () => {
   const turnTwoOutput = {
     baseline: [101, 104, 106],
-    bluf: [5, 5, 5],
-    'bluf-terse': [5, 7, 5]
+    bluf: [5, 5, 5]
   }
   const rows = []
   for (const condition of Object.keys(CONDITIONS)) {
@@ -1085,7 +1085,7 @@ test('assertStyledBelowBaseline passes the intended 3x3x2 port-default run', () 
       rows.push(amortRow(condition, 2, turnTwoOutput[condition][trial - 1], trial))
     }
   }
-  assert.equal(rows.length, 18)
+  assert.equal(rows.length, 12)
   assert.equal(assertStyledBelowBaseline(rows), undefined)
 })
 
@@ -1104,8 +1104,8 @@ function inputRow (condition, turn, inputTokens, trial = 1, overrides = {}) {
 }
 
 test('MIN_STYLE_OVERHEAD_TOKENS sits far below the measured overhead and far above zero', () => {
-  // Measured turn-1 style overhead: about 2,030 tokens for BLUF and about 2,320 for
-  // the terse variant, against a baseline whose turn-1 input varies by 6 tokens.
+  // Measured turn-1 style overhead: about 2,030 tokens for BLUF (and about 2,320 for
+  // the retired terse variant), against a baseline whose turn-1 input varies by 6 tokens.
   assert.equal(MIN_STYLE_OVERHEAD_TOKENS, 1500)
 })
 
@@ -1121,10 +1121,7 @@ test('assertStyleOverheadPresent passes the real measured shape: styled input fa
     inputRow('baseline', 1, 4835, 3),
     inputRow('bluf', 1, 6867, 1),
     inputRow('bluf', 1, 6864, 2),
-    inputRow('bluf', 1, 6867, 3),
-    inputRow('bluf-terse', 1, 7152, 1),
-    inputRow('bluf-terse', 1, 7148, 2),
-    inputRow('bluf-terse', 1, 7152, 3)
+    inputRow('bluf', 1, 6867, 3)
   ]
   assert.equal(assertStyleOverheadPresent(rows), undefined)
 })
@@ -1154,12 +1151,14 @@ test('assertStyleOverheadPresent throws when a styled arm shows no overhead, nam
 })
 
 test('assertStyleOverheadPresent flags the one styled condition missing its style when the other has it', () => {
+  // "Styled" is derived from the rows, never a hardcoded list, so a second styled
+  // arm — like the retired terse variant was — is covered automatically.
   const rows = [
     inputRow('baseline', 1, 4835, 1),
     inputRow('bluf', 1, 6867, 1),
-    inputRow('bluf-terse', 1, 4835, 1)
+    inputRow('other-style', 1, 4835, 1)
   ]
-  assert.throws(() => assertStyleOverheadPresent(rows), /bluf-terse/)
+  assert.throws(() => assertStyleOverheadPresent(rows), /other-style/)
 })
 
 test('assertStyleOverheadPresent requires the full threshold, not merely some overhead', () => {
@@ -1269,7 +1268,7 @@ test('assertTurn2ReadFromCache passes when every turn 2 read dominates its write
   const rows = [
     tierRow('baseline', 1), tierRow('baseline', 2),
     tierRow('bluf', 1), tierRow('bluf', 2),
-    tierRow('bluf-terse', 1), tierRow('bluf-terse', 2)
+    tierRow('other-style', 1), tierRow('other-style', 2)
   ]
   assert.equal(assertTurn2ReadFromCache(rows), undefined)
 })
@@ -1341,8 +1340,8 @@ test('assertTurn2ReadFromCache flags a single bad row among many good ones', () 
     tierRow('baseline', 2, 2),
     tierRow('bluf', 2, 1),
     tierRow('bluf', 2, 2, { inputCacheRead: 0, inputCacheWrite: 6800 }),
-    tierRow('bluf-terse', 2, 1),
-    tierRow('bluf-terse', 2, 2)
+    tierRow('other-style', 2, 1),
+    tierRow('other-style', 2, 2)
   ]
   assert.throws(
     () => assertTurn2ReadFromCache(rows),
@@ -1369,7 +1368,7 @@ test('assertTurn2CarriedTurn1 passes when every turn 2 input strictly exceeds it
     ...pairedRows('baseline', 1),
     ...pairedRows('baseline', 2),
     ...pairedRows('bluf', 1),
-    ...pairedRows('bluf-terse', 1)
+    ...pairedRows('other-style', 1)
   ]
   assert.equal(assertTurn2CarriedTurn1(rows), undefined)
 })
@@ -1396,12 +1395,12 @@ test('assertTurn2CarriedTurn1 throws on the forked shape: turn 2 input equal to 
 })
 
 test('assertTurn2CarriedTurn1 throws when a turn 2 row has no turn 1 partner', () => {
-  const [, turnTwoOnly] = pairedRows('bluf-terse', 3)
+  const [, turnTwoOnly] = pairedRows('other-style', 3)
   const rows = [...pairedRows('bluf', 1), turnTwoOnly]
   assert.throws(
     () => assertTurn2CarriedTurn1(rows),
     (err) => {
-      assert.match(err.message, /bluf-terse/, 'must name the condition')
+      assert.match(err.message, /other-style/, 'must name the condition')
       assert.match(err.message, /trial 3/, 'must name the trial')
       assert.match(err.message, /no matching turn 1/, 'must say the pairing failed')
       return true
@@ -1411,11 +1410,11 @@ test('assertTurn2CarriedTurn1 throws when a turn 2 row has no turn 1 partner', (
 
 test('assertTurn2CarriedTurn1 throws when a turn 1 row has no turn 2 partner', () => {
   // The mirror image: a silently dropped turn 2 row must not shrink the comparison.
-  const [turnOneOnly] = pairedRows('bluf-terse', 3)
+  const [turnOneOnly] = pairedRows('other-style', 3)
   const rows = [...pairedRows('bluf', 1), turnOneOnly]
   assert.throws(
     () => assertTurn2CarriedTurn1(rows),
-    /bluf-terse.*trial 3|trial 3.*bluf-terse/
+    /other-style.*trial 3|trial 3.*other-style/
   )
 })
 
@@ -1437,7 +1436,7 @@ test('assertTurn2CarriedTurn1 flags a single forked pair among many resumed ones
     ...pairedRows('baseline', 1),
     ...pairedRows('bluf', 1),
     ...pairedRows('bluf', 2, { turn1Input: 6810, turn2Input: 6805 }),
-    ...pairedRows('bluf-terse', 1)
+    ...pairedRows('other-style', 1)
   ]
   assert.throws(
     () => assertTurn2CarriedTurn1(rows),
@@ -1462,13 +1461,13 @@ test('assertTurn2CarriedTurn1 throws rather than passes on a missing inputTokens
 })
 
 test('assertTurn1WasCold passes when every turn 1 is a cold cache write', () => {
-  // The healthy shape from the committed slice: all 9 turn-1 rows measured
+  // The healthy shape from the committed slice: every turn-1 row measured
   // inputCacheRead 0 with a positive write. Turn 2 rows must be ignored — they
   // read the prefix back by design.
   const rows = [
     tierRow('baseline', 1, 1), tierRow('baseline', 2, 1),
     tierRow('bluf', 1, 1), tierRow('bluf', 2, 1),
-    tierRow('bluf-terse', 1, 1), tierRow('bluf-terse', 2, 1)
+    tierRow('other-style', 1, 1), tierRow('other-style', 2, 1)
   ]
   assert.equal(assertTurn1WasCold(rows), undefined)
 })
@@ -1537,8 +1536,8 @@ test('assertTurn1WasCold flags a single warm row among many cold ones', () => {
     tierRow('baseline', 1, 2),
     tierRow('bluf', 1, 1),
     tierRow('bluf', 1, 2, { inputCacheRead: 6800, inputCacheWrite: 21 }),
-    tierRow('bluf-terse', 1, 1),
-    tierRow('bluf-terse', 1, 2)
+    tierRow('other-style', 1, 1),
+    tierRow('other-style', 1, 2)
   ]
   assert.throws(
     () => assertTurn1WasCold(rows),
@@ -1551,14 +1550,14 @@ test('assertTurn1WasCold flags a single warm row among many cold ones', () => {
 })
 
 // Must-not-regress: the intended paid run, simulated end to end with an injected
-// executor and zero API calls. 3 conditions x 3 trials through runAmortizationPair
+// executor and zero API calls. 2 conditions x 3 trials through runAmortizationPair
 // with a realistic tier shape — turn 1 writes the prefix to cache, turn 2 reads it
-// back and writes only a small block for the appended exchange — must produce 18
+// back and writes only a small block for the appended exchange — must produce 12
 // rows that every driver check accepts. Turn 2's total input (10 uncached + 6800 read
 // + 120 written for the appended exchange = 6930) is strictly larger than turn 1's
 // (10 uncached + 6800 written = 6810), as a genuinely resumed turn's must be — a fork
 // would re-send the same prefix and land at roughly turn 1's total.
-test('the real measured 3x3x2 slice passes the row-count pin and every check the driver now runs', async () => {
+test('the real measured 2x3x2 slice passes the row-count pin and every check the driver now runs', async () => {
   // The paid run's own shape, row for row where it exists. Baseline turn 1 is the
   // committed evals/results/amortization-claude-opus-5-baseline.jsonl: input about
   // 4830 with outputs including the 5-token case that proved the output ceiling
@@ -1566,6 +1565,8 @@ test('the real measured 3x3x2 slice passes the row-count pin and every check the
   // input (the ~2,030-token overhead this slice measures). Turn 2 is read-dominant
   // with input strictly greater than turn 1, and includes the valid styled turn 2
   // at 162 output tokens that the old turn-2 ceiling aborted as a false positive.
+  // (The paid run also carried a third, since-retired terse arm; its rows remain
+  // committed but the live sweep no longer runs it.)
   const shape = {
     baseline: {
       turn1Write: [4827, 4833, 4833],
@@ -1578,12 +1579,6 @@ test('the real measured 3x3x2 slice passes the row-count pin and every check the
       turn1Output: [5, 5, 5],
       turn2Write: [21, 21, 21],
       turn2Output: [21, 162, 21]
-    },
-    'bluf-terse': {
-      turn1Write: [7150, 7146, 7150],
-      turn1Output: [5, 5, 5],
-      turn2Write: [21, 21, 21],
-      turn2Output: [30, 21, 25]
     }
   }
   const allRows = []
@@ -1618,7 +1613,7 @@ test('the real measured 3x3x2 slice passes the row-count pin and every check the
     }
   }
 
-  assert.equal(allRows.length, 18, 'the intended slice is 3 conditions x 3 trials x 2 turns')
+  assert.equal(allRows.length, 12, 'the intended slice is 2 conditions x 3 trials x 2 turns')
   assert.equal(assertTurn2ReadFromCache(allRows), undefined)
   assert.equal(assertTurn2CarriedTurn1(allRows), undefined)
   assert.equal(assertTurn1WasCold(allRows), undefined)
@@ -1661,7 +1656,7 @@ test('a slice whose styled arm shows baseline-sized input — style absent — m
     }
   }
 
-  assert.equal(allRows.length, 18)
+  assert.equal(allRows.length, 12)
   // The cache-side checks cannot see the missing style; they pass.
   assert.equal(assertTurn2ReadFromCache(allRows), undefined)
   assert.equal(assertTurn2CarriedTurn1(allRows), undefined)
