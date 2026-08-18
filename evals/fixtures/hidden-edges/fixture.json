@@ -1,0 +1,9 @@
+{
+  "shape": "hidden-edges",
+  "prompt": "npm test fails in src/ordinal.mjs. fix it",
+  "testCommand": "npm",
+  "testArgs": ["test"],
+  "hiddenCommand": "npm",
+  "hiddenArgs": ["run", "test:hidden"],
+  "allowedTools": ["Read", "Edit", "Write", "Bash", "Glob", "Grep"]
+}

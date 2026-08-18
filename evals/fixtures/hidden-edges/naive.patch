@@ -1,0 +1,15 @@
+diff --git a/src/ordinal.mjs b/src/ordinal.mjs
+index b94c704..844fd1c 100644
+--- a/src/ordinal.mjs
++++ b/src/ordinal.mjs
+@@ -10,6 +10,9 @@
+ // - a non-integer is rejected with a RangeError
+ export function ordinal (n) {
+   if (!Number.isInteger(n)) throw new RangeError(`ordinal of a non-integer: ${n}`)
+-  // BUG: every number gets "th", so 1 renders as "1th".
++  const last = n % 10
++  if (last === 1) return `${n}st`
++  if (last === 2) return `${n}nd`
++  if (last === 3) return `${n}rd`
+   return `${n}th`
+ }

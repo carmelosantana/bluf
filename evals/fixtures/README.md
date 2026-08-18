@@ -7,11 +7,18 @@ enforces every clause below on every fixture — a fixture that violates one can
 ## Required files
 
 - `fixture.json` — the manifest. Required fields, all mandatory:
-  - `shape` — one of `"exploration"`, `"failing-test"`, `"multi-file"`.
+  - `shape` — one of `"exploration"`, `"failing-test"`, `"multi-file"`, `"hidden-edges"`.
   - `prompt` — the task given to the model. Must be non-empty.
   - `testCommand` / `testArgs` — the success oracle, run with `execFile` (no shell) in the
     copied project directory. Success is exit code 0, nothing else. Never interpreted.
   - `allowedTools` — the explicit tool allowlist for the run. Must be non-empty.
+
+  Optional fields, for the `hidden-edges` shape only:
+  - `hiddenCommand` / `hiddenArgs` — the adequacy oracle, run by `runHiddenTest` under the
+    same contract as `testCommand` (execFile, exit code 0, explicit timeout and buffer,
+    `NODE_TEST_CONTEXT` stripped). They travel as a pair — a manifest declaring one
+    without the other is rejected at load — and the `hidden-edges` shape must declare
+    them; the other shapes have no hidden suite.
 
   A manifest must not declare `name` or `dir` — the loader sets both from the directory,
   and a manifest that shadows them is rejected at load time.
@@ -24,6 +31,10 @@ enforces every clause below on every fixture — a fixture that violates one can
   only the option's definition. Used only by the contract tests to prove the fixture's
   test fails when any rename site is missed — the property that makes the task multi-file
   rather than single-edit. Like `oracle.patch`, it never reaches the model's copy.
+- `naive.patch` (hidden-edges shape) — a deliberately **naive** fix: it makes the visible
+  suite pass while missing the documented edge cases the hidden suite covers. Used only
+  by the contract tests to prove the visible/hidden split is real. Like every other
+  patch, it never reaches the model's copy.
 
 ## No dependencies
 
@@ -41,6 +52,39 @@ is "the run completed without error" — nothing about the *content* of the expl
 checked, and the question of whether the explanation is adequate is deferred to
 Component 4 (the paired-run protocol). Do not read an exploration "pass" as the model
 having explained anything correctly.
+
+## Hidden-edges fixtures measure adequacy, not just success
+
+A `hidden-edges` fixture (e.g. `hidden-edges`) ships **two** suites:
+
+- `npm test` runs the **visible** suite. It is what the prompt refers to and what
+  `taskPassed` scores, exactly as for every other fixture.
+- `npm run test:hidden` runs a **hidden** suite the prompt never mentions, covering edge
+  cases that are documented in the source and that a complete fix would handle. Adequacy
+  is `hiddenPassed`, scored by `runHiddenTest` **after** the run and never shown to the
+  model. It is the only adequacy signal in this repository that is execution-verified —
+  everything else (the over-compression detector, the length floors) is heuristic.
+
+"Hidden" means hidden from the prompt and from scoring, not invisible on disk: the
+hidden test files must reach the copy because they have to run there, and a model that
+finds and satisfies them has simply written the complete fix — which is exactly the
+behaviour being measured.
+
+The property that makes the shape worth anything, enforced by test: the committed
+`naive.patch` makes the visible suite pass **while the hidden suite still fails**, and
+`oracle.patch` makes both pass. If a naive fix also passed the hidden tests there would
+be no adequacy gap to detect and the fixture would measure nothing. The visible and
+hidden suites live in disjoint directories (`test/` vs `test-hidden/`) with
+non-overlapping quoted globs, so `npm test` can never run the hidden suite — the
+contract test pins the visible run's collected-test count to make that structural.
+
+`runHiddenTest` throws on a fixture without a hidden suite rather than returning a
+result: a missing hidden suite must be scored `null` by the caller, never read as a
+passed or failed one.
+
+The hidden-suite pattern follows `smixs/awesome-claude-output-styles` (MIT); no code,
+test content, or data from that repository is used here — the fixture is written from
+scratch.
 
 ## Red before, green after
 
@@ -84,11 +128,14 @@ Runs never touch the committed fixture. `copyFixture(name, cwd)` produces a fres
 per run and the copy is the only thing on the model's path; mutating one copy affects
 neither the source nor any other copy (also enforced by test).
 
-The copy never contains the answer key: `fixture.json` and every `*oracle.patch` are
-excluded from it (also enforced by test). A model with Read/Grep in the copy could
-otherwise read the oracle and transplant the exact fix — and the two measured arms would
+The copy never contains the answer key: `fixture.json` and every `*.patch` are excluded
+from it (also enforced by test). The filter is every patch, not just `*oracle.patch` —
+`naive.patch` does not match the narrower suffix and would otherwise have been copied
+straight into the model's working tree. A model with Read/Grep in the copy could
+otherwise read a patch and transplant the exact fix — and the two measured arms would
 do so at different rates, turning the success-rate difference into an artefact of the
-leak. `applyOracle` reads its patch from the committed fixture, never from the copy.
+leak. `applyOracle` and `applyNaive` read their patches from the committed fixture,
+never from the copy.
 
 The ground-truth run itself is bounded: `runFixtureTest` uses an explicit 120 s timeout
 and a 32 MB output buffer, and a run that hits either limit is deliberately scored as a

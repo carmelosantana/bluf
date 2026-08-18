@@ -34,6 +34,18 @@ export async function loadFixtures (root = FIXTURE_ROOT) {
         throw new Error(`fixture ${name} declares reserved field ${reserved} in fixture.json; the loader sets it`)
       }
     }
+    // hiddenCommand/hiddenArgs are optional — only the hidden-edges shape ships a
+    // hidden suite — but they travel as a pair: one without the other would make
+    // runHiddenTest throw only at scoring time, after money was spent on the run.
+    if ((manifest.hiddenCommand === undefined) !== (manifest.hiddenArgs === undefined)) {
+      throw new Error(`fixture ${name} declares only one of hiddenCommand/hiddenArgs; they travel as a pair`)
+    }
+    // And the shape that exists to run a hidden suite cannot omit it: a hidden-edges
+    // fixture without a hidden command would score its whole reason for existing as
+    // silently absent.
+    if (manifest.shape === 'hidden-edges' && manifest.hiddenCommand === undefined) {
+      throw new Error(`fixture ${name} has shape hidden-edges but declares no hiddenCommand/hiddenArgs; the hidden suite is the point of that shape`)
+    }
     // `id` is a deliberate alias of `name`: scheduleSweep keys its cases on `.id`, and
     // without the alias every schedule entry would carry caseId: undefined — the
     // rotation would still "work" while keying every case to the same undefined slot.
@@ -42,14 +54,20 @@ export async function loadFixtures (root = FIXTURE_ROOT) {
   return fixtures
 }
 
-// Files that must never reach the model's copy: the oracle patches ARE the answer key,
-// and fixture.json names the success oracle. Leaking them would let the model transplant
-// the exact fix — and the two measured arms would read it at different rates, turning the
-// success-rate difference into an artefact of the leak. applyOracle reads its patch from
-// the committed FIXTURE_ROOT, never from the copy, so excluding these is safe.
+// Files that must never reach the model's copy: every committed patch is an answer key
+// (oracle.patch and partial-oracle.patch are the fix; naive.patch is the exact wrong
+// answer the contract tests measure against, which is just as disqualifying to leak),
+// and fixture.json names the success oracle AND the hidden suite's command. Leaking any
+// of them would let the model transplant the fix or discover what the hidden suite runs
+// — and the two measured arms would read it at different rates, turning the success-rate
+// difference into an artefact of the leak. The filter is deliberately every `*.patch`,
+// not a basename list: a future patch variant must be excluded by default, not leaked by
+// default. applyOracle/applyNaive read their patches from the committed FIXTURE_ROOT,
+// never from the copy, so excluding these is safe. The hidden TEST FILES are not
+// excluded — they must run in the copy; they are simply never named in the prompt.
 function isAnswerKey (path) {
   const file = basename(path)
-  return file === 'fixture.json' || file.endsWith('oracle.patch')
+  return file === 'fixture.json' || file.endsWith('.patch')
 }
 
 // A fresh copy per call. The model may mutate anything inside it; nothing it does can reach
@@ -70,20 +88,43 @@ export async function copyFixture (name, cwd) {
 // A timeout or output-buffer blowout is deliberately scored as a FAILURE, not an error:
 // a "fix" that leaves the suite hanging or flooding output is not a pass.
 export async function runFixtureTest (dir, { timeout = 120_000, maxBuffer = 32 * 1024 * 1024 } = {}) {
+  const fixture = await fixtureForDir(dir)
+  return runScoredCommand(fixture.testCommand, fixture.testArgs, dir, { timeout, maxBuffer })
+}
+
+// Ground truth for ADEQUACY: the hidden suite, run after a measured run and never shown
+// to the model. Same contract as runFixtureTest — exit-code checked, never interpreted,
+// same explicit limits, same NODE_TEST_CONTEXT strip. A fixture without a hidden suite
+// throws rather than returning anything: the caller must score it null, and neither a
+// silent pass nor a silent fail is an acceptable stand-in for "there is no hidden suite".
+export async function runHiddenTest (dir, { timeout = 120_000, maxBuffer = 32 * 1024 * 1024 } = {}) {
+  const fixture = await fixtureForDir(dir)
+  if (fixture.hiddenCommand === undefined) {
+    throw new Error(`fixture ${fixture.name} has no hidden suite; score hiddenPassed as null, never run this`)
+  }
+  return runScoredCommand(fixture.hiddenCommand, fixture.hiddenArgs, dir, { timeout, maxBuffer })
+}
+
+async function fixtureForDir (dir) {
   const fixtures = await loadFixtures()
   const name = dir.split('/').filter(Boolean).at(-1)
   const fixture = fixtures.find(f => f.name === name)
   if (!fixture) throw new Error(`no fixture manifest for directory ${dir}`)
+  return fixture
+}
 
+async function runScoredCommand (command, args, dir, { timeout, maxBuffer }) {
   // When this process is itself a `node --test` child, it carries NODE_TEST_CONTEXT
   // (e.g. "child-v8"). A fixture's inner `node --test` inheriting it thinks it is a
   // test-runner child and exits 0 even when its tests fail — which would make the
   // exit code here meaningless. Strip it so the fixture runs as it would in a shell.
+  // This strip is load-bearing for BOTH suites: a runHiddenTest that inherited it
+  // would score every hidden suite as passing and turn adequacy into a fiction.
   const env = { ...process.env }
   delete env.NODE_TEST_CONTEXT
 
   try {
-    const { stdout, stderr } = await run(fixture.testCommand, fixture.testArgs, { cwd: dir, env, timeout, maxBuffer })
+    const { stdout, stderr } = await run(command, args, { cwd: dir, env, timeout, maxBuffer })
     return { passed: true, exitCode: 0, stdout, stderr }
   } catch (error) {
     // exitCode is a number or null, never a string. execFile also reports non-exit
@@ -116,5 +157,15 @@ export async function applyOracle (name, dir) {
 // makes it a multi-file task. Never shown to the model, never applied in a measured run.
 export async function applyPartialOracle (name, dir) {
   const patch = fileURLToPath(new URL(`${name}/partial-oracle.patch`, FIXTURE_ROOT))
+  await run('git', ['apply', '--unsafe-paths', `--directory=${dir}`, patch], { cwd: dir })
+}
+
+// Applies a committed, deliberately NAIVE fix: one that makes the visible suite pass
+// while missing the documented edge cases the hidden suite covers. Used only by the
+// contract tests to prove the visible/hidden split is real — if the naive fix passed
+// the hidden suite too, the fixture would measure nothing. Never shown to the model,
+// never applied in a measured run.
+export async function applyNaive (name, dir) {
+  const patch = fileURLToPath(new URL(`${name}/naive.patch`, FIXTURE_ROOT))
   await run('git', ['apply', '--unsafe-paths', `--directory=${dir}`, patch], { cwd: dir })
 }

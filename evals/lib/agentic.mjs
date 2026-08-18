@@ -56,7 +56,7 @@ export const CONTAMINANT_TOOLS = [
 // an unvalidated shape from a hand-built fixture would write rows whose shape
 // column simply vanishes — the same absent-data-passes-silently class of defect
 // this module exists to refuse, one field over.
-export const FIXTURE_SHAPES = ['exploration', 'failing-test', 'multi-file']
+export const FIXTURE_SHAPES = ['exploration', 'failing-test', 'multi-file', 'hidden-edges']
 
 export function buildAgenticArgs (fixture, styleName, model, { maxBudgetUsd } = {}) {
   if (!model) throw new Error('buildAgenticArgs requires an explicit model; an unpinned run is not reproducible')
