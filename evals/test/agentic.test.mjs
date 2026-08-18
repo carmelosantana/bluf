@@ -1,7 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile, access } from 'node:fs/promises'
+import { readFile, readdir, access, mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, basename } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import {
   buildAgenticArgs,
   defaultAgenticExecute,
@@ -9,11 +11,21 @@ import {
   parseStreamEvents,
   parseAgenticStream,
   runAgenticTask,
+  runAgenticSweep,
+  CONTAMINANT_TOOLS,
   FIXTURE_SHAPES,
   MAX_AGENTIC_BUDGET_USD
 } from '../lib/agentic.mjs'
 import { CONDITIONS, STYLE_SHA256 } from '../lib/runner.mjs'
+import { SCHEDULE_VERSION } from '../lib/schedule.mjs'
+import { plannedAgenticSweepFiles } from '../lib/overwrite-gate.mjs'
 import { loadFixtures } from '../lib/fixtures.mjs'
+
+// The full contaminant denylist, pinned as a literal so a drifted CONTAMINANT_TOOLS
+// in lib/agentic.mjs fails HERE, not eighteen paid calls into a sweep. Skill loads
+// content one arm would see and the other would not; Agent and every Task* tool
+// dispatch or manage subagent work, and a subagent does not inherit the output style.
+const PINNED_CONTAMINANTS = 'Skill,Agent,TaskCreate,TaskStop,TaskOutput,TaskUpdate,TaskGet,TaskList'
 
 const fixture = {
   name: 'failing-test',
@@ -29,23 +41,34 @@ test('buildAgenticArgs scopes tools instead of disabling them', () => {
   assert.equal(args[args.indexOf('--allowedTools') + 1], 'Read,Edit,Bash')
 })
 
-test('buildAgenticArgs never permits Skill or Agent', () => {
-  const args = buildAgenticArgs(
-    { ...fixture, allowedTools: ['Read', 'Skill', 'Agent'] }, 'BLUF', 'claude-fable-5', {})
-  const allowed = args[args.indexOf('--allowedTools') + 1].split(',')
-
-  // Skill would let one arm load content the other did not. Agent dispatches a subagent,
-  // which does not inherit the output style, so the treatment silently stops applying.
-  assert.ok(!allowed.includes('Skill'))
-  assert.ok(!allowed.includes('Agent'))
+test('CONTAMINANT_TOOLS is exactly the pinned denylist, and blocks no ordinary work tool', () => {
+  assert.equal(CONTAMINANT_TOOLS.join(','), PINNED_CONTAMINANTS,
+    'the denylist must cover Skill, Agent, and the whole subagent-dispatching Task* family — no more, no less')
+  // The fixtures do their work through these; a denylist that swallowed one would
+  // measure a model that cannot do the task at all.
+  for (const workTool of ['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep']) {
+    assert.ok(!CONTAMINANT_TOOLS.includes(workTool), `${workTool} must stay usable`)
+  }
 })
 
-test('buildAgenticArgs names both contaminant tools in --disallowedTools', () => {
+test('buildAgenticArgs never permits any contaminant tool a fixture names', () => {
+  const args = buildAgenticArgs(
+    { ...fixture, allowedTools: ['Read', ...CONTAMINANT_TOOLS] }, 'BLUF', 'claude-fable-5', {})
+  const allowed = args[args.indexOf('--allowedTools') + 1].split(',')
+
+  // Skill would let one arm load content the other did not. Agent — and every Task*
+  // tool — dispatches or manages subagent work, which does not inherit the output
+  // style, so the treatment silently stops applying. A fixture naming any of them
+  // must have it filtered out of --allowedTools, leaving only the real work tools.
+  assert.deepEqual(allowed, ['Read'])
+})
+
+test('buildAgenticArgs names every contaminant tool in --disallowedTools', () => {
   // Filtering them out of --allowedTools is the weaker half of the block: a fixture
   // that never listed Skill would still be able to load one unless it is disallowed
-  // outright. This assertion is what makes deleting the --disallowedTools pair fail.
+  // outright. Pinned to the full literal list so dropping any single entry fails.
   const args = buildAgenticArgs(fixture, 'BLUF', 'claude-fable-5', {})
-  assert.equal(args[args.indexOf('--disallowedTools') + 1], 'Skill,Agent')
+  assert.equal(args[args.indexOf('--disallowedTools') + 1], PINNED_CONTAMINANTS)
 })
 
 test('buildAgenticArgs pins the model it was given', () => {
@@ -397,7 +420,7 @@ test('runAgenticTask copies the fixture, installs the style, runs in the copy, a
     'the settings payload must carry the style NAME from CONDITIONS; passing the condition key ' +
     'makes claude fall back to Default and both arms measure Default against Default')
   assert.equal(args[args.indexOf('--model') + 1], 'claude-fable-5')
-  assert.equal(args[args.indexOf('--disallowedTools') + 1], 'Skill,Agent')
+  assert.equal(args[args.indexOf('--disallowedTools') + 1], PINNED_CONTAMINANTS)
   assert.equal(args[args.indexOf('--output-format') + 1], 'stream-json')
   assert.ok(args.includes('--verbose'))
 
@@ -613,4 +636,111 @@ test('runAgenticTask refuses a substituted model rather than recording its row',
     }),
     /claude-fable-5 was not billed/
   )
+})
+
+// A sweep over the real committed failing-test fixture and both real conditions, in
+// a temp results directory, through the REAL runAgenticTask — only the paid claude
+// call is stubbed via the injected execute. Nothing here can spend.
+function sweepHarness ({ execute }) {
+  return {
+    async run () {
+      const fixtures = (await loadFixtures()).filter(f => f.name === 'failing-test')
+      assert.equal(fixtures.length, 1, 'the committed failing-test fixture must exist')
+      const resultsDir = await mkdtemp(join(tmpdir(), 'bluf-agentic-results-'))
+      const resultsUrl = pathToFileURL(resultsDir + '/')
+      const conditions = Object.keys(CONDITIONS)
+      const outcome = await runAgenticSweep({
+        fixtures,
+        conditions,
+        model: 'claude-fable-5',
+        trials: 1,
+        resultsUrl,
+        runTask: (fixtureRow, condition, model, trial, options) =>
+          runAgenticTask(fixtureRow, condition, model, trial, { ...options, execute })
+      }).then(rows => ({ rows, error: null }), error => ({ rows: null, error }))
+      return { resultsDir, resultsUrl, conditions, ...outcome }
+    }
+  }
+}
+
+async function rowsOnDisk (resultsDir, conditions) {
+  const byCondition = {}
+  for (const condition of conditions) {
+    const raw = await readFile(join(resultsDir, `agentic-claude-fable-5-${condition}.jsonl`), 'utf8')
+    byCondition[condition] = raw.split('\n').filter(line => line.trim().length > 0).map(line => JSON.parse(line))
+  }
+  return byCondition
+}
+
+test('a sweep that dies mid-run leaves every already-paid row durable in its final file', async () => {
+  // The reviewer's exact scenario, scaled down: call 1 of 2 succeeds and is paid for,
+  // call 2 throws. The paid row must be readable from its per-condition .jsonl on
+  // disk afterwards — not dumped to stderr and lost with the terminal scrollback.
+  let calls = 0
+  const { resultsDir, conditions, error } = await sweepHarness({
+    execute: async () => {
+      calls += 1
+      if (calls > 1) throw Object.assign(new Error('claude exited with code 1'), { stdout: '', exitCode: 1 })
+      return streamStdout(agenticPayload())
+    }
+  }).run()
+
+  assert.ok(error, 'the sweep must stay loud: the mid-sweep failure propagates')
+  assert.match(error.message, /exited with code 1/)
+  assert.equal(calls, 2)
+
+  const byCondition = await rowsOnDisk(resultsDir, conditions)
+  const persisted = conditions.flatMap(condition => byCondition[condition])
+  assert.equal(persisted.length, 1, 'exactly the one paid row is on disk — the honest partial signal, nothing padded')
+  const [row] = persisted
+  assert.equal(row.fixture, 'failing-test')
+  assert.equal(row.trial, 1)
+  assert.equal(row.scheduleVersion, SCHEDULE_VERSION)
+  assert.equal(row.numTurns, 7)
+  assert.equal(typeof row.taskPassed, 'boolean', 'taskPassed must survive to disk; it exists nowhere else')
+  assert.ok(row.transcriptPath.startsWith('evals/results/agentic-transcripts/'),
+    'the persisted row carries the repo-relative transcript path')
+
+  // Every path the sweep wrote — row files AND transcripts, including the failed
+  // call's transcript — must be in the gate's planned enumeration. This is the
+  // no-drift property the tracked-overwrite gate depends on.
+  const planned = new Set(plannedAgenticSweepFiles({
+    model: 'claude-fable-5', conditions, fixtures: ['failing-test'], trials: 1
+  }))
+  const written = (await readdir(resultsDir, { recursive: true, withFileTypes: true }))
+    .filter(entry => entry.isFile())
+    .map(entry => join(entry.parentPath ?? entry.path, entry.name).slice(resultsDir.length + 1))
+  assert.ok(written.length > 0)
+  for (const file of written) {
+    assert.ok(planned.has(file), `${file} was written but is not in plannedAgenticSweepFiles`)
+  }
+})
+
+test('a completed sweep has every row exactly once on disk, and a rerun truncates rather than appending', async () => {
+  const harness = sweepHarness({ execute: async () => streamStdout(agenticPayload()) })
+  const first = await harness.run()
+  assert.equal(first.error, null)
+
+  // Rerun into the SAME results directory: append-as-you-go must not double rows.
+  const second = await runAgenticSweep({
+    fixtures: (await loadFixtures()).filter(f => f.name === 'failing-test'),
+    conditions: first.conditions,
+    model: 'claude-fable-5',
+    trials: 1,
+    resultsUrl: first.resultsUrl,
+    runTask: (fixtureRow, condition, model, trial, options) =>
+      runAgenticTask(fixtureRow, condition, model, trial, {
+        ...options, execute: async () => streamStdout(agenticPayload())
+      })
+  })
+
+  const byCondition = await rowsOnDisk(first.resultsDir, first.conditions)
+  for (const condition of first.conditions) {
+    assert.equal(byCondition[condition].length, 1,
+      `${condition} must hold exactly one row after a rerun — never last run's rows plus this run's`)
+    assert.equal(byCondition[condition][0].condition, condition)
+    // What the function returned is exactly what reached disk: no divergence between
+    // the summary a driver prints and the evidence a reader will find.
+    assert.deepEqual(byCondition[condition], second[condition])
+  }
 })

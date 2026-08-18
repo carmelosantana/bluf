@@ -1,4 +1,4 @@
-import { writeFile, mkdir, readFile, stat, mkdtemp, rm } from 'node:fs/promises'
+import { readFile, stat, mkdtemp, rm } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -6,11 +6,10 @@ import { fileURLToPath } from 'node:url'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CONDITIONS, readCliVersion, assertUserStyleFresh } from './lib/runner.mjs'
-import { runAgenticTask, FIXTURE_SHAPES } from './lib/agentic.mjs'
+import { runAgenticSweep, FIXTURE_SHAPES } from './lib/agentic.mjs'
 import { loadFixtures, copyFixture, runFixtureTest, applyOracle } from './lib/fixtures.mjs'
-import { scheduleSweep, SCHEDULE_VERSION } from './lib/schedule.mjs'
 import {
-  agenticRowFile, agenticTranscriptFile, plannedAgenticSweepFiles,
+  agenticRowFile, plannedAgenticSweepFiles,
   assertOverwritesAllowed, assertGitUsable, OVERWRITE_ALLOWLIST_VAR
 } from './lib/overwrite-gate.mjs'
 
@@ -181,71 +180,20 @@ const planned = plannedAgenticSweepFiles({
 // there throws away a row that was already paid for. `claude --version` is free.
 await readCliVersion()
 
-const rows = Object.fromEntries(Object.keys(CONDITIONS).map(condition => [condition, []]))
-
-await mkdir(new URL('./agentic-transcripts/', RESULTS), { recursive: true })
-
-// Failure-accounting bookkeeping, error reporting ONLY — the same unpersisted-row
-// accounting evals/measure.mjs uses. Rows are only persisted after the whole loop, so
-// without this a single malformed payload on the last call would discard up to 17
-// already-paid rows with a bare stack trace.
-const allRows = []
-const persisted = new Set()
-const writtenFiles = []
-
-try {
-  // Trial-major, interleaved, rotated — scheduleSweep, exactly as the prose sweep uses
-  // it, with fixtures substituting for cases (they expose .id as an alias of .name for
-  // precisely this call). Each call's raw transcript is written DIRECTLY under
-  // evals/results/agentic-transcripts/ by runAgenticTask, so the evidence of a paid
-  // call survives even when the call itself fails mid-parse — a temp-directory
-  // transcript would die with /tmp. The row records the repo-relative path.
-  for (const entry of scheduleSweep({ cases: fixtures, conditions: Object.keys(CONDITIONS), trials: TRIALS })) {
-    process.stderr.write(`agentic ${AGENTIC_MODEL} ${entry.condition} trial ${entry.trial} ${entry.caseId}\n`)
-    const transcriptName = agenticTranscriptFile(AGENTIC_MODEL, entry.condition, entry.caseId, entry.trial)
-    const row = await runAgenticTask(fixtures[entry.caseIndex], entry.condition, AGENTIC_MODEL, entry.trial, {
-      transcriptPath: fileURLToPath(new URL(transcriptName, RESULTS))
-    })
-    // The schedule is the driver's concern, not the runner's, so the version is
-    // stamped here rather than in runAgenticTask — see SCHEDULE_VERSION in
-    // lib/schedule.mjs. The transcript path is rewritten repo-relative so committed
-    // rows do not carry one machine's home directory.
-    row.scheduleVersion = SCHEDULE_VERSION
-    row.transcriptPath = `evals/results/${transcriptName}`
-    rows[entry.condition].push(row)
-    allRows.push(row)
-  }
-
-  // Written after the loop: a condition's rows are not contiguous in the schedule.
-  for (const condition of Object.keys(CONDITIONS)) {
-    const target = new URL(agenticRowFile(AGENTIC_MODEL, condition), RESULTS)
-    await writeFile(
-      target,
-      rows[condition].map(row => JSON.stringify(row)).join('\n') + '\n'
-    )
-    for (const row of rows[condition]) persisted.add(row)
-    writtenFiles.push(target.pathname)
-  }
-} catch (error) {
-  // Every row already collected but not yet written to a result file would otherwise
-  // vanish with the stack trace — an unreported paid row is a wasted call nobody can
-  // account for.
-  const unpersisted = allRows.filter(row => !persisted.has(row))
-  if (unpersisted.length > 0) {
-    console.error(`\npaid rows collected but not written to any result file (${unpersisted.length}):`)
-    for (const row of unpersisted) console.error(`  ${JSON.stringify(row)}`)
-  }
-  if (writtenFiles.length > 0) {
-    console.error(
-      '\nINCOMPLETE SWEEP: this run aborted after writing these result files:\n' +
-      writtenFiles.map(path => `  ${path}`).join('\n') + '\n' +
-      'They cover only part of the intended sweep. Do NOT read them as a finished ' +
-      'measurement — a rerun overwrites them. Each row\'s raw transcript is preserved ' +
-      'under evals/results/agentic-transcripts/.'
-    )
-  }
-  throw error
-}
+// The whole paid loop lives in runAgenticSweep (lib/agentic.mjs), below every gate
+// above. Each row is APPENDED to its per-condition file the moment it is produced, so
+// a sweep that dies on the last call leaves every already-paid row durable on disk in
+// its final location — taskPassed and testExitCode included, never only on stderr.
+// Every path the sweep writes interpolates the same agenticRowFile /
+// agenticTranscriptFile helpers plannedAgenticSweepFiles enumerated for the gate.
+const rows = await runAgenticSweep({
+  fixtures,
+  conditions: Object.keys(CONDITIONS),
+  model: AGENTIC_MODEL,
+  trials: TRIALS,
+  resultsUrl: RESULTS,
+  log: line => process.stderr.write(line)
+})
 
 // No report generation here: Task 5's analysis rules (task success rate first, effect
 // against trial spread) are a human decision over the committed rows, not a formatted

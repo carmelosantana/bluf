@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import {
   CONDITIONS,
@@ -19,6 +20,8 @@ import {
   STYLE_SHA256
 } from './runner.mjs'
 import { copyFixture, runFixtureTest } from './fixtures.mjs'
+import { scheduleSweep, SCHEDULE_VERSION } from './schedule.mjs'
+import { agenticRowFile, agenticTranscriptFile } from './overwrite-gate.mjs'
 
 const run = promisify(execFile)
 
@@ -35,7 +38,18 @@ export const MAX_AGENTIC_BUDGET_USD = 2
 //   would be attributed to the output style.
 // - Agent dispatches a subagent, and output styles do not apply to subagents, so
 //   the treatment would silently stop applying to the delegated work.
-const CONTAMINANT_TOOLS = ['Skill', 'Agent']
+// - Every Task* tool below is blocked for the same reason as Agent: each one
+//   dispatches or manages subagent work, and a subagent does not inherit the output
+//   style. The real CLI's init event advertises all of them (observed on 2.1.222,
+//   which lists 30 tools including TaskCreate and TaskStop), so blocking Agent alone
+//   would leave the identical contamination reachable under a different name.
+// Ordinary work tools — Read, Edit, Write, Bash, Glob, Grep — must never appear
+// here: they are what the fixtures need, and blocking one would measure a model
+// that cannot do the task at all.
+export const CONTAMINANT_TOOLS = [
+  'Skill', 'Agent',
+  'TaskCreate', 'TaskStop', 'TaskOutput', 'TaskUpdate', 'TaskGet', 'TaskList'
+]
 
 // The complete set of task shapes the fixture suite measures. row.shape feeds the
 // per-shape breakdown, and JSON.stringify silently DROPS an undefined property, so
@@ -377,4 +391,87 @@ export async function runAgenticTask (fixture, condition, model, trial = 1, {
     ...provenance,
     ...metrics
   }
+}
+
+// The paid sweep loop, extracted from evals/measure-agentic.mjs so its durability is
+// testable with an injected task runner instead of an 18-call spend. Every free gate
+// stays in the driver, ABOVE its single call to this function.
+//
+// Durability is the contract here: each row is APPENDED to its per-condition .jsonl
+// the moment it exists, so a sweep that dies on call 18 of 18 leaves the 17
+// already-paid rows on disk in their final location — not dumped to stderr where
+// taskPassed and testExitCode die with the terminal scrollback. The row files are
+// truncated up front (the driver's tracked-overwrite gate has already judged these
+// exact paths) so a rerun never appends onto a stale run's rows and no row is ever
+// written twice; a partially written file's row count IS the honest partial signal,
+// and nothing pads it. Both the truncation targets and the transcript paths
+// interpolate agenticRowFile / agenticTranscriptFile — the same helpers
+// plannedAgenticSweepFiles enumerates from — so the set of paths this function can
+// write cannot drift from the gate's planned list.
+export async function runAgenticSweep ({
+  fixtures, conditions, model, trials, resultsUrl,
+  runTask = runAgenticTask,
+  log = () => {}
+}) {
+  const rows = Object.fromEntries(conditions.map(condition => [condition, []]))
+
+  await mkdir(new URL('./agentic-transcripts/', resultsUrl), { recursive: true })
+  const rowFiles = {}
+  for (const condition of conditions) {
+    rowFiles[condition] = new URL(agenticRowFile(model, condition), resultsUrl)
+    await writeFile(rowFiles[condition], '')
+  }
+
+  // Failure accounting, error reporting ONLY. With per-row appends the only row that
+  // can exist without being persisted is one whose own appendFile threw, but a paid
+  // row must never vanish silently however narrow the window: anything collected and
+  // not on disk is dumped to stderr before the error propagates.
+  const allRows = []
+  const persisted = new Set()
+
+  try {
+    // Trial-major, interleaved, rotated — scheduleSweep, exactly as the prose sweep
+    // uses it, with fixtures substituting for cases (they expose .id as an alias of
+    // .name for precisely this call). Each call's raw transcript is written DIRECTLY
+    // under the results directory by runAgenticTask, so the evidence of a paid call
+    // survives even when the call itself fails mid-parse — a temp-directory
+    // transcript would die with /tmp.
+    for (const entry of scheduleSweep({ cases: fixtures, conditions, trials })) {
+      log(`agentic ${model} ${entry.condition} trial ${entry.trial} ${entry.caseId}\n`)
+      const transcriptName = agenticTranscriptFile(model, entry.condition, entry.caseId, entry.trial)
+      const row = await runTask(fixtures[entry.caseIndex], entry.condition, model, entry.trial, {
+        transcriptPath: fileURLToPath(new URL(transcriptName, resultsUrl))
+      })
+      // The schedule is the sweep's concern, not the single-call runner's, so the
+      // version is stamped here rather than in runAgenticTask — see SCHEDULE_VERSION
+      // in lib/schedule.mjs. The transcript path is rewritten repo-relative so
+      // committed rows do not carry one machine's home directory.
+      row.scheduleVersion = SCHEDULE_VERSION
+      row.transcriptPath = `evals/results/${transcriptName}`
+      allRows.push(row)
+      await appendFile(rowFiles[entry.condition], JSON.stringify(row) + '\n')
+      persisted.add(row)
+      rows[entry.condition].push(row)
+    }
+  } catch (error) {
+    const unpersisted = allRows.filter(row => !persisted.has(row))
+    if (unpersisted.length > 0) {
+      console.error(`\npaid rows collected but not written to any result file (${unpersisted.length}):`)
+      for (const row of unpersisted) console.error(`  ${JSON.stringify(row)}`)
+    }
+    console.error(
+      '\nINCOMPLETE SWEEP: this run aborted mid-sweep. Every row already paid for is ' +
+      'durable in its final per-condition file:\n' +
+      conditions.map(condition =>
+        `  ${fileURLToPath(rowFiles[condition])}: ${rows[condition].length} row(s)`
+      ).join('\n') + '\n' +
+      'They cover only part of the intended sweep — the row counts above are the honest ' +
+      'signal of how partial. Do NOT read them as a finished measurement; a rerun ' +
+      'truncates and rewrites them. Each row\'s raw transcript is preserved under the ' +
+      'results directory\'s agentic-transcripts/.'
+    )
+    throw error
+  }
+
+  return rows
 }

@@ -8,15 +8,18 @@ const run = promisify(execFile)
 
 export const FIXTURE_ROOT = new URL('../fixtures/', import.meta.url)
 
-export async function loadFixtures () {
-  const names = (await readdir(FIXTURE_ROOT, { withFileTypes: true }))
+// The root parameter exists ONLY so the test suite can point the loader at a
+// synthetic fixture tree and prove its rejections fire; every production caller
+// uses the committed FIXTURE_ROOT default.
+export async function loadFixtures (root = FIXTURE_ROOT) {
+  const names = (await readdir(root, { withFileTypes: true }))
     .filter(entry => entry.isDirectory())
     .map(entry => entry.name)
     .sort()
 
   const fixtures = []
   for (const name of names) {
-    const dir = fileURLToPath(new URL(`${name}/`, FIXTURE_ROOT))
+    const dir = fileURLToPath(new URL(`${name}/`, root))
     const manifest = JSON.parse(await readFile(join(dir, 'fixture.json'), 'utf8'))
     for (const field of ['shape', 'prompt', 'testCommand', 'testArgs', 'allowedTools']) {
       if (manifest[field] === undefined) {

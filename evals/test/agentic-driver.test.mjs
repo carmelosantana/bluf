@@ -11,12 +11,23 @@ const run = promisify(execFile)
 
 // Same source-text idiom as measure-driver.test.mjs: the driver is a script with
 // top-level paid side effects, so importing it from a test would RUN the sweep.
-// Ordering and constants are asserted against the source text instead.
+// Ordering and constants are asserted against the source text instead. The paid
+// loop itself lives in lib/agentic.mjs (runAgenticSweep) so its durability is
+// exercised behaviourally in agentic.test.mjs; the driver's single call to it is
+// the paid anchor every free gate must precede.
 const source = await readFile(new URL('../measure-agentic.mjs', import.meta.url), 'utf8')
-const firstPaid = source.indexOf('await runAgenticTask(')
+const libSource = await readFile(new URL('../lib/agentic.mjs', import.meta.url), 'utf8')
+const firstPaid = source.indexOf('await runAgenticSweep(')
 
 test('the driver contains a paid call to anchor the gate ordering against', () => {
-  assert.ok(firstPaid > -1, 'measure-agentic.mjs must call runAgenticTask')
+  assert.ok(firstPaid > -1, 'measure-agentic.mjs must call runAgenticSweep')
+  assert.equal(source.indexOf('await runAgenticSweep('), source.lastIndexOf('await runAgenticSweep('),
+    'exactly one paid sweep call: a second one could sit below no gate at all')
+  // And the sweep function's own loop is where runAgenticTask gets called — the
+  // driver must not carry a second, gate-free paid loop of its own.
+  assert.ok(libSource.includes('runTask = runAgenticTask'),
+    'runAgenticSweep must default to the real paid runner')
+  assert.ok(!source.includes('runAgenticTask('), 'the driver itself must never call runAgenticTask directly')
 })
 
 test('MAX_AGENTIC_TRIALS is a literal 3, below the prose sweep ceiling', async () => {
@@ -121,11 +132,15 @@ test('the user-level style install is verified free of charge, read-only', () =>
 test('the planned files are enumerated by the shared pure function the write loop shares', () => {
   // The gate's planned list and the write loop's targets must be the SAME
   // interpolation, or a drifted name waves a doomed file straight past the gate.
+  // The write loop now lives in lib/agentic.mjs (runAgenticSweep), so the helpers
+  // are asserted there; the driver still gates on the shared enumerator.
   assert.ok(source.includes('plannedAgenticSweepFiles('), 'the planned files must come from the shared enumerator')
-  assert.ok(source.includes('agenticRowFile('), 'the row-file write loop must interpolate the shared helper')
-  assert.ok(source.includes('agenticTranscriptFile('), 'the transcript path must interpolate the shared helper')
-  assert.ok(!/`agentic-\$\{/.test(source),
-    'no ad-hoc agentic-* filename template may exist in the driver; the shared helpers are the single point of truth')
+  assert.ok(libSource.includes('agenticRowFile('), 'the row-file write loop must interpolate the shared helper')
+  assert.ok(libSource.includes('agenticTranscriptFile('), 'the transcript path must interpolate the shared helper')
+  for (const text of [source, libSource]) {
+    assert.ok(!/`agentic-\$\{/.test(text),
+      'no ad-hoc agentic-* filename template may exist; the shared helpers are the single point of truth')
+  }
 })
 
 test('plannedAgenticSweepFiles enumerates exactly the row files and every transcript', () => {
@@ -166,33 +181,51 @@ test('fixtures expose id as an alias of name, so scheduleSweep can key on .id', 
 
 test('transcripts persist under evals/results, and rows record the repo-relative path', () => {
   // transcriptPath defaults to a temp directory inside runAgenticTask, where the raw
-  // evidence of a paid call dies with /tmp. The driver must aim it at the committed
+  // evidence of a paid call dies with /tmp. The sweep must aim it at the committed
   // transcripts directory and rewrite the row's path repo-relative, so committed rows
-  // never carry one machine's home directory.
-  assert.ok(source.includes("'./agentic-transcripts/'"), 'the transcripts directory must live under evals/results/')
-  assert.ok(source.includes('transcriptPath: fileURLToPath('),
+  // never carry one machine's home directory — and the driver must point the sweep at
+  // the real results directory.
+  assert.ok(source.includes('resultsUrl: RESULTS'), 'the driver must aim the sweep at evals/results/')
+  assert.ok(libSource.includes("'./agentic-transcripts/'"), 'the transcripts directory must live under the results directory')
+  assert.ok(libSource.includes('transcriptPath: fileURLToPath('),
     'runAgenticTask must be given a durable transcript path, not left to default to /tmp')
-  assert.ok(source.includes('row.transcriptPath = `evals/results/${transcriptName}`'),
+  assert.ok(libSource.includes('row.transcriptPath = `evals/results/${transcriptName}`'),
     'the persisted row must carry the repo-relative transcript path')
 })
 
 test('the driver uses the raw-stdout agentic executor path, never runner.mjs defaultExecute', () => {
   // defaultExecute returns a parsed object; the agentic path needs raw stream-json
   // stdout so the transcript reaches disk before any parsing. runAgenticTask already
-  // wires defaultAgenticExecute in; the driver must not override it.
+  // wires defaultAgenticExecute in; the driver must not override the executor, and it
+  // must not swap the sweep's real paid runner for a stub either — injected runners
+  // exist for the test suite, never for a measured run.
   assert.ok(!source.includes('defaultExecute'), 'measure-agentic.mjs must never touch runner.mjs defaultExecute')
   assert.ok(!source.includes('execute:'), 'the driver must not override runAgenticTask\'s executor')
+  assert.ok(!source.includes('runTask'), 'the driver must not override runAgenticSweep\'s paid runner')
 })
 
-test('the sweep carries the same unpersisted-row accounting as the prose driver', () => {
-  // Rows persist per condition after the loop, so a throw mid-sweep must name every
-  // paid row that never reached a file — membership in the persisted set, not a count.
+test('paid rows are appended durably as they are produced, never held for an end-of-loop write', () => {
+  // The reviewer's traced failure: rows persisted only after the whole loop, so a
+  // parser throw on call 18 of 18 dumped 17 already-paid rows to stderr — taskPassed
+  // and testExitCode died with the terminal scrollback. The sweep must append each
+  // row to its final per-condition file the moment it exists, truncate those files
+  // up front so a rerun never doubles rows, and keep the stderr accounting only as
+  // the last-resort net for a row whose own append failed. The behavioural proof —
+  // an execute stub that succeeds then throws, earlier rows readable from disk —
+  // lives in agentic.test.mjs; these markers pin the mechanism in the source.
   for (const marker of [
+    'await appendFile(',
+    "await writeFile(rowFiles[condition], '')",
     'const persisted = new Set()',
     'allRows.filter(row => !persisted.has(row))',
     'INCOMPLETE SWEEP',
     'row.scheduleVersion = SCHEDULE_VERSION'
   ]) {
-    assert.ok(source.includes(marker), `the driver must carry the accounting marker: ${marker}`)
+    assert.ok(libSource.includes(marker), `runAgenticSweep must carry the durability marker: ${marker}`)
   }
+  // Append order: the row reaches disk before it is counted as persisted, and the
+  // append happens inside the loop, before the next paid call can start.
+  const append = libSource.indexOf('await appendFile(')
+  assert.ok(append > libSource.indexOf('await runTask('), 'the append belongs to the row just paid for')
+  assert.ok(append < libSource.indexOf('persisted.add(row)'), 'a row is only "persisted" once its append returned')
 })

@@ -1,10 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, basename } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { loadFixtures, copyFixture, runFixtureTest, applyOracle, applyPartialOracle, FIXTURE_ROOT } from '../lib/fixtures.mjs'
+import { CONTAMINANT_TOOLS } from '../lib/agentic.mjs'
 
 test('every fixture declares the fields the runner needs', async () => {
   const fixtures = await loadFixtures()
@@ -20,13 +21,56 @@ test('every fixture declares the fields the runner needs', async () => {
   }
 })
 
-test('no fixture allows the Skill or Agent tool', async () => {
-  // Skill: one arm loading skill content the other did not would be attributed to the style.
-  // Agent: output styles do not apply to subagents, so the treatment silently stops applying.
+test('no fixture allows a contaminant tool', async () => {
+  // Skill: one arm loading skill content the other did not would be attributed to the
+  // style. Agent and the Task* family: they dispatch or manage subagent work, and
+  // output styles do not apply to subagents, so the treatment silently stops applying.
+  // buildAgenticArgs filters these out anyway; a fixture naming one is a mistake worth
+  // catching at the manifest.
   for (const fixture of await loadFixtures()) {
-    assert.ok(!fixture.allowedTools.includes('Skill'), `${fixture.name} allows Skill`)
-    assert.ok(!fixture.allowedTools.includes('Agent'), `${fixture.name} allows Agent`)
+    for (const tool of CONTAMINANT_TOOLS) {
+      assert.ok(!fixture.allowedTools.includes(tool), `${fixture.name} allows ${tool}`)
+    }
   }
+})
+
+test('loadFixtures rejects a manifest that declares a loader-owned field', async () => {
+  // name, dir and id are the loader's to set: a manifest declaring one would shadow
+  // the real value (id keys scheduleSweep's condition rotation, so a shadowed id
+  // silently destroys the rotation). The spread order makes the loader win anyway —
+  // this pins the louder, earlier defence: outright rejection.
+  const manifest = {
+    shape: 'failing-test',
+    prompt: 'fix it',
+    testCommand: 'npm',
+    testArgs: ['test'],
+    allowedTools: ['Read', 'Edit', 'Bash']
+  }
+  for (const reserved of ['name', 'dir', 'id']) {
+    const root = await mkdtemp(join(tmpdir(), 'bluf-fixture-root-'))
+    await mkdir(join(root, 'shadowed'))
+    await writeFile(
+      join(root, 'shadowed', 'fixture.json'),
+      JSON.stringify({ ...manifest, [reserved]: 'impostor' })
+    )
+    await assert.rejects(
+      loadFixtures(pathToFileURL(root + '/')),
+      new RegExp(`fixture shadowed declares reserved field ${reserved}`),
+      `a manifest declaring ${reserved} must be rejected outright`
+    )
+  }
+
+  // Positive control, so this test cannot pass vacuously against a loader that
+  // rejects everything: the same manifest without the impostor field loads, and the
+  // loader's own name/dir/id are in place.
+  const root = await mkdtemp(join(tmpdir(), 'bluf-fixture-root-'))
+  await mkdir(join(root, 'shadowed'))
+  await writeFile(join(root, 'shadowed', 'fixture.json'), JSON.stringify(manifest))
+  const loaded = await loadFixtures(pathToFileURL(root + '/'))
+  assert.equal(loaded.length, 1)
+  assert.equal(loaded[0].name, 'shadowed')
+  assert.equal(loaded[0].id, 'shadowed')
+  assert.ok(loaded[0].dir.endsWith('/shadowed/'), `dir must be loader-set, got ${loaded[0].dir}`)
 })
 
 test('every fixture starts RED — its test command fails before any fix', async () => {
