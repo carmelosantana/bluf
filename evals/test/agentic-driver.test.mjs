@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
-import { plannedAgenticSweepFiles, agenticRowFile, agenticTranscriptFile } from '../lib/overwrite-gate.mjs'
+import { plannedAgenticSweepFiles, agenticRowFile, agenticTranscriptFile, fixtureFilterLabel } from '../lib/overwrite-gate.mjs'
 import { loadFixtures } from '../lib/fixtures.mjs'
 
 const run = promisify(execFile)
@@ -51,8 +51,12 @@ test('every free gate sits above the first paid call', () => {
     'MAX_AGENTIC_TRIALS',
     'EXPECTED_FIXTURES',
     'loadFixtures()',
+    'process.env.FIXTURES',
+    'fixtureFilterLabel(',
     'applyOracle(',
     'runFixtureTest(',
+    'applyNaive(',
+    'runHiddenTest(',
     'assertGitUsable(',
     'assertOverwritesAllowed(',
     'assertUserStyleFresh(',
@@ -167,6 +171,108 @@ test('plannedAgenticSweepFiles enumerates exactly the row files and every transc
     ['agentic-m1-a.jsonl', 'agentic-transcripts/m1-a-f1-t1.jsonl'],
     'the concrete filename shapes are what evals/results/ will carry; pin them'
   )
+})
+
+test('EXPECTED_FIXTURES is a literal that matches the committed fixture suite', async () => {
+  // The hand-maintained literal stands (deriving it from the same directory the
+  // loader reads would make the gate compare an observation with itself), but this
+  // test is the free-suite alarm: a fixture added or removed without updating the
+  // constant fails `npm test` here, not one gate-refusal into a paid run.
+  const match = source.match(/const EXPECTED_FIXTURES = (\d+)/)
+  assert.ok(match, 'EXPECTED_FIXTURES must stay a reviewable literal so growing the spend is a deliberate edit')
+  assert.equal(Number(match[1]), 4, 'the committed suite is four fixtures, hidden-edges included')
+  assert.equal(Number(match[1]), (await loadFixtures()).length,
+    'the literal must track the committed fixture set; update both in the same change')
+})
+
+test('the driver refuses an unknown or empty FIXTURES filter, loudly, before anything is spent', async () => {
+  // Behavioural, like the TRIALS tests: each of these values makes the driver throw
+  // at the filter-validation gate — after the free fixture load, before the oracle
+  // checks, the overwrite gate, and any claude spawn. A typo must never silently
+  // produce an empty or partial paid sweep.
+  const driver = fileURLToPath(new URL('../measure-agentic.mjs', import.meta.url))
+  for (const [value, message] of [
+    ['no-such-fixture', /unknown fixture/],
+    ['hidden-edges,no-such-fixture', /no-such-fixture/],
+    ['hidden-edgse', /hidden-edgse/],
+    ['', /names no fixture/],
+    [' , ', /names no fixture/]
+  ]) {
+    await assert.rejects(
+      run(process.execPath, [driver], { env: { ...process.env, TRIALS: '1', FIXTURES: value } }),
+      error => message.test(error.stderr ?? ''),
+      `FIXTURES=${JSON.stringify(value)} must be refused with a message matching ${message}`
+    )
+  }
+})
+
+test('the fixture filter derives its label from the shared pure function, in gate and sweep alike', () => {
+  // The label must reach BOTH the gate's enumeration and the paid sweep's write loop
+  // as the same value, or a filtered run's gate would judge different filenames than
+  // the loop writes — the drift the shared helpers exist to make impossible.
+  assert.ok(source.includes('fixtureFilterLabel('), 'the driver must derive the label from the shared helper')
+  const labelled = source.split('label: sweepLabel').length - 1
+  assert.ok(labelled >= 2,
+    'both plannedAgenticSweepFiles and runAgenticSweep must be handed the same sweepLabel')
+  // And the summary loop reports the labelled filenames, not the unfiltered ones.
+  assert.ok(source.includes('agenticRowFile(AGENTIC_MODEL, condition, sweepLabel)'),
+    'the end-of-run summary must name the files this run actually wrote')
+})
+
+test('fixtureFilterLabel is deterministic, sorted, and refuses names unsafe for a filename', () => {
+  assert.equal(fixtureFilterLabel(['hidden-edges']), 'hidden-edges')
+  assert.equal(fixtureFilterLabel(['rename-option', 'hidden-edges']), 'hidden-edges+rename-option')
+  assert.equal(fixtureFilterLabel(['hidden-edges', 'rename-option']), 'hidden-edges+rename-option',
+    'the order the operator typed must not change which files a run writes')
+  assert.throws(() => fixtureFilterLabel([]), /non-empty/)
+  assert.throws(() => fixtureFilterLabel(['bad/name']), /filesystem-safe/)
+  assert.throws(() => fixtureFilterLabel(['../escape']), /filesystem-safe/)
+})
+
+test('a labelled run plans label-suffixed filenames, disjoint from the unfiltered ones', () => {
+  const labelled = plannedAgenticSweepFiles({
+    model: 'm1', conditions: ['a', 'b'], fixtures: ['f1'], trials: 1, label: 'f1'
+  })
+  assert.deepEqual(labelled, [
+    'agentic-m1-a-f1.jsonl',
+    'agentic-m1-b-f1.jsonl',
+    'agentic-transcripts/m1-a-f1-f1-t1.jsonl',
+    'agentic-transcripts/m1-b-f1-f1-t1.jsonl'
+  ], 'the concrete labelled filename shapes are what a scoped run will commit; pin them')
+  const unfiltered = new Set(plannedAgenticSweepFiles({
+    model: 'm1', conditions: ['a', 'b'], fixtures: ['f1'], trials: 1
+  }))
+  for (const file of labelled) {
+    assert.ok(!unfiltered.has(file), `${file} must never collide with an unfiltered path`)
+  }
+  // No label (and an explicit null) keeps the committed unfiltered names byte-identical.
+  assert.equal(agenticRowFile('m1', 'a', null), 'agentic-m1-a.jsonl')
+  assert.equal(agenticTranscriptFile('m1', 'a', 'f1', 1, null), 'agentic-transcripts/m1-a-f1-t1.jsonl')
+  // An empty-string label is refused: it would silently produce the unfiltered names.
+  assert.throws(() => agenticRowFile('m1', 'a', ''), /label/)
+  assert.throws(() => agenticTranscriptFile('m1', 'a', 'f1', 1, ''), /label/)
+})
+
+test('the pre-spend gate proves the hidden-edges split for real, above the paid call', () => {
+  // Gate 3's extension: under the oracle BOTH suites must go green, and under the
+  // naive patch the visible suite must go green while the hidden suite FAILS. If
+  // that split has rotted the fixture measures nothing, and the sweep must refuse
+  // before any money moves.
+  for (const marker of [
+    'if (!hiddenOracle.passed)',
+    'if (!naiveVisible.passed)',
+    'if (naiveHidden.passed)'
+  ]) {
+    const index = source.indexOf(marker)
+    assert.ok(index > -1, `the driver must gate on: ${marker}`)
+    assert.ok(index < firstPaid, `${marker} must precede any spending`)
+  }
+  // The naive split runs in its own fresh copy: applying naive on top of the oracle
+  // copy would test a chimera patch state, not the committed naive fix.
+  const naiveApply = source.indexOf('applyNaive(')
+  const naiveCopy = source.lastIndexOf('copyFixture(', naiveApply)
+  assert.ok(naiveCopy > source.indexOf('applyOracle('),
+    'the naive check needs a second copyFixture call, after the oracle copy was made')
 })
 
 test('fixtures expose id as an alias of name, so scheduleSweep can key on .id', async () => {

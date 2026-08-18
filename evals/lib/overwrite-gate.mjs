@@ -58,27 +58,68 @@ export function plannedSweepFiles ({ models, conditions, mainEnvironment, overhe
   return files
 }
 
+// The label a FIXTURES-scoped sweep stamps into every filename it writes. Derived
+// from the SORTED, de-duplicated filtered fixture names so the same filter always
+// names the same files whatever order the operator typed, and validated
+// filesystem-safe so a hostile or mistyped name cannot smuggle a path separator
+// into the results directory. A scoped run exists precisely because the unfiltered
+// filenames hold committed evidence (Component 3's 18 paid calls); the label is
+// what keeps a scoped run's writes disjoint from them.
+export function fixtureFilterLabel (names) {
+  if (!Array.isArray(names) || names.length === 0) {
+    throw new Error('fixtureFilterLabel requires a non-empty array of fixture names; an empty filter labels nothing')
+  }
+  const sorted = [...new Set(names)].sort()
+  for (const name of sorted) {
+    if (typeof name !== 'string' || !/^[a-z0-9][a-z0-9-]*$/i.test(name)) {
+      throw new Error(
+        `fixture name ${JSON.stringify(name)} is not filesystem-safe for a filename label; ` +
+        'labels admit only letters, digits and hyphens per name'
+      )
+    }
+  }
+  return sorted.join('+')
+}
+
+// null means "no filter": the unfiltered filenames, byte-identical to what the
+// committed Component 3 rows carry. Anything else must be a non-empty, safe label —
+// an empty string would silently reproduce the unfiltered names, which is exactly
+// the collision the label exists to prevent.
+function labelSuffix (label) {
+  if (label === null || label === undefined) return ''
+  if (typeof label !== 'string' || label.length === 0 || !/^[a-z0-9+-]+$/i.test(label)) {
+    throw new Error(
+      `invalid fixture-filter label ${JSON.stringify(label)}: a label must be a non-empty ` +
+      'string of letters, digits, hyphens and plus signs, or null for an unfiltered run'
+    )
+  }
+  return `-${label}`
+}
+
 // The agentic driver's write targets, as single points of truth: the driver's write
 // loop interpolates THESE functions, and plannedAgenticSweepFiles enumerates from the
 // same functions, so the gate's planned list cannot drift from what the run writes.
-export const agenticRowFile = (model, condition) => `agentic-${model}-${condition}.jsonl`
-export const agenticTranscriptFile = (model, condition, fixture, trial) =>
-  `agentic-transcripts/${model}-${condition}-${fixture}-t${trial}.jsonl`
+// The optional label scopes a FIXTURES-filtered run to its own distinct paths.
+export const agenticRowFile = (model, condition, label = null) =>
+  `agentic-${model}-${condition}${labelSuffix(label)}.jsonl`
+export const agenticTranscriptFile = (model, condition, fixture, trial, label = null) =>
+  `agentic-transcripts/${model}-${condition}${labelSuffix(label)}-${fixture}-t${trial}.jsonl`
 
 // Every result-directory path one `npm run measure:agentic` invocation writes: the
 // per-condition row files, plus one raw transcript per scheduled call. The transcripts
 // are in here deliberately — they are the only durable record of what each paid call
 // actually did, so a rerun silently replacing a committed transcript is the same class
-// of evidence destruction the row-file gate exists to prevent.
-export function plannedAgenticSweepFiles ({ model, conditions, fixtures, trials }) {
+// of evidence destruction the row-file gate exists to prevent. The label flows through
+// the same helpers the write loop interpolates, filtered and unfiltered alike.
+export function plannedAgenticSweepFiles ({ model, conditions, fixtures, trials, label = null }) {
   const files = []
   for (const condition of conditions) {
-    files.push(agenticRowFile(model, condition))
+    files.push(agenticRowFile(model, condition, label))
   }
   for (let trial = 1; trial <= trials; trial += 1) {
     for (const fixture of fixtures) {
       for (const condition of conditions) {
-        files.push(agenticTranscriptFile(model, condition, fixture, trial))
+        files.push(agenticTranscriptFile(model, condition, fixture, trial, label))
       }
     }
   }

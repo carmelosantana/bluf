@@ -19,7 +19,7 @@ import {
   settingSourcesOf,
   STYLE_SHA256
 } from './runner.mjs'
-import { copyFixture, runFixtureTest } from './fixtures.mjs'
+import { copyFixture, runFixtureTest, runHiddenTest } from './fixtures.mjs'
 import { scheduleSweep, SCHEDULE_VERSION } from './schedule.mjs'
 import { agenticRowFile, agenticTranscriptFile } from './overwrite-gate.mjs'
 
@@ -375,6 +375,20 @@ export async function runAgenticTask (fixture, condition, model, trial = 1, {
   // state the model left behind. A timeout or output blowout scores as a failure.
   const testResult = await runFixtureTest(cwd)
 
+  // Adequacy ground truth, scored AFTER the run and never shown to the model: the
+  // hidden suite, for fixtures that ship one. A fixture with NO hidden suite records
+  // hiddenPassed: null — NEVER false, which would read as "the styled arm failed
+  // adequacy" on a fixture that was never tested for it, and NEVER absent, which
+  // JSON.stringify would drop so the column silently vanished from the committed
+  // row. Both are this repository's recurring silent-wrong-value bug in a new place.
+  let hiddenPassed = null
+  let hiddenExitCode = null
+  if (fixture.hiddenCommand !== undefined) {
+    const hiddenResult = await runHiddenTest(cwd)
+    hiddenPassed = hiddenResult.passed
+    hiddenExitCode = hiddenResult.exitCode
+  }
+
   return {
     fixture: fixture.name,
     shape: fixture.shape,
@@ -388,6 +402,8 @@ export async function runAgenticTask (fixture, condition, model, trial = 1, {
     transcriptPath: transcript,
     taskPassed: testResult.passed,
     testExitCode: testResult.exitCode,
+    hiddenPassed,
+    hiddenExitCode,
     ...provenance,
     ...metrics
   }
@@ -410,6 +426,7 @@ export async function runAgenticTask (fixture, condition, model, trial = 1, {
 // write cannot drift from the gate's planned list.
 export async function runAgenticSweep ({
   fixtures, conditions, model, trials, resultsUrl,
+  label = null,
   runTask = runAgenticTask,
   log = () => {}
 }) {
@@ -418,7 +435,7 @@ export async function runAgenticSweep ({
   await mkdir(new URL('./agentic-transcripts/', resultsUrl), { recursive: true })
   const rowFiles = {}
   for (const condition of conditions) {
-    rowFiles[condition] = new URL(agenticRowFile(model, condition), resultsUrl)
+    rowFiles[condition] = new URL(agenticRowFile(model, condition, label), resultsUrl)
     await writeFile(rowFiles[condition], '')
   }
 
@@ -438,7 +455,7 @@ export async function runAgenticSweep ({
     // transcript would die with /tmp.
     for (const entry of scheduleSweep({ cases: fixtures, conditions, trials })) {
       log(`agentic ${model} ${entry.condition} trial ${entry.trial} ${entry.caseId}\n`)
-      const transcriptName = agenticTranscriptFile(model, entry.condition, entry.caseId, entry.trial)
+      const transcriptName = agenticTranscriptFile(model, entry.condition, entry.caseId, entry.trial, label)
       const row = await runTask(fixtures[entry.caseIndex], entry.condition, model, entry.trial, {
         transcriptPath: fileURLToPath(new URL(transcriptName, resultsUrl))
       })

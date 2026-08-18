@@ -19,7 +19,7 @@ import {
 import { CONDITIONS, STYLE_SHA256 } from '../lib/runner.mjs'
 import { SCHEDULE_VERSION } from '../lib/schedule.mjs'
 import { plannedAgenticSweepFiles } from '../lib/overwrite-gate.mjs'
-import { loadFixtures } from '../lib/fixtures.mjs'
+import { loadFixtures, applyOracle, applyNaive } from '../lib/fixtures.mjs'
 
 // The full contaminant denylist, pinned as a literal so a drifted CONTAMINANT_TOOLS
 // in lib/agentic.mjs fails HERE, not eighteen paid calls into a sweep. Skill loads
@@ -638,6 +638,55 @@ test('runAgenticTask refuses a substituted model rather than recording its row',
   )
 })
 
+test('runAgenticTask scores the hidden suite after the run: oracle-green true, naive-split false', async () => {
+  // Adequacy ground truth, through the REAL call path: the committed hidden-edges
+  // fixture, with the stubbed execute standing in for the model's work by applying
+  // a committed patch to the fixture COPY (never the committed tree). Under the
+  // oracle both suites go green; under the naive fix the visible suite goes green
+  // while the hidden suite stays red — hiddenPassed is exactly that split.
+  const hidden = (await loadFixtures()).find(f => f.name === 'hidden-edges')
+  assert.ok(hidden, 'the committed hidden-edges fixture must exist')
+
+  const oracleRow = await runAgenticTask(hidden, 'bluf', 'claude-fable-5', 1, {
+    execute: async (args, cwd) => {
+      await applyOracle('hidden-edges', cwd)
+      return streamStdout(agenticPayload())
+    }
+  })
+  assert.equal(oracleRow.taskPassed, true)
+  assert.equal(oracleRow.hiddenPassed, true, 'a complete fix passes the hidden suite')
+  assert.equal(oracleRow.hiddenExitCode, 0)
+
+  const naiveRow = await runAgenticTask(hidden, 'bluf', 'claude-fable-5', 1, {
+    execute: async (args, cwd) => {
+      await applyNaive('hidden-edges', cwd)
+      return streamStdout(agenticPayload())
+    }
+  })
+  assert.equal(naiveRow.taskPassed, true, 'the naive fix greens the visible suite — taskPassed alone cannot see inadequacy')
+  assert.equal(naiveRow.hiddenPassed, false, 'the naive fix must fail the hidden suite: this split IS the adequacy signal')
+  assert.ok(Number.isInteger(naiveRow.hiddenExitCode) && naiveRow.hiddenExitCode !== 0,
+    'a failed hidden suite carries its real non-zero exit code')
+})
+
+test('a fixture with no hidden suite records hiddenPassed null — never false, never absent', async () => {
+  // The recurring silent-wrong-value bug, refused in a new place: false would read
+  // as "the styled arm failed adequacy" for three fixtures that were never tested
+  // for it, and undefined would be DROPPED by JSON.stringify on its way into the
+  // committed .jsonl, so the column would silently vanish from the row.
+  const row = await runAgenticTask(fixture, 'bluf', 'claude-fable-5', 1, {
+    execute: async () => streamStdout(agenticPayload())
+  })
+  assert.equal(row.hiddenPassed, null, 'no hidden suite means null, strictly')
+  assert.equal(row.hiddenExitCode, null)
+  const persisted = JSON.parse(JSON.stringify(row))
+  assert.ok(Object.hasOwn(persisted, 'hiddenPassed'),
+    'hiddenPassed must survive JSON round-trip to the .jsonl; undefined would not')
+  assert.equal(persisted.hiddenPassed, null)
+  assert.ok(Object.hasOwn(persisted, 'hiddenExitCode'))
+  assert.equal(persisted.hiddenExitCode, null)
+})
+
 // A sweep over the real committed failing-test fixture and both real conditions, in
 // a temp results directory, through the REAL runAgenticTask — only the paid claude
 // call is stubbed via the injected execute. Nothing here can spend.
@@ -742,5 +791,62 @@ test('a completed sweep has every row exactly once on disk, and a rerun truncate
     // What the function returned is exactly what reached disk: no divergence between
     // the summary a driver prints and the evidence a reader will find.
     assert.deepEqual(byCondition[condition], second[condition])
+  }
+})
+
+test('planned files equal written files exactly — both directions, filtered and unfiltered', async () => {
+  // The no-drift property the tracked-overwrite gate depends on, as a SET EQUALITY:
+  // everything planned is written AND nothing is written outside the plan, for an
+  // unfiltered run (label null, the committed Component 3 filenames) and a
+  // FIXTURES-scoped run (label suffix, the only filenames a scoped sweep may touch).
+  // Filename drift between the gate's planned list and the write loop is how this
+  // repository nearly destroyed its committed 0.2.0 lean rows.
+  const all = await loadFixtures()
+  const conditions = Object.keys(CONDITIONS)
+  for (const { names, label } of [
+    { names: ['failing-test'], label: null },
+    { names: ['hidden-edges'], label: 'hidden-edges' }
+  ]) {
+    const fixtures = all.filter(f => names.includes(f.name))
+    assert.equal(fixtures.length, names.length, `committed fixture(s) [${names.join(', ')}] must exist`)
+    const resultsDir = await mkdtemp(join(tmpdir(), 'bluf-agentic-planned-'))
+    const rows = await runAgenticSweep({
+      fixtures,
+      conditions,
+      model: 'claude-fable-5',
+      trials: 1,
+      resultsUrl: pathToFileURL(resultsDir + '/'),
+      label,
+      runTask: (fixtureRow, condition, model, trial, options) =>
+        runAgenticTask(fixtureRow, condition, model, trial, {
+          ...options, execute: async () => streamStdout(agenticPayload())
+        })
+    })
+    const planned = plannedAgenticSweepFiles({
+      model: 'claude-fable-5', conditions, fixtures: names, trials: 1, label
+    }).sort()
+    const written = (await readdir(resultsDir, { recursive: true, withFileTypes: true }))
+      .filter(entry => entry.isFile())
+      .map(entry => join(entry.parentPath ?? entry.path, entry.name).slice(resultsDir.length + 1))
+      .sort()
+    assert.deepEqual(written, planned,
+      `label ${JSON.stringify(label)}: the written set and the planned set must be identical in both directions`)
+    // And a labelled run's row files never collide with the committed unfiltered names.
+    if (label !== null) {
+      const unfiltered = new Set(plannedAgenticSweepFiles({
+        model: 'claude-fable-5', conditions, fixtures: names, trials: 1
+      }))
+      for (const file of planned) {
+        assert.ok(!unfiltered.has(file), `${file} must be distinct from every unfiltered path`)
+      }
+      // hiddenPassed made it to disk on the hidden-edges rows, as a real boolean.
+      for (const condition of conditions) {
+        for (const row of rows[condition]) {
+          assert.equal(typeof row.hiddenPassed, 'boolean',
+            'a hidden-edges row must carry a scored hiddenPassed, and the stub applied no fix so it is false')
+          assert.equal(row.hiddenPassed, false)
+        }
+      }
+    }
   }
 })

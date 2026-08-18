@@ -7,9 +7,9 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CONDITIONS, readCliVersion, assertUserStyleFresh } from './lib/runner.mjs'
 import { runAgenticSweep, FIXTURE_SHAPES } from './lib/agentic.mjs'
-import { loadFixtures, copyFixture, runFixtureTest, applyOracle } from './lib/fixtures.mjs'
+import { loadFixtures, copyFixture, runFixtureTest, runHiddenTest, applyOracle, applyNaive } from './lib/fixtures.mjs'
 import {
-  agenticRowFile, plannedAgenticSweepFiles,
+  agenticRowFile, plannedAgenticSweepFiles, fixtureFilterLabel,
   assertOverwritesAllowed, assertGitUsable, OVERWRITE_ALLOWLIST_VAR
 } from './lib/overwrite-gate.mjs'
 
@@ -32,8 +32,12 @@ const MAX_AGENTIC_TRIALS = 3
 
 // The fixture-count analogue of the prose driver's PROMPTS_SHA256 pin: the sweep's cost
 // is TRIALS x conditions x THIS, so a fixture added to evals/fixtures/ must not silently
-// multiply the spend. Growing the suite is a deliberate act that updates this constant.
-const EXPECTED_FIXTURES = 3
+// multiply the spend. Growing the suite is a deliberate act that updates this constant —
+// 4 since the hidden-edges adequacy fixture landed. Kept a hand-maintained literal on
+// purpose: deriving it from the fixture directory would compare the loader's observation
+// with itself and the gate would never fire. The free suite pins this literal against
+// loadFixtures() so drift fails `npm test` before it can refuse a paid run.
+const EXPECTED_FIXTURES = 4
 
 const TRIALS = Number(process.env.TRIALS ?? 1)
 if (!Number.isInteger(TRIALS) || TRIALS < 1) {
@@ -81,14 +85,52 @@ for (const fixture of fixtures) {
   }
 }
 
-// Gate: every fixture actually goes green, run for real here — not merely covered by
-// the last `npm test` someone ran. The non-exploration fixtures must go green under
-// their committed oracle patch; the exploration fixture's committed state must already
-// be green (it has no oracle — the model only reads, so its test doubles as the
-// fixture-rot canary). A fixture that rotted since the last test run would otherwise
-// score taskPassed: false in BOTH arms and waste the whole sweep. Each check runs in a
-// temp copy; the committed fixture is never mutated.
-for (const fixture of fixtures) {
+// Gate: the FIXTURES filter, validated loudly before anything slower runs. FIXTURES is
+// a comma-separated subset of fixture names scoping the sweep — the mechanism that lets
+// the adequacy sweep pay for the hidden-edges fixture alone instead of re-running the
+// three fixtures whose 18 committed rows are already Component 3 evidence. Unset means
+// every fixture, writing exactly the unfiltered filenames, unchanged. When set, the run
+// writes filenames suffixed with a label derived from the SORTED filter, so a scoped
+// sweep can never collide with the committed unfiltered files. An unknown name must
+// fail HERE, before any money: a typo that silently produced an empty or partial sweep
+// would spend real dollars measuring the wrong thing.
+let sweepFixtures = fixtures
+let sweepLabel = null
+if (process.env.FIXTURES !== undefined) {
+  const requested = [...new Set(
+    process.env.FIXTURES.split(',').map(name => name.trim()).filter(name => name.length > 0)
+  )]
+  if (requested.length === 0) {
+    throw new Error(
+      `FIXTURES is set (${JSON.stringify(process.env.FIXTURES)}) but names no fixture. Unset it to ` +
+      `sweep every fixture, or name at least one of [${fixtures.map(fixture => fixture.name).join(', ')}].`
+    )
+  }
+  const known = new Set(fixtures.map(fixture => fixture.name))
+  const unknown = requested.filter(name => !known.has(name))
+  if (unknown.length > 0) {
+    throw new Error(
+      `FIXTURES names unknown fixture(s): [${unknown.join(', ')}]. The committed fixtures are ` +
+      `[${fixtures.map(fixture => fixture.name).join(', ')}]. A typo must fail here, loudly, ` +
+      'rather than silently produce an empty or partial paid sweep.'
+    )
+  }
+  sweepFixtures = fixtures.filter(fixture => requested.includes(fixture.name))
+  sweepLabel = fixtureFilterLabel(requested)
+}
+
+// Gate: every fixture THIS SWEEP WILL PAY FOR actually goes green, run for real here —
+// not merely covered by the last `npm test` someone ran. The non-exploration fixtures
+// must go green under their committed oracle patch; the exploration fixture's committed
+// state must already be green (it has no oracle — the model only reads, so its test
+// doubles as the fixture-rot canary). A fixture that rotted since the last test run
+// would otherwise score taskPassed: false in BOTH arms and waste the whole sweep.
+// For the hidden-edges shape the contract is stronger and is verified for real too:
+// under oracle.patch BOTH suites must go green, and under naive.patch the visible
+// suite must go green while the hidden suite FAILS — if that split has rotted, the
+// fixture measures nothing about adequacy and no money may be spent on it. Each check
+// runs in a temp copy; the committed fixture is never mutated.
+for (const fixture of sweepFixtures) {
   const parent = await mkdtemp(join(tmpdir(), 'bluf-agentic-oracle-'))
   const dir = await copyFixture(fixture.name, parent)
   if (fixture.shape !== 'exploration') {
@@ -102,6 +144,38 @@ for (const fixture of fixtures) {
       ` (exit ${oracleResult.exitCode}); a fixture that cannot pass would waste the entire paid sweep.\n` +
       `${oracleResult.stdout}\n${oracleResult.stderr}`
     )
+  }
+  if (fixture.shape === 'hidden-edges') {
+    const hiddenOracle = await runHiddenTest(dir)
+    if (!hiddenOracle.passed) {
+      throw new Error(
+        `fixture ${fixture.name}: the hidden suite does not go green under the oracle patch ` +
+        `(exit ${hiddenOracle.exitCode}); a hidden suite even the complete fix cannot pass scores ` +
+        `every arm inadequate and measures nothing.\n${hiddenOracle.stdout}\n${hiddenOracle.stderr}`
+      )
+    }
+    // The naive split, in its own fresh copy: applying naive.patch on top of the
+    // oracle copy would test a chimera of both patches, not the committed naive fix.
+    const naiveParent = await mkdtemp(join(tmpdir(), 'bluf-agentic-naive-'))
+    const naiveDir = await copyFixture(fixture.name, naiveParent)
+    await applyNaive(fixture.name, naiveDir)
+    const naiveVisible = await runFixtureTest(naiveDir)
+    if (!naiveVisible.passed) {
+      throw new Error(
+        `fixture ${fixture.name}: the visible suite does not go green under the naive patch ` +
+        `(exit ${naiveVisible.exitCode}); the naive fix must look like a success to taskPassed, ` +
+        `or the visible/hidden split proves nothing.\n${naiveVisible.stdout}\n${naiveVisible.stderr}`
+      )
+    }
+    const naiveHidden = await runHiddenTest(naiveDir)
+    if (naiveHidden.passed) {
+      throw new Error(
+        `fixture ${fixture.name}: the hidden suite PASSES under the naive patch. There is no ` +
+        'adequacy gap left to detect — a hurried fix and a complete fix score identically — so ' +
+        'the fixture measures nothing and the sweep must not spend on it.'
+      )
+    }
+    await rm(naiveParent, { recursive: true, force: true })
   }
   await rm(parent, { recursive: true, force: true })
 }
@@ -117,8 +191,9 @@ for (const fixture of fixtures) {
 const planned = plannedAgenticSweepFiles({
   model: AGENTIC_MODEL,
   conditions: Object.keys(CONDITIONS),
-  fixtures: fixtures.map(fixture => fixture.name),
-  trials: TRIALS
+  fixtures: sweepFixtures.map(fixture => fixture.name),
+  trials: TRIALS,
+  label: sweepLabel
 })
 {
   let probeSucceeded = true
@@ -187,11 +262,12 @@ await readCliVersion()
 // Every path the sweep writes interpolates the same agenticRowFile /
 // agenticTranscriptFile helpers plannedAgenticSweepFiles enumerated for the gate.
 const rows = await runAgenticSweep({
-  fixtures,
+  fixtures: sweepFixtures,
   conditions: Object.keys(CONDITIONS),
   model: AGENTIC_MODEL,
   trials: TRIALS,
   resultsUrl: RESULTS,
+  label: sweepLabel,
   log: line => process.stderr.write(line)
 })
 
@@ -202,7 +278,7 @@ for (const condition of Object.keys(CONDITIONS)) {
   const conditionRows = rows[condition]
   const passed = conditionRows.filter(row => row.taskPassed).length
   console.log(
-    `${agenticRowFile(AGENTIC_MODEL, condition)}: ${conditionRows.length} row(s), ` +
+    `${agenticRowFile(AGENTIC_MODEL, condition, sweepLabel)}: ${conditionRows.length} row(s), ` +
     `taskPassed ${passed}/${conditionRows.length}`
   )
 }
