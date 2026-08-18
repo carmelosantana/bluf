@@ -2,18 +2,20 @@
 
 *Bottom Line Up Front.* A Claude Code output style that leads with the conclusion, written to cut filler — with the output-token reduction measured, including what it costs.
 
-- Cuts assistant output tokens by a median of **35.0%** on claude-fable-5 and **30.9%** on claude-opus-5. Measured on 12 Claude Code-shaped prompts, 3 trials per case, in a full ~122k-token environment.
-- **Every one of the 6 trial-level measurements came out negative.** On this suite, in this run, the direction was consistent; the size varied. Per-trial ranges are −44.0% to −30.7% (fable) and −32.7% to −29.0% (opus) — with a caveat: this run's "trials" were back-to-back repeats under schedule version 1, not independent sweeps. See [Variance](#variance).
-- Costs input tokens: **+2,030** per turn — the median of the per-trial paired differences, the same statistic used for the output-savings figures. The per-trial differences were 2,029–2,037 across the amortization run's trials. On the first turn of a session that is a cache **write**; from the second turn on it is a cache **read** of the same size.
-- **At published cache pricing, costs money on turn 1 and saves money on every turn after.** Break-even is 7.2×–10.6× output:input for a one-turn session and 0.36×–0.53× in steady state. No prices are quoted here — multiply by your own and see [What it costs](#what-it-costs).
-- 4 of the 24 per-case measurements have trial ranges that straddle zero, meaning the style's effect on those cases is not distinguishable from run-to-run noise even at 3 trials.
+- Cuts assistant output tokens by a median of **25.7%** on claude-fable-5. Measured on 12 tool-free prompts, 5 independent trials, in an isolated environment that excludes the operator's machine configuration. All 5 trials came out negative, ranging −20.6% to −49.3%.
+- **On claude-opus-5 the effect was not distinguishable from zero, and this is the honest headline.** The median was −14.0%, but two of five trials came out *positive* (+78.0% and +22.4%), and the category-clustered range spans zero. An earlier, less isolated run measured −30.9% on opus; **that figure is retracted**. See [Where the effect is not distinguishable from noise](#where-the-effect-is-not-distinguishable-from-noise).
+- **The reason is baseline instability, not the style failing.** Answering the same 12 questions with no style applied, opus's total output varied **80%** across the five trials. Fable varied 29%. The style cannot be resolved against a baseline that noisy.
+- Costs input tokens: **+2,032** per turn on fable and **+2,033** on opus — medians of 60 paired differences each, ranging 2,024–2,042. This is the best-evidenced number here: it now agrees across four independent measurements. On the first turn of a session it is a cache **write**; from the second turn on it is a cache **read** of the same size.
+- **At published cache pricing, costs money on turn 1 and saves money on every turn after — on fable.** Break-even is 18.8× output:input for a one-turn session and 0.94× in steady state. That margin is thinner than the earlier three-trial run suggested. No prices are quoted here — multiply by your own and see [What it costs](#what-it-costs).
+- **12 of the 24 per-case measurements have trial ranges that straddle zero** — 4 on fable, 8 on opus. On those cases the style made the response shorter on one trial and longer on another.
+- These figures describe **tool-free, single-turn prose**. Nothing here reads a file, edits code, or runs a command, and output styles do not apply to subagents. See [Known limitations](#known-limitations).
 - Version **0.1.0** of these rules made Opus **32.2% more verbose**. Measuring across models caught it. See [The 0.1.0 regression](#the-010-regression-on-opus).
 
-All numbers come from [`evals/results/`](evals/results/), committed in this repo — [`report-0.2.0.md`](evals/results/report-0.2.0.md) (four sections for the 12-case full-environment sweep, two for a 2-case lean-environment sweep), and the session-amortization slice (the cache write/read splits behind the input-cost and break-even figures) from the `amortization-*.jsonl` files. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
+All numbers come from [`evals/results/`](evals/results/), committed in this repo. The headline output figures come from [`report.md`](evals/results/report.md) and the `clean-*.jsonl` rows behind it; the input-cost and break-even figures from the session-amortization slice in the `amortization-*.jsonl` files. The superseded 3-trial measurement is preserved at [`report-0.2.0.md`](evals/results/report-0.2.0.md) rather than deleted. Every row records the model that actually ran, the CLI version, the style file's SHA-256, and which execution schedule produced it. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
 
 ## Before / after
 
-Prompt: *"In git, what does `--no-ff` do on a merge?"* — claude-opus-5, tools disabled. **This pair is an illustrative capture taken separately, not a row from the results table.** The sweep's own `git-no-ff` opus row measured a median of 492 → 114 output tokens. Both responses below are captured verbatim in [`evals/results/samples/`](evals/results/samples/); the exact commands are in [`samples/CAPTURE.md`](evals/results/samples/CAPTURE.md).
+Prompt: *"In git, what does `--no-ff` do on a merge?"* — claude-opus-5, tools disabled. **This pair is an illustrative capture taken separately, not a row from the results table.** The sweep's own `git-no-ff` opus row measured a median of 520 → 65 output tokens, in a different environment from this capture. Both responses below are captured verbatim in [`evals/results/samples/`](evals/results/samples/); the exact commands are in [`samples/CAPTURE.md`](evals/results/samples/CAPTURE.md).
 
 **Baseline (`outputStyle: Default`) — 586 output tokens** ([full text](evals/results/samples/git-no-ff.claude-opus-5.baseline.txt)), abridged:
 
@@ -82,42 +84,61 @@ An evaluated compression variant — grammar compression layered on top of these
 
 ## Measured results
 
-Median output tokens per case across 3 trials, full environment. Source: [`evals/results/report-0.2.0.md`](evals/results/report-0.2.0.md), which also carries the per-case delta ranges, plus the retired terse variant's sections. That file's aggregate lines for BLUF quote −37.1% and −30.9% — a different statistic again, the pooled token-weighted percentage (all trials' styled output summed over all trials' baseline output), which weights the longest cases most heavily. The headline figures are per-trial medians instead; the two statistics are computed from the same rows and agree in direction on every condition.
+Median output tokens per case across 5 trials, isolated environment. Source: [`report.md`](evals/results/report.md) and the `clean-*.jsonl` rows, which also carry the per-case delta ranges and the category-clustered summary.
 
 | Case | Category | fable base | fable BLUF | opus base | opus BLUF |
 | --- | --- | ---: | ---: | ---: | ---: |
-| port-default | short-lookup | 133 | 5 | 140 | 5 |
-| git-no-ff | short-lookup | 360 | 112 | 492 | 114 |
-| to-sorted | short-lookup | 280 | 78 | 405 | 52 |
-| health-endpoint | multi-step | 1,013 | 624 | 1,833 | 915 |
-| actions-workflow | multi-step | 686 | 381 | 1,053 | 499 |
-| cjs-to-esm | multi-step | 2,323 | 1,800 | 2,934 | 3,372 |
-| 401-no-evidence | debug | 1,144 | 640 | 1,489 | 650 |
-| ci-exit-1 | debug | 1,564 | 846 | 1,567 | 962 |
-| scheduled-jobs | options | 1,340 | 639 | 1,872 | 1,149 |
-| shared-types | options | 1,182 | 716 | 2,173 | 1,499 |
-| security-headers | long-list | 1,857 | 885 | 2,856 | 1,978 |
-| docker-cache-miss | long-list | 2,038 | 2,343 | 5,123 | 3,525 |
-| **Sum of medians** | | **13,920** | **9,069** | **21,937** | **14,720** |
+| port-default | short-lookup | 113 | 24 | 245 | 5 |
+| git-no-ff | short-lookup | 338 | 90 | 520 | 65 |
+| to-sorted | short-lookup | 222 | 40 | 358 | 57 |
+| health-endpoint | multi-step | 830 | 403 | 1,380 | 691 |
+| actions-workflow | multi-step | 352 | 226 | 277 | 797 |
+| cjs-to-esm | multi-step | 178 | 1,254 | 383 | 359 |
+| 401-no-evidence | debug | 476 | 381 | 413 | 287 |
+| ci-exit-1 | debug | 1,438 | 495 | 313 | 491 |
+| scheduled-jobs | options | 921 | 558 | 674 | 1,131 |
+| shared-types | options | 1,050 | 555 | 363 | 968 |
+| security-headers | long-list | 1,459 | 925 | 2,580 | 1,634 |
+| docker-cache-miss | long-list | 3,127 | 2,425 | 4,631 | 4,609 |
+| **Sum of medians** | | **10,504** | **7,376** | **12,137** | **11,094** |
 
-The bottom row sums the per-case medians. It does not exactly reproduce the headline percentages, because a sum of medians is not the median of sums — it gives −34.8% on fable and −32.9% on opus, against the per-trial medians of −35.0% and −30.9%. The [Variance](#variance) figures are the ones to quote, since they are computed per trial and carry a range.
+The bottom row sums the per-case medians. A sum of medians is not the median of sums, so it does not reproduce the headline: it gives −29.8% on fable and −8.6% on opus, against per-trial medians of −25.7% and −14.0%. The per-trial figures are the ones to quote, since they are computed per sweep and carry a range.
 
-The style loses on some rows. On fable, `docker-cache-miss` came out **+457** output tokens with BLUF — the median of the per-trial paired deltas, the pinned statistic, which here reads worse than the +305 a reader gets by differencing the table's two medians (2,038 → 2,343). On opus, `cjs-to-esm` came out **+438**, where the two statistics agree. Those rows are in the table and in the aggregates.
-
-`report-0.2.0.md` also carries the one committed aggregate that points the other way. Its 2-case lean-environment sweep — the environment-overhead measurement, not part of the headline claim — measured BLUF on opus at **+13.4% output** (+560 tokens per sweep), driven by `docker-cache-miss`: +299 at the median, with a −637 to +2,315 trial range. Two cases, one model, in an environment the headline figures do not cover — but it is the aggregate a skeptic will find first, and it is the same `docker-cache-miss` failure the full-environment fable row shows above.
+**The style loses on some rows, and on opus it loses on many.** Five of the twelve opus cases came out longer under BLUF at the median — `actions-workflow` (277 → 797), `ci-exit-1` (313 → 491), `scheduled-jobs` (674 → 1,131), `shared-types` (363 → 968), and `docker-cache-miss`, which is effectively flat. On fable, `cjs-to-esm` came out 178 → 1,254. Those rows are in the table and in every aggregate; none is excluded.
 
 ### Where the effect is not distinguishable from noise
 
-Four of the 24 per-case measurements have trial ranges crossing zero — the style made the response shorter on one trial and longer on another:
+**Twelve of the 24 per-case measurements have trial ranges crossing zero** — the style made the response shorter on one trial and longer on another:
 
 | Model | Case | Δ output range |
 | --- | --- | --- |
-| fable-5 | docker-cache-miss | −1,049 to +517 |
-| opus-5 | health-endpoint | −1,285 to +63 |
-| opus-5 | cjs-to-esm | −988 to +563 |
-| opus-5 | ci-exit-1 | −720 to +55 |
+| fable-5 | actions-workflow | −609 to +94 |
+| fable-5 | cjs-to-esm | −2,133 to +1,693 |
+| fable-5 | 401-no-evidence | −624 to +439 |
+| fable-5 | docker-cache-miss | −1,627 to +562 |
+| opus-5 | 401-no-evidence | −285 to +218 |
+| opus-5 | health-endpoint | −1,655 to +236 |
+| opus-5 | security-headers | −1,535 to +167 |
+| opus-5 | ci-exit-1 | −1,221 to +346 |
+| opus-5 | shared-types | −1,267 to +873 |
+| opus-5 | scheduled-jobs | −1,879 to +1,084 |
+| opus-5 | cjs-to-esm | −104 to +2,458 |
+| opus-5 | docker-cache-miss | −150 to +4,149 |
 
-The pattern is that the largest, most open-ended cases are the least predictable. A short lookup gets reliably shorter; a sprawling refactor question does not.
+### The Opus result, stated plainly
+
+The 12 prompts fall into 5 categories, and prompts within a category are correlated rather than independent draws. Collapsing to one value per category and bootstrapping over those five clusters gives an **indicative range** — not a confidence interval, because five clusters is far below where such methods are reliable:
+
+| Model | Point estimate | Indicative range | Excludes zero? |
+| --- | ---: | --- | --- |
+| claude-fable-5 | +341 tokens saved | +183 to +484 | **Yes** |
+| claude-opus-5 | −18 tokens saved | −181 to +161 | **No** |
+
+**So the fable figure publishes and the opus figure does not.** On opus the point estimate is very slightly *negative* — BLUF produced marginally more output on average across categories — and the categories disagree in sign.
+
+The cause is measurable and it is not the style. Answering the same 12 questions with **no style applied**, opus's total output per trial was 8,608 / 15,463 / 14,819 / 11,673 / 11,954 — an **80% spread**. Fable's was 10,880 / 12,467 / 10,914 / 9,665 / 11,797, a 29% spread. For comparison, opus in the previous, config-heavy environment varied **3.2%**. No effect of the size BLUF plausibly has can be resolved against a baseline moving 80%.
+
+This is why the earlier −30.9% is retracted rather than merely superseded: it was measured in an environment carrying ~122,000 tokens of the operator's configuration, at three trials that were back-to-back repeats rather than independent sweeps. The isolated, properly-scheduled measurement does not reproduce it. **Why a sparse context should destabilise Opus's output length is an open question this project has not answered.**
 
 ### What it costs
 
@@ -125,20 +146,23 @@ The pattern is that the largest, most open-ended cases are the least predictable
 
 | Model | Output tokens saved |
 | --- | ---: |
-| claude-fable-5 | 384 |
-| claude-opus-5 | 565 |
+| claude-fable-5 | 216 |
+| claude-opus-5 | *not quotable* |
 
-Those are rounded for display. Break-even below divides by the **unrounded** medians —
-383.9167 and 564.5833 — because dividing by the rounded figures shifts one of the
-four ratios. `perTrialMedianOutputSaved` returns the raw value for that reason.
+Fable's figure is rounded for display; break-even below divides by the **unrounded** median,
+215.9167. `perTrialMedianOutputSaved` returns the raw value for that reason.
+
+**No opus figure is published here.** The same statistic computes to 139.5 on opus, but the
+category-clustered range for opus spans zero, so that number describes noise as much as the
+style. Quoting it would be the same mistake this project retracted once already.
 
 The statistic is the median of the per-trial means, matching the [Variance](#variance) section.
 The pooled mean and the pooled median disagree with it, and with each other, by enough to
 change a model's verdict — so `perTrialMedianOutputSaved` in `evals/lib/report.mjs` pins it
 rather than leaving the choice to each call site, and a traceability test in
-`evals/test/report.test.mjs` recomputes every figure in this section — the two medians and
-all four break-even ratios — through the shipped functions from the committed result files,
-so a re-measure that moves any of them fails a test instead of leaving this README stale.
+`evals/test/report.test.mjs` recomputes every figure in this section through the shipped
+functions from the committed result files, so a re-measure that moves any of them fails a test
+instead of leaving this README stale.
 
 **Input added, split by how it bills.** From the committed amortization slice — two turns of
 one session per condition, on `port-default` in the lean environment, on **claude-opus-5
@@ -184,20 +208,26 @@ the cache TTL; a gap longer than the TTL re-pays the write. Every measured write
 
 | Model | One-turn session | Steady state (turn 2+) |
 | --- | ---: | ---: |
-| claude-fable-5 | 10.58× | 0.53× |
-| claude-opus-5 | 7.19× | 0.36× |
+| claude-fable-5 | 18.80× | 0.94× |
+
+**These ratios got worse, and the reason is the smaller measured saving.** At three trials in
+the config-heavy environment the same table read 10.58× and 0.53×. The input overhead did not
+move — it is the output saving that fell, from 384 tokens per turn to 216. One caveat on the
+mixture: the input half comes from the amortization slice, which is **opus-measured in the lean
+environment**, while the output half is fable-measured in the isolated one. The overhead is
+near-identical across both models and all three environments (2,030 / 2,032 / 2,033), which is
+what makes the mixture defensible, but it is a mixture.
 
 Above the ratio the style saves money; below it, it costs money. So a **single-turn** session is
-a loss unless output costs you more than 7.2×–10.6× input, while **every turn after the first**
-is a win unless output costs you *less* than 0.36×–0.53× of input. On Anthropic's published
-price list — the same source as the cache multipliers below — every model prices output
-above input; if you buy through another provider, that comparison is yours to check.
+a loss unless output costs you more than 18.8× input — which no current price list comes near —
+while **every turn after the first** is a win unless output costs you *less* than 0.94× of
+input. On Anthropic's published price list — the same source as the cache multipliers below —
+every model prices output above input, so the steady-state case still wins; if you buy through
+another provider, that comparison is yours to check.
 
-One asymmetry in the table's provenance: the output half is measured per model, but the input
-half comes from the opus-only amortization run — there is no fable input measurement in this
-repository. The fable row reuses the opus-measured +2,030 overhead. That transfer is
-very likely sound, because the overhead is a property of the style text rather than the model,
-but it is a transfer, not a fable measurement.
+**The margin is now thin where it used to be comfortable.** At 0.94× the steady-state case
+clears break-even by a smaller factor than the measurement's own spread. Treat "saves money from
+turn 2" as directionally supported, not as a precise multiple.
 
 The steady-state column is deliberately **conservative: it ignores the −263 write saving.**
 Counting that saving makes the steady-state input delta negative, meaning the style would be
@@ -238,16 +268,41 @@ Medians ignore it; sums do not.
 
 ### Variance
 
-3 trials per case. The aggregate effect was computed per trial and then summarised, rather than by pooling all trials. One scope limit on what these ranges mean: the committed rows were measured under **schedule version 1**, whose "trials" ran a case's repetitions back to back with the condition rotation keyed on the case alone — repeated measurements of each case in quick succession, not independent sweeps of the whole suite. The ranges below are therefore the spread of back-to-back repeats, which likely understates true run-to-run spread; schedule version 2 (trial-major, reshuffled per trial) is what makes future cross-trial ranges measure independent sweeps. See the Schedule versions section of [`evals/results/README.md`](evals/results/README.md).
+5 independent trials per case. A trial is a whole sweep of all 12 cases in a reshuffled order,
+with the condition rotation keyed on case and trial — **schedule version 2**. That distinction
+matters for reading any range here: under version 1, used for the superseded 0.2.0 figures, a
+case's repetitions ran back to back with the rotation keyed on the case alone, so those ranges
+measured the spread of quick repeats rather than of independent sweeps. See the Schedule
+versions section of [`evals/results/README.md`](evals/results/README.md).
 
-| Model | Median | Range across trials |
-| --- | ---: | --- |
-| claude-fable-5 | −35.0% | −44.0% to −30.7% |
-| claude-opus-5 | −30.9% | −32.7% to −29.0% |
+| Model | Per-trial reduction | Median | Trials negative |
+| --- | --- | ---: | ---: |
+| claude-fable-5 | −20.6% / −23.8% / −25.7% / −42.0% / −49.3% | **−25.7%** | 5 of 5 |
+| claude-opus-5 | −29.5% / −18.4% / −14.0% / **+22.4%** / **+78.0%** | −14.0% | 3 of 5 |
 
-**The baseline itself is unstable, and much more so on fable.** Summed across the 12 cases, the unstyled baseline measured 13,592 / 16,670 / 13,147 output tokens on three consecutive fable trials — a 25.9% spread within a single run. On opus the same figure was 21,741 / 21,911 / 22,434, a 3.2% spread. Any fable number here should be read with that in mind; the opus numbers are considerably firmer despite opus being the model this style used to struggle with.
+**Read the opus row as the finding, not as a footnote.** Two of five sweeps measured the style
+making responses *longer* in aggregate, one of them by 78%. That is not a small perturbation of
+a −30.9% effect; it is a different picture entirely.
 
-**The effect size depends on how verbose the baseline currently is, and that moves.** The archived v1 run of the same 12 cases measured the opus baseline at 15,914 output tokens summed across the cases ([`full-claude-opus-5-baseline-v1.jsonl`](evals/results/full-claude-opus-5-baseline-v1.jsonl)); this run's three baseline trials measured 21,741–22,434, per the summed figures above. The baseline is unstyled, so the rules cannot explain that move. A chattier baseline gives the style more to cut, and that — not a better rule set — is most of why the opus reduction is as large as −30.9% here: an earlier single-trial run against a leaner baseline measured a substantially smaller reduction. That run's result data was superseded and is not in this repository, which is why no figure is quoted for it. Treat these percentages as measured against the models as they behaved in August 2026, not as constants.
+**The baseline is what moves.** Total unstyled output per trial, same prompts, same model:
+
+| Model | Baseline output per trial | Spread |
+| --- | --- | ---: |
+| claude-fable-5 | 10,880 / 12,467 / 10,914 / 9,665 / 11,797 | 29% |
+| claude-opus-5 | 8,608 / 15,463 / 14,819 / 11,673 / 11,954 | **80%** |
+
+For comparison, the same opus baseline in the previous config-heavy environment varied **3.2%**
+across its trials. Removing ~122,000 tokens of ambient configuration from the context appears to
+destabilise how much Opus writes — by a factor of twenty-five. **This project has not explained
+that, and does not claim to.** It is the single most interesting thing the redesign surfaced, and
+it is an open question rather than a result.
+
+**The effect size depends on how verbose the baseline currently is, and that moves.** The archived
+v1 run of the same 12 cases measured the opus baseline at 15,914 output tokens summed across the
+cases ([`full-claude-opus-5-baseline-v1.jsonl`](evals/results/full-claude-opus-5-baseline-v1.jsonl)).
+A chattier baseline gives the style more to cut, so a reduction percentage is a statement about
+the model's current habits as much as about these rules. Treat these percentages as measured
+against the models as they behaved in August 2026, not as constants.
 
 ## The 0.1.0 regression on Opus
 
@@ -284,8 +339,12 @@ Nobody asked about port collisions or overrides. In the current run, the unstyle
 - Output styles do not apply to subagents. A subagent runs its own system prompt. A fork is the exception, since it inherits the parent's.
 - An output style takes effect only after `/clear` or a new session. Claude Code reads it once at session start.
 - The style shrinks output tokens and adds input tokens on every turn — but the measurement shows the addition bills as a cache write on the first turn only; every turn after re-reads it as a cache read of the same size instead of re-paying the write. Whether that nets out to a saving is a price-ratio question: see the break-even table in [What it costs](#what-it-costs).
-- Measured on two models with three trials per case. Your workload is not these 12 prompts.
+- Measured on two models with five trials per case, and the result held on only one of them. Your workload is not these 12 prompts.
 - Measured against models as they behaved in August 2026. Baselines drift, and the effect size drifts with them.
+- **These figures describe tool-free, single-turn prose.** All 12 prompts are conversational questions and the harness passes `--tools ''`. Nothing reads a file, edits code, or runs a command, so the headline does not describe agentic coding work — the thing Claude Code mostly does.
+- **In agentic work a large output reduction is a small cost reduction.** Generated output is roughly a tenth of cost-equivalent tokens once tool results, file contents, and re-sent context are counted; a design-time measurement on this machine put it at 7.5–12.4%, consistent with a published 2,908-run study at 10.4%. Cutting a third of a tenth is not cutting a third.
+- **The `$48–54` figure in [Reproducing](#reproducing) is an API-list-price equivalent, not an observed bill.** The harness passes no API key and authenticates exactly as the operator's CLI does, so on a subscription that spend is quota, not cash. The practical risk of a large sweep is exhausting a rate limit, not an invoice.
+- **Per-message `output_tokens` in Claude Code transcripts are unreliable.** A design-time probe summed 189 output tokens across assistant messages for a call whose result event reported 5,065 — a 27× undercount. This harness reads the result event, which is why its figures do not inherit that error; tools built on transcript parsing may.
 
 ## Reproducing
 
@@ -325,6 +384,18 @@ were computed from **means** of per-turn output deltas, while every headline per
 README uses **medians**. At an output:input ratio of 5×, the mean figures say all four
 combinations save money and the median figures say fable does not. A verdict that flips on the
 choice of statistic is not a verdict, so the statistic is now pinned in code.
+
+**The Opus reduction, retracted before first release.** Earlier drafts published **−30.9%** on
+claude-opus-5, from three trials in an environment carrying ~122,000 tokens of the operator's
+machine configuration, with "trials" that were back-to-back repeats rather than independent
+sweeps. Re-measured at five independent trials in an isolated environment, the effect on opus is
+**not distinguishable from zero**: the category-clustered range spans it, two of five trials came
+out positive, and 8 of 12 cases straddle zero. The figure is retracted rather than superseded,
+because the conditions that produced it were not ones a reader could reproduce. The 3-trial rows
+and their report are preserved unchanged at
+[`report-0.2.0.md`](evals/results/report-0.2.0.md) and the `full-*.jsonl` files. What replaced it
+is not a smaller number but the absence of one, plus the measured reason: the unstyled opus
+baseline varies 80% between sweeps in that environment, against 3.2% in the old one.
 
 Nothing was published under the old claim; this section is not a public correction. It is here
 because a project whose premise is that the prior art published unverifiable numbers cannot

@@ -498,58 +498,63 @@ test('the published input-overhead figures are the amortization run\'s paired-di
 })
 
 test('every published output-saved median and break-even ratio traces through the shipped functions', async () => {
-  // The README's "What it costs" section publishes two output-saved medians (rounded
-  // 384/565, unrounded 383.9167/564.5833) and four break-even ratios (one-turn
-  // 10.58/7.19, steady-state 0.53/0.36). This test recomputes every one of them from
-  // the committed 12-case sweep through perTrialMedianOutputSaved and breakEven — the
-  // functions that pin the statistic — at the multipliers the README discloses: a
-  // 1-hour cache write bills at 2x base input and a cache read at 0.1x, per
-  // Anthropic's published pricing structure. A re-measure that moves any figure fails
-  // this test instead of leaving the README quoting numbers nothing in the repo
-  // computes. The committed bluf-terse sweep files are the retired variant's evidence
-  // (see archive/) and no longer back a published figure, so they are not pinned here.
-  const INPUT_OVERHEAD = { bluf: 2030 }
+  // The README's "What it costs" section publishes ONE output-saved median (rounded 216,
+  // unrounded 215.9167) and two break-even ratios (one-turn 18.80, steady-state 0.94),
+  // all for claude-fable-5 only. This test recomputes them from the committed 5-trial
+  // clean sweep through perTrialMedianOutputSaved and breakEven — the functions that pin
+  // the statistic — at the multipliers the README discloses: a 1-hour cache write bills
+  // at 2x base input and a cache read at 0.1x, per Anthropic's published pricing
+  // structure. A re-measure that moves any figure fails this test instead of leaving the
+  // README quoting numbers nothing in the repo computes.
+  //
+  // NO OPUS FIGURE IS PINNED, because none is published. The same statistic computes on
+  // opus, but the clustered range for opus spans zero, so the README deliberately declines
+  // to quote it. Adding an opus row here would re-publish the figure this project retracted.
+  const INPUT_OVERHEAD = 2030
   const WRITE_MULTIPLIER_1H = 2
   const READ_MULTIPLIER = 0.1
 
-  const published = {
-    'claude-fable-5': {
-      bluf: { savedUnrounded: 383.9167, savedRounded: 384, oneTurn: '10.58', steadyState: '0.53' }
-    },
-    'claude-opus-5': {
-      bluf: { savedUnrounded: 564.5833, savedRounded: 565, oneTurn: '7.19', steadyState: '0.36' }
-    }
-  }
+  const baseline = await readResultRows('clean-claude-fable-5-baseline.jsonl')
+  const candidate = await readResultRows('clean-claude-fable-5-bluf.jsonl')
+  const saved = perTrialMedianOutputSaved(baseline, candidate)
 
-  for (const [model, variants] of Object.entries(published)) {
-    const baseline = await readResultRows(`full-${model}-baseline.jsonl`)
-    for (const [condition, expected] of Object.entries(variants)) {
-      const candidate = await readResultRows(`full-${model}-${condition}.jsonl`)
-      const saved = perTrialMedianOutputSaved(baseline, candidate)
+  assert.equal(Number(saved.toFixed(4)), 215.9167, 'unrounded output-saved median must match the README')
+  assert.equal(Math.round(saved), 216, 'rounded output-saved figure must match the README table')
 
-      assert.equal(Number(saved.toFixed(4)), expected.savedUnrounded,
-        `${model} ${condition}: unrounded output-saved median must match the README`)
-      assert.equal(Math.round(saved), expected.savedRounded,
-        `${model} ${condition}: rounded output-saved figure must match the README table`)
+  // One-turn session: the overhead bills once, as a 1-hour cache write at 2x.
+  assert.equal(
+    breakEven({ outputSaved: saved, inputAdded: WRITE_MULTIPLIER_1H * INPUT_OVERHEAD }).toFixed(2),
+    '18.80',
+    'one-turn break-even must match the README'
+  )
 
-      // One-turn session: the overhead bills once, as a 1-hour cache write at 2x.
-      const oneTurn = breakEven({
-        outputSaved: saved,
-        inputAdded: WRITE_MULTIPLIER_1H * INPUT_OVERHEAD[condition]
-      })
-      assert.equal(oneTurn.toFixed(2), expected.oneTurn,
-        `${model} ${condition}: one-turn break-even must match the README`)
+  // Steady state (turn 2+): the same tokens re-bill as a cache read at 0.1x.
+  // Deliberately ignores the -263 write saving, as the README's table does.
+  assert.equal(
+    breakEven({ outputSaved: saved, inputAdded: READ_MULTIPLIER * INPUT_OVERHEAD }).toFixed(2),
+    '0.94',
+    'steady-state break-even must match the README'
+  )
+})
 
-      // Steady state (turn 2+): the same tokens re-bill as a cache read at 0.1x.
-      // Deliberately ignores the -263 write saving, as the README's table does.
-      const steadyState = breakEven({
-        outputSaved: saved,
-        inputAdded: READ_MULTIPLIER * INPUT_OVERHEAD[condition]
-      })
-      assert.equal(steadyState.toFixed(2), expected.steadyState,
-        `${model} ${condition}: steady-state break-even must match the README`)
-    }
-  }
+test('the opus result is not distinguishable from zero, which is why no opus figure is published', async () => {
+  // Guards the README's central retraction. If a future re-measure makes the opus clustered
+  // range exclude zero, this test fails and someone must decide to publish deliberately
+  // rather than the README silently continuing to say the effect is unresolved.
+  const baseline = await readResultRows('clean-claude-opus-5-baseline.jsonl')
+  const candidate = await readResultRows('clean-claude-opus-5-bluf.jsonl')
+  const interval = clusteredInterval(baseline, candidate)
+
+  assert.ok(interval.low < 0 && interval.high > 0,
+    `opus clustered range ${interval.low} to ${interval.high} no longer spans zero; the README must be revisited`)
+})
+
+test('the fable result does exclude zero, which is why its figure is published', async () => {
+  const baseline = await readResultRows('clean-claude-fable-5-baseline.jsonl')
+  const candidate = await readResultRows('clean-claude-fable-5-bluf.jsonl')
+  const interval = clusteredInterval(baseline, candidate)
+
+  assert.ok(interval.low > 0, `fable clustered low bound ${interval.low} must stay above zero`)
 })
 
 test('the lean single-shot sweep independently corroborates the amortization-derived overhead', async () => {
