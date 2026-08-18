@@ -1,0 +1,43 @@
+diff --git a/docs/options.md b/docs/options.md
+index e57c5b5..17089aa 100644
+--- a/docs/options.md
++++ b/docs/options.md
+@@ -7,10 +7,10 @@ rejected with an error.
+ | --- | --- | --- |
+ | `baseUrl` | `https://api.example.test` | Origin every request is sent to. |
+ | `timeoutMs` | `5000` | Per-attempt timeout in milliseconds. |
+-| `retryLimit` | `3` | Extra attempts after the first one fails. |
++| `maxRetries` | `3` | Extra attempts after the first one fails. |
+ 
+ ## Example
+ 
+ ```js
+-await requestWithRetry(send, { retryLimit: 5 })
++await requestWithRetry(send, { maxRetries: 5 })
+ ```
+diff --git a/src/config.mjs b/src/config.mjs
+index 98d4d3e..ed80ff0 100644
+--- a/src/config.mjs
++++ b/src/config.mjs
+@@ -2,7 +2,7 @@
+ export const defaults = {
+   baseUrl: 'https://api.example.test',
+   timeoutMs: 5000,
+-  retryLimit: 3
++  maxRetries: 3
+ }
+ 
+ export function resolveOptions (overrides = {}) {
+diff --git a/src/http-client.mjs b/src/http-client.mjs
+index 25e97df..2e04a39 100644
+--- a/src/http-client.mjs
++++ b/src/http-client.mjs
+@@ -5,7 +5,7 @@ import { resolveOptions } from './config.mjs'
+ export async function requestWithRetry (send, overrides = {}) {
+   const options = resolveOptions(overrides)
+   let lastError
+-  for (let attempt = 0; attempt <= options.retryLimit; attempt++) {
++  for (let attempt = 0; attempt <= options.maxRetries; attempt++) {
+     try {
+       return await send(attempt)
+     } catch (error) {

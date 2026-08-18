@@ -104,3 +104,11 @@ export async function applyOracle (name, dir) {
   const patch = fileURLToPath(new URL(`${name}/oracle.patch`, FIXTURE_ROOT))
   await run('git', ['apply', '--unsafe-paths', `--directory=${dir}`, patch], { cwd: dir })
 }
+
+// Applies a committed, deliberately INCOMPLETE fix. Used only by the contract tests to
+// prove a multi-file fixture fails when any rename site is missed — the property that
+// makes it a multi-file task. Never shown to the model, never applied in a measured run.
+export async function applyPartialOracle (name, dir) {
+  const patch = fileURLToPath(new URL(`${name}/partial-oracle.patch`, FIXTURE_ROOT))
+  await run('git', ['apply', '--unsafe-paths', `--directory=${dir}`, patch], { cwd: dir })
+}

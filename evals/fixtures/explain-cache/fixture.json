@@ -1,0 +1,7 @@
+{
+  "shape": "exploration",
+  "prompt": "how does the cache in src/cache.mjs decide when to evict?",
+  "testCommand": "npm",
+  "testArgs": ["test"],
+  "allowedTools": ["Read", "Glob", "Grep"]
+}

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadFixtures, copyFixture, runFixtureTest, applyOracle, FIXTURE_ROOT } from '../lib/fixtures.mjs'
+import { loadFixtures, copyFixture, runFixtureTest, applyOracle, applyPartialOracle, FIXTURE_ROOT } from '../lib/fixtures.mjs'
 
 test('every fixture declares the fields the runner needs', async () => {
   const fixtures = await loadFixtures()
@@ -54,17 +54,36 @@ test('every fixture goes GREEN when its committed oracle patch is applied', asyn
   }
 })
 
+// Node 22 resolves a bare directory after --test as a MODULE and throws MODULE_NOT_FOUND
+// — with or without a trailing slash (`node --test test`, `node --test test/`,
+// `node --test ./test` all fail). A glob is safe: Node's own matcher expands it. A
+// concrete .mjs/.cjs/.js file is safe too. Anything else after --test is a directory.
+function hitsNode22DirectoryTrap (command) {
+  const match = /--test\s+(?:'([^']*)'|"([^"]*)"|(?!-)(\S+))/.exec(command)
+  if (!match) return false
+  const target = match[1] ?? match[2] ?? match[3]
+  if (/[*?[]/.test(target)) return false
+  return !/\.[cm]?js$/.test(target)
+}
+
+test('the Node 22 trap guard rejects bare directories, slash or not, and allows quoted globs', () => {
+  assert.ok(hitsNode22DirectoryTrap('node --test test'), 'a bare directory with no slash is still the trap')
+  assert.ok(hitsNode22DirectoryTrap('node --test test/'))
+  assert.ok(hitsNode22DirectoryTrap('node --test ./test'))
+  assert.ok(!hitsNode22DirectoryTrap("node --test 'test/*.test.mjs'"), 'a quoted glob is the correct form')
+})
+
 test('no fixture test command uses the Node 22 directory-as-module trap', async () => {
   for (const fixture of await loadFixtures()) {
     const command = [fixture.testCommand, ...fixture.testArgs].join(' ')
-    assert.doesNotMatch(command, /--test\s+\S*\/(\s|$)/,
+    assert.ok(!hitsNode22DirectoryTrap(command),
       `${fixture.name} runs \`${command}\`; a bare directory after --test fails MODULE_NOT_FOUND on Node 22`)
 
     // The trap usually hides one level down: `testCommand` is just `npm test`, and the
     // actual `node --test ...` invocation lives in the fixture's package.json test script.
     const pkg = JSON.parse(await readFile(join(fixture.dir, 'package.json'), 'utf8'))
     const script = pkg.scripts?.test ?? ''
-    assert.doesNotMatch(script, /--test\s+['"]?\S*\/['"]?(\s|$)/,
+    assert.ok(!hitsNode22DirectoryTrap(script),
       `${fixture.name}'s package.json test script is \`${script}\`; a bare directory after --test fails MODULE_NOT_FOUND on Node 22`)
   }
 })
@@ -118,6 +137,27 @@ test('no fixture declares a dependency', async () => {
     assert.equal(pkg.dependencies, undefined, `${fixture.name} declares dependencies`)
     assert.equal(pkg.devDependencies, undefined, `${fixture.name} declares devDependencies`)
   }
+})
+
+test('the fixture set spans all three shapes', async () => {
+  const shapes = new Set((await loadFixtures()).map(f => f.shape))
+  assert.deepEqual([...shapes].sort(), ['exploration', 'failing-test', 'multi-file'])
+})
+
+test('prompts match the register real usage shows', async () => {
+  // Median real session-opening prompt is 86 characters. A 300-character invented prompt
+  // would measure a different task than users actually give Claude Code.
+  for (const fixture of await loadFixtures()) {
+    assert.ok(fixture.prompt.length <= 200,
+      `${fixture.name}'s prompt is ${fixture.prompt.length} chars; real prompts median 86`)
+  }
+})
+
+test('a partial fix does not satisfy the multi-file fixture', async () => {
+  const dir = await copyFixture('rename-option', await mkdtemp(join(tmpdir(), 'bluf-fixture-')))
+  await applyPartialOracle('rename-option', dir)
+  const result = await runFixtureTest(dir)
+  assert.equal(result.passed, false, 'a partial rename must not pass; otherwise this is not a multi-file task')
 })
 
 test('copyFixture produces a byte-identical, independently mutable copy', async () => {

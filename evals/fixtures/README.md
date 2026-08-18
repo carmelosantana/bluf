@@ -20,12 +20,27 @@ enforces every clause below on every fixture — a fixture that violates one can
   diff, applied with `git apply --unsafe-paths --directory=<copy>`. It exists **only** to
   prove the fixture can go green; it is never shown to the model and never applied during
   a measured run.
+- `partial-oracle.patch` (multi-file shape) — a deliberately **incomplete** fix, updating
+  only the option's definition. Used only by the contract tests to prove the fixture's
+  test fails when any rename site is missed — the property that makes the task multi-file
+  rather than single-edit. Like `oracle.patch`, it never reaches the model's copy.
 
 ## No dependencies
 
 Fixtures must not declare `dependencies` or `devDependencies`. Nothing here is ever
 `npm install`ed: a fixture that needs a lockfile or a registry fetch would make the
 benchmark non-hermetic and its first run unrepresentative.
+
+## Exploration fixtures are not scored by their tests
+
+An exploration fixture (e.g. `explain-cache`) has **no oracle patch and no red-start
+requirement** — there is nothing to fix, and the red/green clauses below do not apply to
+it. Its `testCommand` exists to satisfy the manifest contract and keep the project a
+real, runnable one; the runner never uses it to judge the answer. Success for this shape
+is "the run completed without error" — nothing about the *content* of the explanation is
+checked, and the question of whether the explanation is adequate is deferred to
+Component 4 (the paired-run protocol). Do not read an exploration "pass" as the model
+having explained anything correctly.
 
 ## Red before, green after
 

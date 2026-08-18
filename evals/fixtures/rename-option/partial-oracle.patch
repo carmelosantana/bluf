@@ -1,0 +1,13 @@
+diff --git a/src/config.mjs b/src/config.mjs
+index 98d4d3e..ed80ff0 100644
+--- a/src/config.mjs
++++ b/src/config.mjs
+@@ -2,7 +2,7 @@
+ export const defaults = {
+   baseUrl: 'https://api.example.test',
+   timeoutMs: 5000,
+-  retryLimit: 3
++  maxRetries: 3
+ }
+ 
+ export function resolveOptions (overrides = {}) {
