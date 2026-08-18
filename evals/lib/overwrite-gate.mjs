@@ -6,9 +6,10 @@
 // every path a run will write, and refuse to start while any of them is tracked by
 // git, unless the operator names each doomed file explicitly in the environment.
 //
-// Both functions are pure — no git, no filesystem — so tests exercise the decision
-// against synthetic tracked lists instead of the repository's live state. The driver
-// (evals/measure.mjs) supplies the tracked list via `git ls-files --error-unmatch`.
+// Every function here is pure — no git, no filesystem — so tests exercise the decision
+// against synthetic tracked lists instead of the repository's live state. The drivers
+// (evals/measure.mjs and evals/measure-agentic.mjs) supply the tracked list via
+// `git ls-files --error-unmatch`.
 
 // Not a bare boolean on purpose. Overwriting committed measurement evidence must be a
 // deliberate, auditable act, so the variable's VALUE is the list of files being
@@ -54,6 +55,33 @@ export function plannedSweepFiles ({ models, conditions, mainEnvironment, overhe
     files.push(`${overheadEnvironment}-${overheadModel}-${condition}.jsonl`)
   }
   files.push('report.md')
+  return files
+}
+
+// The agentic driver's write targets, as single points of truth: the driver's write
+// loop interpolates THESE functions, and plannedAgenticSweepFiles enumerates from the
+// same functions, so the gate's planned list cannot drift from what the run writes.
+export const agenticRowFile = (model, condition) => `agentic-${model}-${condition}.jsonl`
+export const agenticTranscriptFile = (model, condition, fixture, trial) =>
+  `agentic-transcripts/${model}-${condition}-${fixture}-t${trial}.jsonl`
+
+// Every result-directory path one `npm run measure:agentic` invocation writes: the
+// per-condition row files, plus one raw transcript per scheduled call. The transcripts
+// are in here deliberately — they are the only durable record of what each paid call
+// actually did, so a rerun silently replacing a committed transcript is the same class
+// of evidence destruction the row-file gate exists to prevent.
+export function plannedAgenticSweepFiles ({ model, conditions, fixtures, trials }) {
+  const files = []
+  for (const condition of conditions) {
+    files.push(agenticRowFile(model, condition))
+  }
+  for (let trial = 1; trial <= trials; trial += 1) {
+    for (const fixture of fixtures) {
+      for (const condition of conditions) {
+        files.push(agenticTranscriptFile(model, condition, fixture, trial))
+      }
+    }
+  }
   return files
 }
 

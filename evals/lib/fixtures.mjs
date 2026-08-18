@@ -23,15 +23,18 @@ export async function loadFixtures () {
         throw new Error(`fixture ${name} is missing required field ${field}`)
       }
     }
-    // The loader owns name/dir. A manifest declaring either would silently shadow the
-    // real path, so it is rejected outright — and the spread order below makes the
-    // loader's values win regardless.
-    for (const reserved of ['name', 'dir']) {
+    // The loader owns name/dir/id. A manifest declaring any of them would silently
+    // shadow the real value, so it is rejected outright — and the spread order below
+    // makes the loader's values win regardless.
+    for (const reserved of ['name', 'dir', 'id']) {
       if (manifest[reserved] !== undefined) {
         throw new Error(`fixture ${name} declares reserved field ${reserved} in fixture.json; the loader sets it`)
       }
     }
-    fixtures.push({ ...manifest, name, dir })
+    // `id` is a deliberate alias of `name`: scheduleSweep keys its cases on `.id`, and
+    // without the alias every schedule entry would carry caseId: undefined — the
+    // rotation would still "work" while keying every case to the same undefined slot.
+    fixtures.push({ ...manifest, name, id: name, dir })
   }
   return fixtures
 }
