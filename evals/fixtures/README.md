@@ -12,6 +12,9 @@ enforces every clause below on every fixture — a fixture that violates one can
   - `testCommand` / `testArgs` — the success oracle, run with `execFile` (no shell) in the
     copied project directory. Success is exit code 0, nothing else. Never interpreted.
   - `allowedTools` — the explicit tool allowlist for the run. Must be non-empty.
+
+  A manifest must not declare `name` or `dir` — the loader sets both from the directory,
+  and a manifest that shadows them is rejected at load time.
 - `package.json` — the fixture's own project manifest.
 - `oracle.patch` (non-exploration shapes) — the minimal correct fix as a valid unified
   diff, applied with `git apply --unsafe-paths --directory=<copy>`. It exists **only** to
@@ -49,8 +52,9 @@ The probe's headline number was meaningless and nothing caught it.
 ```
 
 The quotes are load-bearing: they keep the shell from expanding the glob so Node's own
-matcher handles it. The contract test rejects any fixture whose test command puts a bare
-directory after `--test`.
+matcher handles it. The contract test rejects a bare directory after `--test` both in the
+manifest's `testCommand`/`testArgs` and in the fixture's own `package.json` test script —
+the latter is where the trap actually lives when `testCommand` is just `npm test`.
 
 ## Tools that are never allowed
 
@@ -64,3 +68,14 @@ directory after `--test`.
 Runs never touch the committed fixture. `copyFixture(name, cwd)` produces a fresh copy
 per run and the copy is the only thing on the model's path; mutating one copy affects
 neither the source nor any other copy (also enforced by test).
+
+The copy never contains the answer key: `fixture.json` and every `*oracle.patch` are
+excluded from it (also enforced by test). A model with Read/Grep in the copy could
+otherwise read the oracle and transplant the exact fix — and the two measured arms would
+do so at different rates, turning the success-rate difference into an artefact of the
+leak. `applyOracle` reads its patch from the committed fixture, never from the copy.
+
+The ground-truth run itself is bounded: `runFixtureTest` uses an explicit 120 s timeout
+and a 32 MB output buffer, and a run that hits either limit is deliberately scored as a
+failure (with the reason in `stderr` and `exitCode` kept numeric-or-null) — a "fix" that
+hangs or floods is not a pass.

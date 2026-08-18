@@ -2,7 +2,7 @@ import { readFile, readdir, cp, mkdir } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
+import { join, basename } from 'node:path'
 
 const run = promisify(execFile)
 
@@ -23,9 +23,27 @@ export async function loadFixtures () {
         throw new Error(`fixture ${name} is missing required field ${field}`)
       }
     }
-    fixtures.push({ name, dir, ...manifest })
+    // The loader owns name/dir. A manifest declaring either would silently shadow the
+    // real path, so it is rejected outright — and the spread order below makes the
+    // loader's values win regardless.
+    for (const reserved of ['name', 'dir']) {
+      if (manifest[reserved] !== undefined) {
+        throw new Error(`fixture ${name} declares reserved field ${reserved} in fixture.json; the loader sets it`)
+      }
+    }
+    fixtures.push({ ...manifest, name, dir })
   }
   return fixtures
+}
+
+// Files that must never reach the model's copy: the oracle patches ARE the answer key,
+// and fixture.json names the success oracle. Leaking them would let the model transplant
+// the exact fix — and the two measured arms would read it at different rates, turning the
+// success-rate difference into an artefact of the leak. applyOracle reads its patch from
+// the committed FIXTURE_ROOT, never from the copy, so excluding these is safe.
+function isAnswerKey (path) {
+  const file = basename(path)
+  return file === 'fixture.json' || file.endsWith('oracle.patch')
 }
 
 // A fresh copy per call. The model may mutate anything inside it; nothing it does can reach
@@ -33,12 +51,19 @@ export async function loadFixtures () {
 export async function copyFixture (name, cwd) {
   const target = join(cwd, name)
   await mkdir(target, { recursive: true })
-  await cp(fileURLToPath(new URL(`${name}/`, FIXTURE_ROOT)), target, { recursive: true })
+  await cp(fileURLToPath(new URL(`${name}/`, FIXTURE_ROOT)), target, {
+    recursive: true,
+    filter: source => !isAnswerKey(source)
+  })
   return target
 }
 
 // Ground truth for task success. Never interpreted, only exit-code checked.
-export async function runFixtureTest (dir) {
+// The limits are parameters only so tests can exercise them cheaply; measured runs use
+// the defaults (maxBuffer matches the 32 MB used for `claude` calls in runner.mjs).
+// A timeout or output-buffer blowout is deliberately scored as a FAILURE, not an error:
+// a "fix" that leaves the suite hanging or flooding output is not a pass.
+export async function runFixtureTest (dir, { timeout = 120_000, maxBuffer = 32 * 1024 * 1024 } = {}) {
   const fixtures = await loadFixtures()
   const name = dir.split('/').filter(Boolean).at(-1)
   const fixture = fixtures.find(f => f.name === name)
@@ -52,14 +77,23 @@ export async function runFixtureTest (dir) {
   delete env.NODE_TEST_CONTEXT
 
   try {
-    const { stdout, stderr } = await run(fixture.testCommand, fixture.testArgs, { cwd: dir, env })
+    const { stdout, stderr } = await run(fixture.testCommand, fixture.testArgs, { cwd: dir, env, timeout, maxBuffer })
     return { passed: true, exitCode: 0, stdout, stderr }
   } catch (error) {
+    // exitCode is a number or null, never a string. execFile also reports non-exit
+    // failures through error.code (e.g. 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') and a
+    // timeout as a signal kill with code null — those reasons go in stderr instead.
+    const reasons = []
+    if (error.code !== undefined && typeof error.code !== 'number' && error.code !== null) {
+      reasons.push(String(error.code))
+    }
+    if (error.killed) reasons.push(`killed by ${error.signal ?? 'signal'} (timeout ${timeout} ms)`)
+    const stderr = [error.stderr, reasons.join('; ')].filter(Boolean).join('\n')
     return {
       passed: false,
-      exitCode: error.code ?? null,
+      exitCode: typeof error.code === 'number' ? error.code : null,
       stdout: error.stdout ?? '',
-      stderr: error.stderr ?? String(error)
+      stderr: stderr || String(error)
     }
   }
 }
