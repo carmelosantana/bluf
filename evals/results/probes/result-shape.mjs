@@ -53,7 +53,14 @@ if (payload.is_error) throw new Error(`json probe errored: ${payload.subtype ?? 
 // Arm 2: stream-json — one JSON object per line, ending with the result event. The question is
 // whether the assistant messages it streams carry the tool_use blocks the runner needs to count,
 // while the final result event still carries the authoritative totals.
-const streamLines = (await call(['--output-format', 'stream-json', '--verbose']))
+const streamStdout = await call(['--output-format', 'stream-json', '--verbose'])
+
+// The raw bytes, committed. Without them every parser test builds its own envelopes by hand, so
+// the parser's agreement with the CLI would rest on a transcribed summary rather than evidence.
+// evals/test/agentic.test.mjs parses this file directly.
+await writeFile(join(HERE, 'result-shape-stream.jsonl'), streamStdout)
+
+const streamLines = streamStdout
   .trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
 const streamResult = streamLines.find(event => event.type === 'result')
 const assistantEvents = streamLines.filter(event => event.type === 'assistant')

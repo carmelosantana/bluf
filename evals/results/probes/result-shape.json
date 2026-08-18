@@ -27,7 +27,7 @@
     ],
     "hasMessagesArray": false,
     "numTurns": 2,
-    "totalCostUsd": 0.12314699999999999,
+    "totalCostUsd": 0.124166,
     "usageKeys": [
       "cache_creation",
       "cache_creation_input_tokens",
@@ -44,7 +44,7 @@
       "claude-fable-5",
       "claude-haiku-4-5-20251001"
     ],
-    "outputTokens": 94
+    "outputTokens": 110
   },
   "streamJson": {
     "eventTypes": [
@@ -84,8 +84,8 @@
       "uuid"
     ],
     "resultNumTurns": 2,
-    "resultTotalCostUsd": 0.123932,
+    "resultTotalCostUsd": 0.123916,
     "resultOutputTokens": 109,
-    "summedPerMessageOutputTokens": 14
+    "summedPerMessageOutputTokens": 16
   }
 }
