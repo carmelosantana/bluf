@@ -9,9 +9,13 @@
 - **At published cache pricing, costs money on turn 1 and saves money on every turn after — on fable.** Break-even is 18.8× output:input for a one-turn session and 0.94× in steady state. That margin is thinner than the earlier three-trial run suggested. No prices are quoted here — multiply by your own and see [What it costs](#what-it-costs).
 - **12 of the 24 per-case measurements have trial ranges that straddle zero** — 4 on fable, 8 on opus. On those cases the style made the response shorter on one trial and longer on another.
 - These figures describe **tool-free, single-turn prose**. Nothing here reads a file, edits code, or runs a command, and output styles do not apply to subagents. See [Known limitations](#known-limitations).
+- **In agentic work the style costs more, not less.** Measured on 3 fixture projects × 3 trials on claude-fable-5: billed cost rose **+18.3%** in total and **+17.7%** at the median, positive in **9 of 9** pairs, range +10.5% to +33.4%. Turns and tool calls did not change — median delta 0, identical in 6 of 9 pairs — and task success was **12/12 in both arms**. A second, independent fixture replicated it at **+16.1%**. See [What happens in agentic work](#what-happens-in-agentic-work).
+- **The mechanism is a per-turn input tax.** The style's ~2,000 input tokens are re-sent on every turn, while output is only **0.96%** of billed tokens in those runs. Prose compressed hard (`textChars` −31.5%) and tool calls did not (+3.0%): the style compresses talking, and in agentic work talking is not the cost.
+- **The style cuts more answer than the headline says.** The same 60 prose rows give **−25.7%** in billed output tokens and **−38.6%** in response characters, because billed output includes thinking the style does not govern.
+- **What remains is close to the floor.** Against hand-written minimal-sufficient answers, the unstyled arm sits **+73.3%** above the floor at the median and the styled arm **+4.2%**. On `ci-exit-1` specifically, the unstyled answer cleared the floor (+29.7%) and the styled answer did not (−62.5%, on 5 of 5 trials). See [Is what remains enough?](#is-what-remains-enough).
 - Version **0.1.0** of these rules made Opus **32.2% more verbose**. Measuring across models caught it. See [The 0.1.0 regression](#the-010-regression-on-opus).
 
-All numbers come from [`evals/results/`](evals/results/), committed in this repo. The headline output figures come from [`report.md`](evals/results/report.md) and the `clean-*.jsonl` rows behind it; the input-cost and break-even figures from the session-amortization slice in the `amortization-*.jsonl` files. The superseded 3-trial measurement is preserved at [`report-0.2.0.md`](evals/results/report-0.2.0.md) rather than deleted. Every row records the model that actually ran, the CLI version, the style file's SHA-256, and which execution schedule produced it. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
+All numbers come from [`evals/results/`](evals/results/), committed in this repo. The headline output figures come from [`report.md`](evals/results/report.md) and the `clean-*.jsonl` rows behind it; the input-cost and break-even figures from the session-amortization slice in the `amortization-*.jsonl` files. The agentic figures come from [`report-agentic-0.1.0.md`](evals/results/report-agentic-0.1.0.md), and the three adequacy instruments from [`report-adequacy-0.1.0.md`](evals/results/report-adequacy-0.1.0.md), [`report-compression-0.1.0.md`](evals/results/report-compression-0.1.0.md), and [`report-floor-0.1.0.md`](evals/results/report-floor-0.1.0.md). The superseded 3-trial measurement is preserved at [`report-0.2.0.md`](evals/results/report-0.2.0.md) rather than deleted. Every row records the model that actually ran, the CLI version, the style file's SHA-256, and which execution schedule produced it. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
 
 ## Before / after
 
@@ -304,6 +308,202 @@ A chattier baseline gives the style more to cut, so a reduction percentage is a 
 the model's current habits as much as about these rules. Treat these percentages as measured
 against the models as they behaved in August 2026, not as constants.
 
+## What happens in agentic work
+
+**The style makes agentic runs more expensive, and it did so in every pair measured.**
+Billed cost rose **+18.3%** in total and **+17.7%** at the median across 9 paired runs,
+positive in **9 of 9**, range **+10.5% to +33.4%**. Source:
+[`report-agentic-0.1.0.md`](evals/results/report-agentic-0.1.0.md); every figure here is
+recomputed from the committed rows by `evals/test/agentic-results.test.mjs`, which makes no
+API call.
+
+This does not contradict the prose result above and does not retract it. The **−25.7%** is
+a tool-free, single-turn prose figure, measured where output *is* the product and no
+context is re-sent. Agentic work is a different regime, and the same mechanism has the
+opposite sign there. One style, two regimes, both measured.
+
+**What was measured.** 18 paid calls — 3 fixture projects × 3 trials × 2 conditions, on
+`claude-fable-5`, in the same isolated `clean` environment as the prose sweep. The fixtures
+are an exploration task (`explain-cache`), a failing-test fix (`failing-test`), and a
+multi-file rename (`rename-option`). Each fixture is copied fresh for every call, so no run
+inherits another's edits, and success is decided by running the fixture's own test command
+— exit code 0, nothing else. Total spend **$5.4322**.
+
+**Task success first,** because efficiency figures mean nothing across arms that finished
+different amounts of work. **12 of 12** scored runs passed their fixture's test, 6 per arm,
+and all **6 of 6** exploration runs completed without error. No arm completed fewer tasks.
+
+**Per metric.** 9 pairs, paired as (fixture, trial). Deltas are styled minus baseline;
+negative favours the style.
+
+| Metric | Median delta | Median % | Direction |
+| --- | ---: | ---: | --- |
+| `numTurns` | 0 | 0.0% | 6/9 identical, 3/9 +1, 0/9 negative — inside noise |
+| `toolCalls` | 0 | 0.0% | 6/9 identical, 3/9 +1, 0/9 negative — inside noise |
+| `totalCostUsd` | +$0.042 | **+17.7%** | **9/9 positive**, +10.5% to +33.4% — outside noise |
+| `outputTokens` | −84 | −8.5% | 7/9 negative — real but small |
+| `textChars` | −253 | −39.6% | 8/9 negative — real and large |
+
+Totals across the 9 runs per arm: cost **$2.488 → $2.944 (+18.3%)**; output tokens 9,331 →
+8,381 (−10.2%); input tokens 959,532 → 1,074,192 (+11.9%); turns 58 → 61; tool calls 49 →
+52.
+
+**The mechanism is a per-turn input tax, not changed behaviour.** Three observations pin
+it down:
+
+- **6 of 9 pairs have identical turn counts *and* identical tool-call counts, and all 6
+  still cost more.** The work was the same; the bill was not.
+- The three `explain-cache` pairs isolate it exactly — both arms took 3 turns and made 2
+  tool calls in all three trials, so the whole input difference is the style itself. Per
+  turn that difference is **+2,031 / +2,023 / +2,046** input tokens, against the style's
+  committed 2,028–2,038 overhead band.
+- Across all 9 pairs the median input added per baseline turn is **+1,662 tokens**, and
+  cache writes — the most expensive input tier — rose **55,559 → 76,034 (+37%)**.
+
+**The output saving cannot pay for that.** In these runs output is **0.96%** of billed
+tokens — 9,331 output against 959,532 input in the baseline arm. A −10.2% cut to 0.96% of
+the tokens does not offset a ~2,000-token input surcharge charged on every turn.
+
+**The style does exactly what it was written to do, which is why it cannot help here.**
+`textChars` fell **−31.5%** overall while `toolUseChars` moved **+3.0%**; prose fell from
+**56.2%** to **46.0%** of generated characters. The style compresses the assistant's
+talking and leaves its tool calls alone. In prose work talking is the whole product. In
+agentic work it is a sliver of the bill.
+
+### The prediction that held
+
+Before these calls ran, the plan for the sweep predicted that if the prose sweep's baseline
+instability comes from sparse context letting response length wander, then dense agentic
+context should constrain it — so agentic output should be markedly more stable. Measured:
+whole-trial baseline output sums were **3,047 / 3,060 / 3,224, a 5.8% spread**, against
+**29%** for fable and **80%** for opus in the prose sweep. The pattern holds inside the
+sweep too: the densest fixture (`rename-option`) spread 4.4%, `failing-test` 10.2%, and the
+most conversation-like fixture (`explain-cache`) 31.2%.
+
+**The pre-registration is not provable from this repo.** The plan is a local working
+document that is deliberately not committed, so the repo attests the measured spreads but
+cannot show the prediction predated the data. You have the operator's word for the
+ordering, not a commit hash.
+
+### Limits of the agentic measurement
+
+- **18 calls, 3 fixtures, one model (`claude-fable-5`), 3 trials.** Nothing generalises
+  beyond that without more spend.
+- **9 pairs supports no interval, and none is claimed.** Direction consistency — cost up in
+  9 of 9 — is the honest statistic at this scale, which is why it is the one quoted.
+- **The exploration fixture is unscored.** Its "success" is only that the run completed
+  without error; nothing judges the content of its explanations.
+- **`total_cost_usd` is CLI-reported** — an API-list-price equivalent, not an observed
+  bill. Each row also records an auxiliary `claude-haiku-4-5` call billed alongside the main
+  model, in both arms.
+- **The runs used the `clean` environment**, so absolute input totals will differ on a
+  configured machine. The per-turn style tax is additive and should not.
+- **12/12 task success shows no adequacy penalty *at this scale*; it does not show there is
+  none.** That question gets its own section below.
+
+## Is what remains enough?
+
+**Three instruments, three honest results: one did not discriminate, one found nothing but
+can only find what it has patterns for, and one says the styled output has roughly no slack
+left over a hand-written sufficiency floor.** None of them establishes that the style
+produces insufficient answers, and none of them rules it out.
+
+### Hidden edge-case tests — the instrument did not discriminate
+
+**Both arms went 3/3 on the visible task and 3/3 on a hidden suite they were never told
+about.** Source: [`report-adequacy-0.1.0.md`](evals/results/report-adequacy-0.1.0.md), 6
+paid calls — 1 fixture × 3 trials × 2 conditions on `claude-fable-5`, total spend
+**$2.4627**.
+
+That is a ceiling, not a finding. Neither arm ever failed, so the sweep produced no
+evidence that this measure can separate the arms in practice. Six runs on one fixture is an
+existence probe; no rate or percentage comes out of it, and none is claimed.
+
+**It is not vacuous, though.** The fixture plants a bug in `ordinal(n)` and ships two
+suites: a visible one the prompt refers to, and a hidden one injected only at scoring time.
+A committed `naive.patch` fixes the bug by last digit only — it passes the visible suite and
+fails the hidden one on the teens exception and on negatives. That split is verified by a
+free contract test and re-verified for real by a pre-spend gate before any money moves. A
+failure was possible and did not occur.
+
+**Why the ceiling was plausible:** the edge cases the hidden suite tests are documented in
+the docstring of the very file the prompt names, and all six transcripts show the model
+reading it. So this fixture measures whether the model read and honoured a written
+contract, which is one kind of adequacy, not all of it.
+
+The same 6 calls also replicate the agentic cost finding on a fixture the main sweep never
+ran: cost **+16.1%**, up in **3 of 3** pairs, with `textChars` −35.8% and `toolUseChars`
++3.0% — the same shape as the 18-call sweep.
+
+### Over-compression scan — zero, and weak
+
+**Zero placeholder-style elisions, in either arm, anywhere in the committed corpus** — 12
+prose samples and 24 agentic transcripts. Source:
+[`report-compression-0.1.0.md`](evals/results/report-compression-0.1.0.md). This scan makes
+no API call; it runs over evidence already paid for.
+
+It looks for four patterns — `comment-ellipsis`, `truncation-marker`,
+`unchanged-placeholder`, `lazy-todo` — the shapes a response takes when it looks complete
+while standing content off behind a placeholder. Each pattern ships a positive example that
+must fire and a negative that must not; the test also pins the corpus size and plants a
+known elision that the scanner must catch.
+
+**State the weakness plainly: a pattern detector finds only what it has patterns for.** A
+response that simply stopped short — no placeholder, no marker, just less — is invisible to
+it, and that is the likelier failure mode for a style whose whole instruction is to be
+brief. A clean scan says the style did not visibly announce that it left something out. It
+does not say the answers were complete.
+
+### The minimal-sufficient floor — the sharpest result
+
+**The styled arm's median case sits +4.2% over a hand-written minimal-sufficient answer;
+the unstyled arm sits +73.3% over it.** Source:
+[`report-floor-0.1.0.md`](evals/results/report-floor-0.1.0.md), recomputed from the same
+committed rows as the −25.7%. No API call was made to produce it.
+
+**Who wrote the floors matters, so it is disclosed first: the twelve floors were written by
+an AI assistant, in the same session that produced the analysis. They were not written by
+an independent human and were not reviewed by one.** The author of a yardstick that
+flatters an adjacent project has an obvious incentive, and nothing here neutralises it. Two
+things partly offset it: each floor states its own requirements in a header, including
+explicit "does not require" clauses, and all twelve are committed — so a reader who thinks
+a floor is wrong can edit it and rerun the numbers. Read every figure below as "excess over
+one particular reader's opinion of sufficiency".
+
+The unit is **characters**, on both sides, measured rather than estimated. It is
+deliberately not tokens: billed output includes thinking, a floor has no thinking, and
+chars-per-token across the 120 rows ranges 0.25 to 3.26. So these figures are **not in the
+same unit as the published −25.7%**.
+
+| | baseline | BLUF |
+| --- | ---: | ---: |
+| Median case excess over floor | +73.3% | **+4.2%** |
+| Cases whose median is below floor | 2 of 12 | **6 of 12** |
+| Individual trials below floor | 9 of 60 | **26 of 60** |
+
+**The honest cut is one case, not six.** Six styled cases sit below floor by median, but
+the floors' own precision, calibrated against five verbatim samples that satisfied their
+floors' stated requirements at excesses down to −16.5%, is about **±17%**. Four of the six
+— `scheduled-jobs` (−2.4%), `docker-cache-miss` (−5.8%), `shared-types` (−6.6%) and
+`actions-workflow` (−9.2%) — are inside that precision and are evidence of nothing. On
+`401-no-evidence` the styled arm is the **longer** of the two — 486 characters against the
+baseline's 232 — so both arms are under that floor and the style moved the answer *toward*
+sufficiency, not away from it.
+
+**That leaves `ci-exit-1` as the only case where the style crosses the floor on its own:**
+the unstyled answer cleared it at **+29.7%** and the styled answer did not, at **−62.5%**,
+on 5 of 5 trials. It is a `debug-partial-evidence` case, and that is the part worth
+attention — those are the prompts where a complete answer is a diagnostic path rather than
+a fact, and a brevity rule has no way to tell a diagnostic path from padding.
+
+**What the floor says about the published −25.7%.** On the identical 60 pairs, the
+per-trial output-token reduction medians **−25.7%** and the per-trial response-character
+reduction medians **−38.6%**. The style cuts prose harder than it cuts billed output,
+because billed output includes thinking the style does not govern — so anyone quoting
+−25.7% as the amount of *answer* removed is understating it. The published figure is not
+too large; if anything it is too small. What the floor adds is a denominator: on this
+corpus the remaining margin is thin rather than generous.
+
 ## The 0.1.0 regression on Opus
 
 Version 0.1.0 of these rules cut fable-5 output by 22.7% and **inflated opus-5 output by 32.2%**. The full run is preserved in [`evals/results/report-0.1.0.md`](evals/results/report-0.1.0.md). This is the strongest argument for measuring across models at all: the same prompt made one model shorter and another longer.
@@ -341,8 +541,9 @@ Nobody asked about port collisions or overrides. In the current run, the unstyle
 - The style shrinks output tokens and adds input tokens on every turn — but the measurement shows the addition bills as a cache write on the first turn only; every turn after re-reads it as a cache read of the same size instead of re-paying the write. Whether that nets out to a saving is a price-ratio question: see the break-even table in [What it costs](#what-it-costs).
 - Measured on two models with five trials per case, and the result held on only one of them. Your workload is not these 12 prompts.
 - Measured against models as they behaved in August 2026. Baselines drift, and the effect size drifts with them.
-- **These figures describe tool-free, single-turn prose.** All 12 prompts are conversational questions and the harness passes `--tools ''`. Nothing reads a file, edits code, or runs a command, so the headline does not describe agentic coding work — the thing Claude Code mostly does.
+- **The headline figures describe tool-free, single-turn prose.** All 12 prompts are conversational questions and the harness passes `--tools ''`. Nothing reads a file, edits code, or runs a command, so the headline does not describe agentic coding work — the thing Claude Code mostly does. Agentic work is now measured separately, and there the style **costs 18% more**: see [What happens in agentic work](#what-happens-in-agentic-work). It is a small sweep — 18 calls, 3 fixtures, one model — but it is no longer a gap.
 - **In agentic work a large output reduction is a small cost reduction.** Generated output is roughly a tenth of cost-equivalent tokens once tool results, file contents, and re-sent context are counted; a design-time measurement on this machine put it at 7.5–12.4%, consistent with a published 2,908-run study at 10.4%. Cutting a third of a tenth is not cutting a third.
+- **A separate, smaller figure — the raw token share — comes from the agentic sweep: output was 0.96% of billed tokens** (9,331 output against 959,532 input in the baseline arm). **This is not a correction of the bullet above and does not replace it.** They measure different things: a *cost-equivalent* share weights each token by what it bills, and since cache reads bill at a fraction of uncached input while output bills at a multiple of it, the cost-equivalent share is legitimately much larger than the raw share. Quote the 7.5–12.4% figure for money and the 0.96% figure for rate limits and context budget.
 - **The `$48–54` figure in [Reproducing](#reproducing) is an API-list-price equivalent, not an observed bill.** The harness passes no API key and authenticates exactly as the operator's CLI does, so on a subscription that spend is quota, not cash. The practical risk of a large sweep is exhausting a rate limit, not an invoice.
 - **Per-message `output_tokens` in Claude Code transcripts are unreliable.** A design-time probe summed 189 output tokens across assistant messages for a call whose result event reported 5,065 — a 27× undercount. This harness reads the result event, which is why its figures do not inherit that error; tools built on transcript parsing may.
 
@@ -357,12 +558,28 @@ TRIALS=5 npm run measure
 ```
 
 ```bash
+npm run measure:agentic
+```
+
+```bash
 npm run measure:amortization
 ```
 
-`npm test` runs 278 tests with zero dependencies on Node 22+.
+`npm test` runs 437 tests with zero dependencies on Node 22+.
 
 **`TRIALS=5 npm run measure` makes 260 live API calls and costs real money** — 12 cases × 2 conditions × 5 trials × 2 models in the clean environment (240 calls), plus 2 overhead cases × 2 conditions × 5 trials in the lean environment (20). The only measured cost figure is for a different design and does not transfer: the last full run — 3 trials, full environment, still carrying a third condition at 234 calls — cost roughly $48–54. The sweep is not part of `npm test` and nothing runs it by accident. It refuses to start while any file it would write is tracked by git, so committed evidence has to be preserved under a versioned name (or sacrificed by name via an environment variable the refusal message documents) before it rewrites `evals/results/`. Omit `TRIALS` for a single-trial run of 52 calls, which is cheaper and correspondingly less trustworthy.
+
+**`npm run measure:agentic` makes live API calls and spends real money.** It runs the fixture
+projects under both conditions and is scoped by `FIXTURES=` and `TRIALS=`, so you choose how
+much it costs. The two runs recorded here cost **$5.4322** for 18 calls (3 fixtures × 3 trials
+× 2 conditions) and **$2.4627** for 6 calls (the `hidden-edges` fixture, 3 trials × 2
+conditions) — both CLI-reported `total_cost_usd`, which is an API-list-price equivalent rather
+than an observed bill. It refuses to start unless every fixture it would pay for goes green
+under its own oracle first, checked for real in a temp copy rather than trusted from the last
+`npm test`; for the `hidden-edges` fixture it also re-verifies that the naive patch still
+passes the visible suite and fails the hidden one, since a rotted split would measure nothing.
+It also refuses to overwrite committed evidence: if any file it would write — a result row or a
+raw transcript — is tracked by git, it aborts rather than replacing it.
 
 **`npm run measure:amortization` makes 12 live API calls** — 2 conditions × 3 trials × 2 turns, on claude-opus-5 — and also spends real money, though far less than the sweep. It regenerates the input half of the break-even table: the per-tier cache write/read splits in `evals/results/amortization-*.jsonl`. It, too, runs only when you invoke it.
 
@@ -396,6 +613,16 @@ and their report are preserved unchanged at
 [`report-0.2.0.md`](evals/results/report-0.2.0.md) and the `full-*.jsonl` files. What replaced it
 is not a smaller number but the absence of one, plus the measured reason: the unstyled opus
 baseline varies 80% between sweeps in that environment, against 3.2% in the old one.
+
+**The shape of the saving claim, corrected before first release.** Earlier drafts of this
+README described the style's effect only for tool-free prose, and disclosed in Known
+limitations that agentic work was unmeasured. Every figure was true and the gap was named.
+But the shape of the claim — a headline output saving, with the unmeasured case in a limits
+list — invited a reader to assume the saving generalised to the work Claude Code mostly does.
+It does not. Measured, the style **cost 18% more** in agentic runs, in 9 of 9 pairs, and the
+reason is structural rather than incidental: the style's own text is re-sent as input on every
+turn. Nothing published was false. The claim was nonetheless shaped so that the most natural
+reading of it was wrong, which is why this is a correction and not an addition.
 
 Nothing was published under the old claim; this section is not a public correction. It is here
 because a project whose premise is that the prior art published unverifiable numbers cannot
