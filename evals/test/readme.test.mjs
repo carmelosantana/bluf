@@ -13,7 +13,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { perTrialMedianOutputSaved, median } from '../lib/report.mjs'
 
 const README = new URL('../../README.md', import.meta.url)
@@ -145,4 +145,47 @@ test('the README does not soften the overhead-band limit the agentic report stat
   // read as agreement. This is the exact overclaim the review caught being made once already.
   const readme = await readReadme()
   assert.match(readme, /one of the three sits inside that band and the\s*\n?\s*other two land within 8 tokens of its edges/)
+})
+
+// --- Figure integration ---------------------------------------------------------------------
+// A data test that recomputes a number cannot see a broken <img> tag, a path pointing at the
+// gitignored docs/ tree, or an alt attribute that drops a disclosure a sighted reader gets from
+// the raster. A review found exactly that gap: the "Same turns" overclaim rode along beside
+// passing data tests. These pins guard the image integration itself.
+
+const imgTags = readme =>
+  [...readme.matchAll(/<img\s+src="([^"]+)"\s+width="\d+"\s+alt="([^"]*)">/g)]
+    .map(([, src, alt]) => ({ src, alt }))
+
+test('the README references exactly the three committed figures, and every path resolves', async () => {
+  const tags = imgTags(await readReadme())
+  assert.equal(tags.length, 3, 'the README carries three figures')
+
+  for (const { src } of tags) {
+    // The whole point of committing to assets/ rather than docs/img/: docs/ is gitignored, so a
+    // docs/ path would 404 on GitHub while resolving on this machine.
+    assert.match(src, /^assets\//, `${src} must live under the tracked assets/ dir, not docs/`)
+    await stat(new URL(`../../${src}`, import.meta.url)) // throws if the file is missing
+  }
+
+  assert.deepEqual(tags.map(tag => tag.src).sort(),
+    ['assets/01-regimes.png', 'assets/02-token-mix.png', 'assets/03-floor.png'])
+})
+
+test('each figure carries its non-negotiable disclosure in alt text, not only in the raster', async () => {
+  const [regimes, tokenMix, floor] = imgTags(await readReadme())
+
+  // Figure 1 must carry both signs — a screen-reader user must not hear only the good news.
+  assert.match(regimes.alt, /−25\.7%/)
+  assert.match(regimes.alt, /\+18\.3%/)
+
+  // Figure 2 is a token count. The cost caveat is fine print in the raster; alt must state it.
+  assert.match(tokenMix.alt, /0\.96%/)
+  assert.match(tokenMix.alt.replace(/\s+/g, ' '), /not a cost breakdown/i)
+  assert.match(tokenMix.alt.replace(/\s+/g, ' '), /bill at different rates/i)
+
+  // Figure 3's authorship disclosure is baked into the raster for sighted readers; the alt text
+  // must give screen-reader users the same qualification, plus the precision limit.
+  assert.match(floor.alt.replace(/\s+/g, ' '), /written by an AI assistant, not an independent human/i)
+  assert.match(floor.alt, /±17%/)
 })

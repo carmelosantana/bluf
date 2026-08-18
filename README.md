@@ -18,8 +18,8 @@ The detail behind each, and the reasons they point in different directions:
 
 - **The prose figure is real but narrow.** It describes tool-free, single-turn answers on 12 prompts, 5 independent trials, in an isolated environment. Nothing in it reads a file, edits code, or runs a command — and output styles do not apply to subagents.
 - **On opus the effect could not be resolved, and the reason is the baseline, not the style.** Answering the same 12 questions with no style applied, opus's total output varied **80%** between sweeps; fable varied 29%. Two of five opus trials came out *positive*. See [Where the effect is not distinguishable from noise](#where-the-effect-is-not-distinguishable-from-noise).
-- **In agentic work the style costs more, not less** — +18.3% in total and +17.7% at the median, range +10.5% to +33.4%, replicated at +16.1% on a fourth, independent fixture. Turns and tool calls did not change, and task success was **12/12 in both arms**: the style did not make the agent worse, only dearer.
-- **The mechanism is a per-turn input tax.** The style's **+2,032** input tokens are re-sent on every turn, while output is a small fraction of what gets billed in agentic work. Prose compressed hard (`textChars` −31.5%); tool calls did not (+3.0%). The style compresses talking, and in agentic work talking is not the cost.
+- **In agentic work the style costs more, not less** — +18.3% in total and +17.7% at the median, range +10.5% to +33.4%, replicated at +16.1% on a fourth, independent fixture. Turns and tool calls were unchanged at the median — identical in 6 of 9 pairs, the other three one turn longer (58→61 turns, 49→52 tool calls in total) — and task success was **12/12 in both arms**: the style did not make the agent worse, only dearer.
+- **The mechanism is a per-turn input tax.** The style's **≈2,030** input tokens are re-sent on every turn, while output is a small fraction of what gets billed in agentic work. Prose compressed hard (`textChars` −31.5%); tool calls did not (+3.0%). The style compresses talking, and in agentic work talking is not the cost.
 - **On prose it costs money on turn 1 and recovers that over roughly 3.4 further turns**, at an output:input ratio of 5× and on fable only. Break-even is 18.8× output:input for a one-turn session and 0.94× in steady state. No prices are quoted here — multiply by your own and see [What it costs](#what-it-costs).
 - **It cuts more answer than the headline number suggests.** The same 60 rows give −25.7% in billed output tokens but **−38.6% in response characters**, because billed output includes thinking the style does not govern.
 - **What remains has little slack.** Against hand-written minimal-sufficient answers, the unstyled arm sits +73.3% above the floor and the styled arm **+4.2%**. On `ci-exit-1` the unstyled answer cleared the floor (+29.7%) and the styled answer did not (−62.5%, 5 of 5 trials) — a `debug-partial-evidence` case, where a complete answer is a diagnostic path and a brevity rule cannot tell a diagnostic path from padding.
@@ -147,8 +147,8 @@ will notice something, and one they say nothing about:
   part where it explains *how to find out*, that is the failure mode this repo found, and it would
   be worth telling us.
 - **Agentic coding work** — expect the visible chat to get terser while the work itself looks the
-  same. Measured: the same turns, the same tool calls, the same success rate, and an 18% higher
-  bill. If terser narration is worth that to you, that is a legitimate answer; the point is that it
+  same. Measured: turns and tool calls unchanged at the median (identical in 6 of 9 pairs), the
+  same success rate, and an 18% higher bill. If terser narration is worth that to you, that is a legitimate answer; the point is that it
   is a taste decision, not a saving.
 - **Whether it is faster** — it is not, and the clock will not tell you anything. 6 of 12 paired
   runs went each way.
@@ -443,7 +443,7 @@ a tool-free, single-turn prose figure, measured where output *is* the product an
 context is re-sent. Agentic work is a different regime, and the same mechanism has the
 opposite sign there. One style, two regimes, both measured.
 
-<img src="assets/02-token-mix.png" width="900" alt="A single bar of one agentic arm's billed tokens. 959,532 input tokens are 99.04% of the total; 9,331 output tokens are 0.96%. The style removes 10.2% of that sliver while adding 2,032 input tokens on every turn.">
+<img src="assets/02-token-mix.png" width="900" alt="A single bar of one agentic arm's billed tokens. 959,532 input tokens are 99.04% of the total; 9,331 output tokens are 0.96%. The style removes 10.2% of that sliver while adding roughly 2,030 input tokens on every turn. This is a token count, not a cost breakdown: input tiers bill at different rates, so output's cost-equivalent share is larger than 0.96% — the argument rests on the measured +18.3%, not on this ratio.">
 
 **What was measured.** 18 paid calls — 3 fixture projects × 3 trials × 2 conditions, on
 `claude-fable-5`, in the same isolated `clean` environment as the prose sweep. The fixtures
@@ -605,7 +605,7 @@ does not say the answers were complete.
 
 ### The minimal-sufficient floor — the sharpest result
 
-<img src="assets/03-floor.png" width="900" alt="Response length against a hand-written minimal-sufficient floor. The typical case sits +4.2% over the floor with BLUF against +73.3% without it. On ci-exit-1 the unstyled answer cleared the floor at +29.7% and the styled answer fell to −62.5% on 5 of 5 trials. On 401-no-evidence both arms are under the floor and BLUF is the longer of the two.">
+<img src="assets/03-floor.png" width="900" alt="Response length against a minimal-sufficient floor. The typical case sits +4.2% over the floor with BLUF against +73.3% without it. On ci-exit-1 the unstyled answer cleared the floor at +29.7% and the styled answer fell to −62.5% on 5 of 5 trials. On 401-no-evidence both arms are under the floor and BLUF is the longer of the two. The floors are calibrated to roughly ±17%. Disclosed on the chart and stated here: the twelve floors were written by an AI assistant, not an independent human, and are committed so they can be disputed.">
 
 **The styled arm's median case sits +4.2% over a hand-written minimal-sufficient answer;
 the unstyled arm sits +73.3% over it.** Source:
