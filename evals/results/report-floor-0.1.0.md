@@ -139,6 +139,19 @@ twelve. `scheduled-jobs`, `shared-types`, `docker-cache-miss` and `actions-workf
 each within 10% of their floor, which section 4 says is inside the noise; `ci-exit-1` and
 `401-no-evidence` are not.
 
+One of those two should not be laid at the style's door, and saying so matters more than
+the count. **On `401-no-evidence` the styled arm is the *longer* of the two** — median 486
+characters against the baseline's 232 — so both arms sit under that floor and the style
+moved the answer *toward* sufficiency, not away from it. Only `ci-exit-1` shows the style
+crossing the line on its own: the baseline sits **+29.7%** above the floor and the styled
+arm **−62.5%** below it, on 5 of 5 trials, a gap far outside section 4's ±17% calibration.
+
+So the sharpest honest statement this instrument supports is a single case, not six:
+**on `ci-exit-1` the unstyled answer cleared the floor and the styled answer did not.**
+That it is a `debug-partial-evidence` case is the part worth attention — those are the
+prompts where a complete answer is a diagnostic path rather than a fact, and a length rule
+has no way to tell a diagnostic path from padding.
+
 ## 4. Calibrating the floor against the responses we can actually read
 
 The `.jsonl` rows store no response text, so nothing above scores a real response against

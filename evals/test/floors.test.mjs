@@ -438,3 +438,38 @@ test('the report quotes no figure this file does not recompute', async () => {
   assert.match(report, /written by an AI assistant, in the same session/)
   assert.match(report, /The unit is characters/)
 })
+
+// The refinement in section 3: of the six styled cases below floor, only ONE is a case the
+// style pushed under on its own. On 401-no-evidence the styled arm is the LONGER of the two,
+// so both arms sit under that floor and the style moved the answer toward sufficiency. If a
+// future re-measure flips either fact, the report's sharpest claim is wrong and this fails.
+test('only ci-exit-1 shows the style crossing the floor on its own', async () => {
+  const floors = await loadFloors()
+  const comparison = compareToFloor(
+    await readJsonl("clean-claude-fable-5-baseline.jsonl"),
+    await readJsonl("clean-claude-fable-5-bluf.jsonl"),
+    floors)
+  const of = (arm, caseId) => comparison[arm].perCase.find(entry => entry.caseId === caseId)
+
+  const baseline401 = of('baseline', '401-no-evidence')
+  const styled401 = of('candidate', '401-no-evidence')
+  assert.ok(styled401.medianChars > baseline401.medianChars,
+    'the report says the styled arm is LONGER on 401-no-evidence; if not, section 3 is wrong')
+  assert.ok(baseline401.belowFloor && styled401.belowFloor, 'both arms sit under that floor')
+  assert.equal(baseline401.medianChars, 232)
+  assert.equal(styled401.medianChars, 486)
+
+  const baselineCi = of('baseline', 'ci-exit-1')
+  const styledCi = of('candidate', 'ci-exit-1')
+  assert.equal(baselineCi.belowFloor, false, 'the unstyled answer cleared the floor')
+  assert.equal(styledCi.belowFloor, true, 'the styled answer did not')
+  assert.equal(Number((baselineCi.excess * 100).toFixed(1)), 29.7)
+  assert.equal(Number((styledCi.excess * 100).toFixed(1)), -62.5)
+  assert.equal(styledCi.trialsBelowFloor, 5, 'on 5 of 5 trials')
+
+  // The claim is "a single case, not six": every other below-floor styled case is either
+  // inside the calibration band or one the baseline also fails.
+  const crossings = comparison.candidate.perCase.filter(entry =>
+    entry.belowFloor && of('baseline', entry.caseId).belowFloor === false && entry.excess < -0.17)
+  assert.deepEqual(crossings.map(entry => entry.caseId), ['ci-exit-1'])
+})
