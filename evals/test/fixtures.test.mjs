@@ -56,20 +56,37 @@ test('every fixture goes GREEN when its committed oracle patch is applied', asyn
 
 // Node 22 resolves a bare directory after --test as a MODULE and throws MODULE_NOT_FOUND
 // — with or without a trailing slash (`node --test test`, `node --test test/`,
-// `node --test ./test` all fail). A glob is safe: Node's own matcher expands it. A
-// concrete .mjs/.cjs/.js file is safe too. Anything else after --test is a directory.
+// `node --test ./test` all fail). A QUOTED glob is safe: Node's own matcher expands it.
+// A concrete .mjs/.cjs/.js file is safe too. Every argument after --test is checked,
+// not just the first, so a flag between --test and the directory cannot hide the trap.
+// An UNQUOTED glob is rejected too: the shell expands it before Node sees it, so the
+// quoted-glob rule is enforced here rather than left as convention.
 function hitsNode22DirectoryTrap (command) {
-  const match = /--test\s+(?:'([^']*)'|"([^"]*)"|(?!-)(\S+))/.exec(command)
-  if (!match) return false
-  const target = match[1] ?? match[2] ?? match[3]
-  if (/[*?[]/.test(target)) return false
-  return !/\.[cm]?js$/.test(target)
+  const flagIndex = command.search(/(?:^|\s)--test(?=\s|$)/)
+  if (flagIndex === -1) return false
+  const rest = command.slice(command.indexOf('--test', flagIndex) + '--test'.length)
+  for (const token of rest.match(/'[^']*'|"[^"]*"|\S+/g) ?? []) {
+    if (token.startsWith('-')) continue // another flag; the real target can come later
+    const quoted = /^(['"]).*\1$/.test(token)
+    const target = quoted ? token.slice(1, -1) : token
+    if (/[*?[]/.test(target)) {
+      if (quoted) continue // Node's matcher expands a quoted glob; this is the approved form
+      return true // an unquoted glob is shell-dependent, not the approved form
+    }
+    if (/\.[cm]?js$/.test(target)) continue // a concrete test file is safe
+    return true // anything else is a bare directory, slash or not
+  }
+  return false
 }
 
 test('the Node 22 trap guard rejects bare directories, slash or not, and allows quoted globs', () => {
   assert.ok(hitsNode22DirectoryTrap('node --test test'), 'a bare directory with no slash is still the trap')
   assert.ok(hitsNode22DirectoryTrap('node --test test/'))
   assert.ok(hitsNode22DirectoryTrap('node --test ./test'))
+  assert.ok(hitsNode22DirectoryTrap('node --test --experimental-test-coverage test/'),
+    'a flag between --test and the directory must not hide the trap')
+  assert.ok(hitsNode22DirectoryTrap('node --test test/*.test.mjs'),
+    'an unquoted glob is shell-dependent; only the quoted form is approved')
   assert.ok(!hitsNode22DirectoryTrap("node --test 'test/*.test.mjs'"), 'a quoted glob is the correct form')
 })
 
@@ -153,11 +170,27 @@ test('prompts match the register real usage shows', async () => {
   }
 })
 
-test('a partial fix does not satisfy the multi-file fixture', async () => {
+test('a partial fix does not satisfy the multi-file fixture — and fails for the right reason', async () => {
   const dir = await copyFixture('rename-option', await mkdtemp(join(tmpdir(), 'bluf-fixture-')))
   await applyPartialOracle('rename-option', dir)
   const result = await runFixtureTest(dir)
   assert.equal(result.passed, false, 'a partial rename must not pass; otherwise this is not a multi-file task')
+
+  // Failing is not enough. This test once went red because docs/ was missing from the
+  // copy and readdir threw ENOENT — not because the rename was partial. Pin the reason:
+  // the suite must collect its full set of tests, and the failures must be exactly the
+  // assertions covering the un-renamed consumer and the untouched documentation.
+  const tap = result.stdout
+  assert.match(tap, /^# tests 5$/m,
+    `the fixture suite must collect all 5 tests, not die before running them:\n${tap}\n${result.stderr}`)
+  assert.match(tap, /^not ok \d+ - the client honours maxRetries/m,
+    'the un-renamed consumer must be a named failure')
+  assert.match(tap, /^not ok \d+ - docs\/options\.md exists and documents maxRetries, not the old name/m,
+    'the untouched documentation must be a named failure')
+  assert.match(tap, /^not ok \d+ - no file under src\/ or docs\/ still uses the old option name/m,
+    'the cross-file scan must be a named failure')
+  assert.match(tap, /^# fail 3$/m,
+    `exactly the three multi-file assertions fail, nothing else and for no other reason:\n${tap}`)
 })
 
 test('copyFixture produces a byte-identical, independently mutable copy', async () => {

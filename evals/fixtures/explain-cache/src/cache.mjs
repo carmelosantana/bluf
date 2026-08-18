@@ -1,5 +1,4 @@
-// Keyed cache for rendered fragments. This is deliberately not an LRU: reads never
-// rescue an entry. The budget and expiry policy it enforces live in limits.mjs.
+// Keyed cache for rendered fragments. Sizing constants come from limits.mjs.
 import { WEIGHT_BUDGET, TTL_MS, weightOf } from './limits.mjs'
 
 export function createCache () {
@@ -30,7 +29,6 @@ export function createCache () {
     get (key, now = Date.now()) {
       const entry = entries.get(key)
       if (!entry) return undefined
-      // Expiry is lazy: a stale entry keeps occupying budget until something reads it.
       if (now - entry.writtenAt > TTL_MS) {
         remove(key)
         return undefined
@@ -43,16 +41,13 @@ export function createCache () {
       const entryWeight = weightOf(value)
       entries.set(key, { value, weight: entryWeight, writtenAt: now, pinned: false })
       totalWeight += entryWeight
-      // Eviction happens only on write, and only while the weight budget is exceeded.
-      // The victim is the oldest WRITE, not the oldest read.
       while (totalWeight > WEIGHT_BUDGET) {
         const victim = oldestUnpinnedKey()
-        if (victim === undefined) break // everything left is pinned; run over budget
+        if (victim === undefined) break
         remove(victim)
       }
     },
 
-    // A pinned entry is skipped by weight eviction, but it still expires.
     pin (key) {
       const entry = entries.get(key)
       if (entry) entry.pinned = true

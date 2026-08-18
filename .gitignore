@@ -1,4 +1,6 @@
 node_modules/
 .DS_Store
 .superpowers/
-docs/
+# Repo-root specs and plans stay local and unpublished. Anchored so it does NOT
+# swallow nested docs/ directories (a fixture's docs/ must be committed).
+/docs/
