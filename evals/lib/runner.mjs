@@ -101,16 +101,25 @@ export function buildArgs (prompt, styleName, model, environment) {
 // defect more than once, and a second copy of this helper is how the next one
 // would arrive. `label` is the full name the error reports — parseUsage prefixes
 // its own fields with `usage.`.
-export const tokenField = (source, name, label = name) => {
+// The generalised form, for callers whose strict-required field is NOT a token
+// count (the agentic runner reads `num_turns`, a turn count, and `total_cost_usd`,
+// a dollar figure, with the same strictness). `quantity` names what the field
+// measures in the error, so a paid-run postmortem is not told a dollar figure was
+// a token count. tokenField below MUST keep producing byte-identical messages —
+// parseUsage's error strings are pinned by tests.
+export const requiredNumericField = (source, name, label = name, quantity = 'value') => {
   const value = source[name]
   if (value === undefined) {
-    throw new Error(`${label} is absent; an unknown token count cannot be recorded as zero`)
+    throw new Error(`${label} is absent; an unknown ${quantity} cannot be recorded as zero`)
   }
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new Error(`${label} is not a finite number: ${JSON.stringify(value)}`)
   }
   return value
 }
+
+export const tokenField = (source, name, label = name) =>
+  requiredNumericField(source, name, label, 'token count')
 
 export function parseUsage (payload) {
   const usage = payload?.usage

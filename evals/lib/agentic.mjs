@@ -1,6 +1,8 @@
-import { mkdtemp } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import {
   CONDITIONS,
   CLEAN_ENVIRONMENT,
@@ -9,15 +11,16 @@ import {
   assertProjectStyleInstalled,
   assertNotErrored,
   parseUsage,
-  tokenField,
+  requiredNumericField,
   parseProvenance,
   assertModelResolved,
   readCliVersion,
   settingSourcesOf,
-  STYLE_SHA256,
-  defaultExecute
+  STYLE_SHA256
 } from './runner.mjs'
 import { copyFixture, runFixtureTest } from './fixtures.mjs'
+
+const run = promisify(execFile)
 
 // Spend cap per call, enforced by the CLI's --max-budget-usd (VERIFIED to exist on
 // CLI 2.1.222; there is no --max-turns flag). A design probe measured roughly $1
@@ -34,6 +37,13 @@ export const MAX_AGENTIC_BUDGET_USD = 2
 //   the treatment would silently stop applying to the delegated work.
 const CONTAMINANT_TOOLS = ['Skill', 'Agent']
 
+// The complete set of task shapes the fixture suite measures. row.shape feeds the
+// per-shape breakdown, and JSON.stringify silently DROPS an undefined property, so
+// an unvalidated shape from a hand-built fixture would write rows whose shape
+// column simply vanishes — the same absent-data-passes-silently class of defect
+// this module exists to refuse, one field over.
+export const FIXTURE_SHAPES = ['exploration', 'failing-test', 'multi-file']
+
 export function buildAgenticArgs (fixture, styleName, model, { maxBudgetUsd } = {}) {
   if (!model) throw new Error('buildAgenticArgs requires an explicit model; an unpinned run is not reproducible')
   if (!styleName) throw new Error('buildAgenticArgs requires an explicit output style; an unpinned output style would inherit the operator\'s global config')
@@ -49,7 +59,14 @@ export function buildAgenticArgs (fixture, styleName, model, { maxBudgetUsd } = 
   }
   return [
     '-p', fixture.prompt,
-    '--output-format', 'json',
+    // stream-json with --verbose, NOT plain json. Measured on CLI 2.1.222 and
+    // committed in evals/results/probes/result-shape.json: the plain json format
+    // prints only the final result event, which carries NO messages array, so tool
+    // calls and text/tool-input characters are unobservable and the first paid call
+    // would throw. stream-json emits one JSON object per line (system / assistant /
+    // user / rate_limit_event / result) and requires --verbose under --print.
+    '--output-format', 'stream-json',
+    '--verbose',
     '--model', model,
     '--allowedTools', allowed.join(','),
     '--disallowedTools', CONTAMINANT_TOOLS.join(','),
@@ -64,19 +81,54 @@ export function buildAgenticArgs (fixture, styleName, model, { maxBudgetUsd } = 
   ]
 }
 
+// Recognises exactly two message shapes and refuses everything else:
+//   - the bare API shape        { role, content }
+//   - the stream-json envelope  { type: 'assistant', message: { role, content } }
+// Returns the assistant message to count, or null for a RECOGNISED non-assistant
+// entry (user messages carry tool_result blocks — harness input, not model output).
+// An unrecognised entry throws: skipping it, as this walk once did, returned
+// toolCalls: 0 / textChars: 0 on a whole stream of well-formed envelopes — 18 paid
+// rows whose agentic columns all read zero and validate clean.
+function assistantMessageOf (entry, index) {
+  if (entry !== null && typeof entry === 'object') {
+    if (typeof entry.role === 'string') {
+      return entry.role === 'assistant' ? entry : null
+    }
+    if (typeof entry.type === 'string') {
+      if (entry.type !== 'assistant') return null
+      const message = entry.message
+      if (message === null || typeof message !== 'object' || message.role !== 'assistant') {
+        throw new Error(
+          `messages[${index}] is a type:'assistant' envelope whose inner message is not an assistant ` +
+          `message: ${JSON.stringify(message)}. Counting past it would undercount silently.`
+        )
+      }
+      return message
+    }
+  }
+  throw new Error(
+    `messages[${index}] has an unrecognised shape — neither {role, content} nor a {type, message} ` +
+    `stream-json envelope: ${JSON.stringify(entry)}. Skipping an entry this walk cannot classify ` +
+    'would undercount silently, so it is refused instead.'
+  )
+}
+
 // Metrics come from the RESULT EVENT ONLY. Per-message `usage` in stream-json is
-// unusable: a design probe summed 189 output tokens across assistant messages for a
-// call whose result event reported 5,065 — a 27x undercount consistent with a known
-// upstream issue. payload.messages is walked ONLY to count tool_use blocks and
-// measure characters, never for token counts.
+// unusable: the committed probe (evals/results/probes/result-shape.json) measured
+// 109 output tokens on the result event against 14 summed across per-message
+// assistant usage on the same call, consistent with a known upstream issue.
+// payload.messages is walked ONLY to count tool_use blocks and measure characters,
+// never for token counts.
 export function parseAgenticMetrics (payload) {
   if (!payload || typeof payload !== 'object') {
     throw new Error('parseAgenticMetrics requires the result-event payload object')
   }
-  // The same strictness parseUsage applies, via the same exported helper: every
-  // field required, present and finite — an unknown figure is never recorded as 0.
-  const numTurns = tokenField(payload, 'num_turns')
-  const totalCostUsd = tokenField(payload, 'total_cost_usd')
+  // The same strictness parseUsage applies, via the same exported helper family:
+  // every field required, present and finite — an unknown figure is never recorded
+  // as 0. num_turns and total_cost_usd are not token counts, so their errors name
+  // what they actually are.
+  const numTurns = requiredNumericField(payload, 'num_turns', 'num_turns', 'turn count')
+  const totalCostUsd = requiredNumericField(payload, 'total_cost_usd', 'total_cost_usd', 'cost')
   const usage = parseUsage(payload)
 
   const messages = payload.messages
@@ -88,14 +140,22 @@ export function parseAgenticMetrics (payload) {
     )
   }
 
+  let assistantMessages = 0
   let toolCalls = 0
   const toolCallsByName = {}
   let textChars = 0
   let toolUseChars = 0
-  for (const message of messages) {
-    // Only assistant output counts: tool_result blocks live in user messages and are
-    // input the harness produced, not text the model wrote.
-    if (message?.role !== 'assistant' || !Array.isArray(message.content)) continue
+  for (const [index, entry] of messages.entries()) {
+    const message = assistantMessageOf(entry, index)
+    if (message === null) continue
+    if (!Array.isArray(message.content)) {
+      throw new Error(
+        `messages[${index}] is an assistant message whose content is not a block array: ` +
+        `${JSON.stringify(message.content)}. Its text and tool_use characters cannot be counted, ` +
+        'and skipping it would record them as zero.'
+      )
+    }
+    assistantMessages += 1
     for (const block of message.content) {
       if (block?.type === 'text') {
         if (typeof block.text !== 'string') {
@@ -115,6 +175,13 @@ export function parseAgenticMetrics (payload) {
       }
     }
   }
+  if (assistantMessages === 0) {
+    throw new Error(
+      'payload.messages matched no assistant message at all; a paid call whose stream carried no ' +
+      'assistant output is malformed, and recording toolCalls: 0 / textChars: 0 for it would be ' +
+      'the silent-zero defect this parser exists to refuse.'
+    )
+  }
 
   return {
     numTurns,
@@ -127,28 +194,123 @@ export function parseAgenticMetrics (payload) {
   }
 }
 
+// Splits raw stream-json stdout into its events. One JSON object per line; a line
+// that does not parse is refused loudly rather than skipped — a paid call whose
+// transcript this cannot read must fail with the evidence intact, not limp through
+// on the lines that happened to parse. Exactly one result event is required: zero
+// means the call never completed, more than one means the stream is not the single
+// call this runner paid for, and either way no metric can be attributed.
+export function parseStreamEvents (stdout) {
+  if (typeof stdout !== 'string') {
+    throw new Error(`parseStreamEvents requires the raw stream-json stdout string, got ${typeof stdout}`)
+  }
+  const lines = stdout.split('\n').filter(line => line.trim().length > 0)
+  if (lines.length === 0) {
+    throw new Error('the stream-json stdout is empty; the call produced no events at all')
+  }
+  const events = lines.map((line, index) => {
+    try {
+      return JSON.parse(line)
+    } catch (cause) {
+      throw new Error(
+        `stream-json line ${index + 1} of ${lines.length} is not valid JSON: ${JSON.stringify(line.slice(0, 200))}`,
+        { cause }
+      )
+    }
+  })
+  const resultEvents = events.filter(event => event?.type === 'result')
+  if (resultEvents.length === 0) {
+    throw new Error(
+      `the stream carried no type:'result' event across ${events.length} event(s); every metric ` +
+      'comes from the result event, so nothing about this call can be recorded'
+    )
+  }
+  if (resultEvents.length > 1) {
+    throw new Error(
+      `the stream carried ${resultEvents.length} type:'result' events; which one is authoritative ` +
+      'is ambiguous, and guessing would record another call\'s totals'
+    )
+  }
+  return {
+    resultEvent: resultEvents[0],
+    assistantEvents: events.filter(event => event?.type === 'assistant')
+  }
+}
+
+// Raw stream-json stdout in, the parseAgenticMetrics shape out. Every token, turn
+// and cost figure comes from the single result event; the assistant events are
+// walked only for tool_use counts and character measurement.
+export function parseAgenticStream (stdout) {
+  const { resultEvent, assistantEvents } = parseStreamEvents(stdout)
+  return parseAgenticMetrics({ ...resultEvent, messages: assistantEvents })
+}
+
+// Unlike runner.mjs's defaultExecute, this returns RAW stdout instead of parsing
+// it: stream-json is a line protocol, and runAgenticTask must persist the raw
+// transcript to disk BEFORE any parsing so a malformed paid response leaves
+// evidence rather than a spent budget and an empty temp directory.
+export async function defaultAgenticExecute (args, cwd) {
+  const { stdout } = await run('claude', args, { cwd, maxBuffer: 32 * 1024 * 1024 })
+  return stdout
+}
+
 // One measured agentic call: copy the fixture (the answer key never reaches the
 // copy), install and verify the project-level style (the clean environment cannot
-// load the user-level one), run the CLI inside the copy, validate the payload and
-// its provenance, then score task success with the fixture's own test command.
+// load the user-level one), run the CLI inside the copy, write the raw transcript
+// to disk, validate the stream and its provenance, then score task success with
+// the fixture's own test command.
 export async function runAgenticTask (fixture, condition, model, trial = 1, {
-  execute = defaultExecute,
-  maxBudgetUsd
+  execute = defaultAgenticExecute,
+  maxBudgetUsd,
+  transcriptPath
 } = {}) {
   if (!(condition in CONDITIONS)) {
     throw new Error(`unknown condition: ${condition}; valid conditions are: ${Object.keys(CONDITIONS).join(', ')}`)
   }
+  if (!FIXTURE_SHAPES.includes(fixture?.shape)) {
+    throw new Error(
+      `fixture ${fixture?.name ?? '(unnamed)'} declares shape ${JSON.stringify(fixture?.shape)}, which is not one ` +
+      `of [${FIXTURE_SHAPES.join(', ')}]. JSON.stringify drops an undefined property entirely, so an unvalidated ` +
+      'shape would write rows whose shape column silently vanishes.'
+    )
+  }
+  // Like runCase's bluf-eval-* directories, this parent is deliberately left in
+  // place after the run: it holds the raw transcript, which for a failed paid call
+  // is the only evidence there is.
   const parent = await mkdtemp(join(tmpdir(), 'bluf-agentic-'))
   const cwd = await copyFixture(fixture.name, parent)
   await installProjectStyle(cwd)
   await assertProjectStyleInstalled(cwd)
 
   const args = buildAgenticArgs(fixture, CONDITIONS[condition], model, { maxBudgetUsd })
-  const payload = await execute(args, cwd)
-  assertNotErrored(payload, { caseId: fixture.name, condition })
-  const metrics = parseAgenticMetrics(payload)
-  const provenance = parseProvenance(payload, { model })
-  assertModelResolved(provenance, { model })
+  const stdout = await execute(args, cwd)
+  if (typeof stdout !== 'string') {
+    throw new Error(
+      `execute must return the raw stream-json stdout string, got ${typeof stdout}; the transcript ` +
+      'must reach disk before anything tries to parse it'
+    )
+  }
+  // To disk BEFORE parsing. The money is spent the moment execute returns; a parse
+  // failure that discarded the payload would leave a paid call with nothing to
+  // diagnose from.
+  const transcript = transcriptPath ?? join(parent, `${fixture.name}-${condition}-trial${trial}.stream.jsonl`)
+  await writeFile(transcript, stdout)
+
+  let metrics, provenance
+  try {
+    const { resultEvent, assistantEvents } = parseStreamEvents(stdout)
+    assertNotErrored(resultEvent, { caseId: fixture.name, condition })
+    metrics = parseAgenticMetrics({ ...resultEvent, messages: assistantEvents })
+    provenance = parseProvenance(resultEvent, { model })
+    assertModelResolved(provenance, { model })
+  } catch (error) {
+    const wrapper = new Error(
+      `${error.message} [raw transcript preserved at ${transcript}]`,
+      { cause: error }
+    )
+    wrapper.transcriptPath = transcript
+    throw wrapper
+  }
 
   // Ground truth, exit-code only: the fixture's test command run against whatever
   // state the model left behind. A timeout or output blowout scores as a failure.
@@ -164,6 +326,7 @@ export async function runAgenticTask (fixture, condition, model, trial = 1, {
     cliVersion: await readCliVersion(),
     styleSha256: STYLE_SHA256,
     settingSources: settingSourcesOf(CLEAN_ENVIRONMENT),
+    transcriptPath: transcript,
     taskPassed: testResult.passed,
     testExitCode: testResult.exitCode,
     ...provenance,
