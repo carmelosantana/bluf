@@ -249,9 +249,32 @@ export function parseAgenticStream (stdout) {
 // it: stream-json is a line protocol, and runAgenticTask must persist the raw
 // transcript to disk BEFORE any parsing so a malformed paid response leaves
 // evidence rather than a spent budget and an empty temp directory.
-export async function defaultAgenticExecute (args, cwd) {
-  const { stdout } = await run('claude', args, { cwd, maxBuffer: 32 * 1024 * 1024 })
-  return stdout
+//
+// execFile REJECTS on any non-zero exit, and the CLI exits 1 on an errored
+// result and on maxBuffer overflow — the failures a paid sweep will actually
+// hit first. The bytes the process printed before dying ride on error.stdout;
+// letting the bare rejection propagate is how a budget-exhausted call used to
+// leave nothing on disk. So the rejection is rethrown with the partial stdout,
+// exit code and signal attached, and runAgenticTask persists error.stdout to
+// the transcript file before failing loudly.
+//
+// The command parameter exists ONLY so the test suite can exercise this real
+// execFile rejection path against `node` without spending money; production
+// callers never pass it.
+export async function defaultAgenticExecute (args, cwd, command = 'claude') {
+  try {
+    const { stdout } = await run(command, args, { cwd, maxBuffer: 32 * 1024 * 1024 })
+    return stdout
+  } catch (error) {
+    const description = error?.signal
+      ? `was killed by signal ${error.signal}`
+      : `exited with code ${error?.code ?? '(unknown)'}`
+    const wrapper = new Error(`${command} ${description}: ${error?.message ?? error}`, { cause: error })
+    wrapper.stdout = typeof error?.stdout === 'string' ? error.stdout : ''
+    wrapper.exitCode = typeof error?.code === 'number' ? error.code : null
+    wrapper.signal = error?.signal ?? null
+    throw wrapper
+  }
 }
 
 // One measured agentic call: copy the fixture (the answer key never reaches the
@@ -283,18 +306,40 @@ export async function runAgenticTask (fixture, condition, model, trial = 1, {
   await assertProjectStyleInstalled(cwd)
 
   const args = buildAgenticArgs(fixture, CONDITIONS[condition], model, { maxBudgetUsd })
-  const stdout = await execute(args, cwd)
+  let stdout
+  let executionError = null
+  try {
+    stdout = await execute(args, cwd)
+  } catch (error) {
+    // The rejection path is the failure that will actually happen first: execFile
+    // rejects on a non-zero exit, and the CLI exits 1 on a budget-exhausted or
+    // API-errored call and on maxBuffer overflow. The money is spent either way,
+    // and whatever partial bytes ride on error.stdout are the only evidence there
+    // is — they must reach the transcript file below exactly like a resolved
+    // call's stdout, and the failure stays loud via the rethrow after the write.
+    executionError = error
+    stdout = typeof error?.stdout === 'string' ? error.stdout : ''
+  }
   if (typeof stdout !== 'string') {
     throw new Error(
       `execute must return the raw stream-json stdout string, got ${typeof stdout}; the transcript ` +
       'must reach disk before anything tries to parse it'
     )
   }
-  // To disk BEFORE parsing. The money is spent the moment execute returns; a parse
-  // failure that discarded the payload would leave a paid call with nothing to
-  // diagnose from.
+  // To disk BEFORE parsing — and before rethrowing an execute failure. The money
+  // is spent the moment the process ran; a failure path that discarded the payload
+  // would leave a paid call with nothing to diagnose from.
   const transcript = transcriptPath ?? join(parent, `${fixture.name}-${condition}-trial${trial}.stream.jsonl`)
   await writeFile(transcript, stdout)
+
+  if (executionError) {
+    const wrapper = new Error(
+      `${executionError.message} [raw transcript preserved at ${transcript}]`,
+      { cause: executionError }
+    )
+    wrapper.transcriptPath = transcript
+    throw wrapper
+  }
 
   let metrics, provenance
   try {

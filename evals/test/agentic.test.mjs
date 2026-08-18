@@ -4,6 +4,7 @@ import { readFile, access } from 'node:fs/promises'
 import { join, basename } from 'node:path'
 import {
   buildAgenticArgs,
+  defaultAgenticExecute,
   parseAgenticMetrics,
   parseStreamEvents,
   parseAgenticStream,
@@ -12,6 +13,7 @@ import {
   MAX_AGENTIC_BUDGET_USD
 } from '../lib/agentic.mjs'
 import { CONDITIONS, STYLE_SHA256 } from '../lib/runner.mjs'
+import { loadFixtures } from '../lib/fixtures.mjs'
 
 const fixture = {
   name: 'failing-test',
@@ -307,6 +309,41 @@ test('parseAgenticStream takes every metric from the single result event', () =>
   assert.equal(metrics.textChars, 'look'.length + 'answer'.length)
 })
 
+test('parseAgenticStream agrees with the committed transcript of a real CLI call', async () => {
+  // evals/results/probes/result-shape-stream.jsonl is the raw, unmodified stdout of
+  // a real `claude -p --output-format stream-json --verbose` call on CLI 2.1.222.
+  // Every other test in this file feeds the parser hand-built streams; this one is
+  // what stands between the parser and a hand-transcribed fiction. Every expected
+  // value below is read off the committed file itself:
+  //   - the result event says num_turns: 2, total_cost_usd: 0.123916, and
+  //     usage { input_tokens: 4, cache_read_input_tokens: 39248,
+  //     cache_creation_input_tokens: 3929 (all 1h TTL), output_tokens: 109 };
+  //   - the three assistant events carry exactly one tool_use (Read, whose
+  //     name + JSON.stringify(input) span 56 characters) and text blocks
+  //     totalling 49 characters;
+  //   - the assistant events' own usage sums to 16 output tokens, so a parser
+  //     that drifted back to summing per-message usage reports 16, not 109,
+  //     and this test fails.
+  const raw = await readFile(new URL('../results/probes/result-shape-stream.jsonl', import.meta.url), 'utf8')
+  const metrics = parseAgenticStream(raw)
+
+  assert.equal(metrics.numTurns, 2)
+  assert.equal(metrics.totalCostUsd, 0.123916)
+  assert.equal(metrics.outputTokens, 109, 'output tokens come from the result event; per-message usage on this real call sums to 16')
+  assert.equal(metrics.toolCalls, 1)
+  assert.deepEqual(metrics.toolCallsByName, { Read: 1 })
+  assert.ok(metrics.textChars > 0, 'the real call produced visible text')
+  assert.equal(metrics.textChars, 49)
+  assert.equal(metrics.toolUseChars, 56)
+  assert.equal(metrics.inputUncached, 4)
+  assert.equal(metrics.inputCacheRead, 39248)
+  assert.equal(metrics.inputCacheWrite, 3929)
+  assert.equal(metrics.inputCacheWrite1h, 3929)
+  assert.equal(metrics.inputCacheWrite5m, 0)
+  assert.equal(metrics.inputTokens, 4 + 39248 + 3929)
+  assert.equal(metrics.totalTokens, 4 + 39248 + 3929 + 109)
+})
+
 test('parseStreamEvents refuses a line that does not parse as JSON', () => {
   const stdout = '{"type":"system"}\nnot json at all\n' + JSON.stringify({ type: 'result' }) + '\n'
   assert.throws(() => parseStreamEvents(stdout), /line 2 of 3 is not valid JSON/)
@@ -424,6 +461,74 @@ test('runAgenticTask writes the raw transcript to disk before parsing and names 
   assert.equal(preserved, malformed)
 })
 
+test('runAgenticTask preserves the transcript when execute REJECTS with partial stdout', async () => {
+  // The most likely paid failure: claude exits 1 (budget exhausted, API error,
+  // maxBuffer overflow), execFile rejects, and the partial bytes ride on
+  // error.stdout. Before this path existed, the rejection propagated out ahead of
+  // the writeFile and the paid call left NOTHING on disk — the exact hole the
+  // transcript capture was added to close.
+  const truncated = '{"type":"system","subtype":"init"}\n{"type":"assistant","mess'
+  const failure = Object.assign(new Error('claude exited with code 1'), {
+    stdout: truncated,
+    exitCode: 1
+  })
+  const err = await runAgenticTask(fixture, 'bluf', 'claude-fable-5', 1, {
+    execute: async () => { throw failure }
+  }).then(
+    () => { throw new Error('runAgenticTask should have rejected') },
+    error => error
+  )
+
+  // Still a loud error, carrying the original failure and naming the evidence.
+  assert.match(err.message, /claude exited with code 1/)
+  assert.match(err.message, /raw transcript preserved at /)
+  assert.equal(err.cause, failure)
+  assert.ok(err.transcriptPath, 'the error must carry the transcript path')
+  assert.match(err.message, new RegExp(err.transcriptPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  // And the partial bytes are on disk, byte-identical.
+  const preserved = await readFile(err.transcriptPath, 'utf8')
+  assert.equal(preserved, truncated)
+})
+
+test('runAgenticTask writes a transcript even when the rejection carries no stdout at all', async () => {
+  // A spawn failure (ENOENT, EPERM) rejects with no stdout property. There are no
+  // bytes to save, but the transcript file must still exist — an investigator of a
+  // paid failure follows error.transcriptPath, and a dangling path would send them
+  // hunting for evidence that was never written.
+  const err = await runAgenticTask(fixture, 'bluf', 'claude-fable-5', 1, {
+    execute: async () => { throw new Error('spawn claude ENOENT') }
+  }).then(
+    () => { throw new Error('runAgenticTask should have rejected') },
+    error => error
+  )
+
+  assert.match(err.message, /spawn claude ENOENT/)
+  assert.match(err.message, /raw transcript preserved at /)
+  assert.ok(err.transcriptPath, 'the error must carry the transcript path')
+  const preserved = await readFile(err.transcriptPath, 'utf8')
+  assert.equal(preserved, '', 'no bytes arrived, so the preserved transcript is empty — but it exists')
+})
+
+test('defaultAgenticExecute rethrows a non-zero exit with the partial stdout attached', async () => {
+  // The real execFile rejection path, exercised against `node` so no money moves:
+  // a process that prints a truncated stream and exits 1, exactly like claude on a
+  // budget-exhausted call. execFile rejects; the wrapper must carry the bytes.
+  const partial = '{"type":"system","subtype":"init"}\n{"type":"assist'
+  const err = await defaultAgenticExecute(
+    ['-e', `process.stdout.write(${JSON.stringify(partial)}); process.exit(1)`],
+    undefined,
+    process.execPath
+  ).then(
+    () => { throw new Error('defaultAgenticExecute should have rejected') },
+    error => error
+  )
+
+  assert.equal(err.stdout, partial, 'the partial stdout must survive on the error for runAgenticTask to persist')
+  assert.equal(err.exitCode, 1)
+  assert.equal(err.signal, null)
+  assert.match(err.message, /exited with code 1/)
+})
+
 test('runAgenticTask refuses an execute that returns a parsed object instead of raw stdout', async () => {
   // The old contract. An object cannot be written to disk as the transcript, and
   // silently stringifying it would store something the CLI never printed.
@@ -470,6 +575,16 @@ test('runAgenticTask rejects a fixture whose shape is missing or unknown, before
       return true
     }
   )
+})
+
+test('FIXTURE_SHAPES matches the distinct shapes the fixture suite actually declares', async () => {
+  // FIXTURE_SHAPES is a hand-maintained literal, and runAgenticTask aborts on any
+  // shape outside it — AFTER money is spent, if this drifts. A fourth fixture with
+  // a new shape must fail here, in the free suite, not eighteen calls into a sweep.
+  const fixtures = await loadFixtures()
+  const declared = [...new Set(fixtures.map(f => f.shape))].sort()
+  assert.deepEqual(declared, [...FIXTURE_SHAPES].sort(),
+    'FIXTURE_SHAPES and the shapes declared by the fixture manifests must be the same set')
 })
 
 test('runAgenticTask throws on an errored response and never scores the fixture', async () => {
