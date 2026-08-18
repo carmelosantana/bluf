@@ -250,24 +250,35 @@ result in this repository** — the only currency figure in the repo is the warn
 measured tokens cannot go stale, and a dollar figure we never measured would be exactly the
 unverifiable claim this project exists to object to.
 
-**How long the first turn takes to pay back.** At an output:input ratio of 5×, the first turn's
-net loss is recovered after **0.47 to 1.25 further turns** depending on model —
-soonest on opus, longest on fable. Both measured models are ahead by the end of
-their third turn.
+**How long the first turn takes to pay back.** At an output:input ratio of 5×, and on **fable
+only**, the first turn's net loss is recovered after roughly **3.4 further turns**. No opus
+figure is quoted here: the opus output saving is not distinguishable from zero, so a payback
+period derived from it would be a number built on one this README declines to publish.
+
+*An earlier draft of this paragraph said 0.47 to 1.25 turns, "soonest on opus", and claimed both
+models were ahead by the end of their third turn. Those figures came from the superseded 3-trial
+run; the break-even table beside them was updated at the time and this paragraph was not. It was
+wrong by roughly 3×, in the direction that flattered the style, and it ranked the models the wrong
+way round — opus now saves less, not more. Caught in the final review before publication.*
 
 **Total tokens, which is not a cost figure.** Pooled median total-token change per turn — the
-median over all 36 per-case paired differences in each condition, not the per-trial statistic
-the output-savings figures use: +1,673 (fable) and
-+1,583 (opus). The direction is the same under either statistic. Read this as a **rate-limit
+median over all 60 per-case paired differences in each condition, not the per-trial statistic
+the output-savings figures use: **+1,693 (fable)** and **+1,856 (opus)**, from the same
+`clean-*.jsonl` rows as every other current figure. The direction is the same under either
+statistic. (An earlier draft printed +1,673 and +1,583 here, which were the 3-trial
+full-environment medians over 36 pairs, left unlabelled under headings describing the 5-trial
+clean run.) Read this as a **rate-limit
 and context-budget** number, because that is what raw token counts govern. It is **not** a cost
 proxy: it adds four differently-priced quantities as though they were interchangeable. Use the
 break-even table above for anything involving money.
 
 The total figures are medians rather than sums because of a cold-cache artifact, where cache
-creation was billed in full at a cache boundary. Across the 144 turns backing the figures above,
-1 carries it — 245,184 input tokens against a 123,631 median. The original run measured 2 such
-turns in 216, but the second (248,344) fell in the retired terse arm and no longer participates
-in any published figure. Interleaving the conditions was expected to reduce this and did not.
+creation is billed in full at a cache boundary. It persists in the clean run: across the 240
+turns backing the figures above, exactly 1 carries it — 11,324 input tokens against a 4,797
+median. (The superseded full-environment run measured 1 such turn in 144, at 245,184 against a
+123,631 median; the absolute numbers are far larger there because those rows also carry the
+operator's machine configuration.) Interleaving the conditions was expected to reduce this and
+did not.
 Medians ignore it; sums do not.
 
 ### Variance
@@ -356,13 +367,17 @@ it down:
 - The three `explain-cache` pairs isolate it exactly — both arms took 3 turns and made 2
   tool calls in all three trials, so the whole input difference is the style itself. Per
   turn that difference is **+2,031 / +2,023 / +2,046** input tokens, against the style's
-  committed 2,028–2,038 overhead band.
+  committed 2,028–2,038 overhead band — **one of the three sits inside that band and the
+  other two land within 8 tokens of its edges**, which is the honest way to put it.
 - Across all 9 pairs the median input added per baseline turn is **+1,662 tokens**, and
   cache writes — the most expensive input tier — rose **55,559 → 76,034 (+37%)**.
 
-**The output saving cannot pay for that.** In these runs output is **0.96%** of billed
-tokens — 9,331 output against 959,532 input in the baseline arm. A −10.2% cut to 0.96% of
-the tokens does not offset a ~2,000-token input surcharge charged on every turn.
+**The output saving cannot pay for that.** The decisive evidence is the measured bill itself,
+which rose 18.3%. The reason is visible in the token mix: output is **0.96%** of billed tokens
+in these runs — 9,331 output against 959,532 input in the baseline arm. Weighting each token by
+what it bills raises output's share well above that raw figure, so the raw 0.96% is an
+illustration of the imbalance rather than the argument (see [Known
+limitations](#known-limitations) on why the two shares differ); the argument is the +18.3%.
 
 **The style does exactly what it was written to do, which is why it cannot help here.**
 `textChars` fell **−31.5%** overall while `toolUseChars` moved **+3.0%**; prose fell from
@@ -532,7 +547,7 @@ Prompt: *"What port does the Vite dev server use by default?"* — case `port-de
 | --- | --- |
 | 5173.<br><br>Vite serves on `http://localhost:5173` by default. If that port is taken, Vite increments to the next free port (5174, 5175, …). Override it with `--port 3000` on the CLI or `server.port` in `vite.config.js`. | 5173. |
 
-Nobody asked about port collisions or overrides. In the current run, the unstyled opus baseline answers this prompt in a median of 140 output tokens and BLUF answers it in 5.
+Nobody asked about port collisions or overrides. In the current run, the unstyled opus baseline answers this prompt in a median of 245 output tokens and BLUF answers it in 5 — the same 245 the results table above prints. (An earlier draft said 140, which was the median of the superseded full-environment rows.)
 
 ## Known limitations
 
