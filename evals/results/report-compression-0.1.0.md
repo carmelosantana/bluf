@@ -14,7 +14,7 @@ Every figure below is recomputed from the committed files by
 | corpus | files | what it is |
 | --- | --- | --- |
 | `samples/*.txt` | 12 | verbatim prose responses — 1 unstyled, 11 styled |
-| `agentic-transcripts/*.jsonl` | 18 | the raw stream-json of all 18 agentic calls, 9 per arm |
+| `agentic-transcripts/*.jsonl` | 24 | the raw stream-json of every agentic call — the 18 of the Component 3 sweep, 9 per arm, plus the 6 of the adequacy sweep |
 
 The `.jsonl` result rows store no response text, so `samples/` is the only place committed
 prose exists; `samples/CAPTURE.md` records how each was captured. For the transcripts only
@@ -43,8 +43,8 @@ licence. Every pattern here was written from scratch.
 | --- | --- | --- | --- |
 | samples | baseline | 1 | 0 |
 | samples | styled | 11 | 0 |
-| transcripts | baseline | 9 | 0 |
-| transcripts | bluf | 9 | 0 |
+| transcripts | baseline | 12 | 0 |
+| transcripts | bluf | 12 | 0 |
 
 No excerpts are quoted below because there are none to quote.
 
@@ -57,7 +57,7 @@ No excerpts are quoted below because there are none to quote.
   no marker, just less — is invisible to this check, and that is the likelier failure mode for
   a style whose whole instruction is to be brief.
 - **The corpus is small and uneven.** Twelve prose samples against one unstyled control, and
-  eighteen agentic transcripts from three fixtures on one model. The styled prose samples also
+  twenty-four agentic transcripts from four fixtures on one model. The styled prose samples also
   span two retired rule versions (0.1.0 and 0.2.0), not the shipped one.
 - **A clean scan is not adequacy.** It says the style did not visibly announce that it left
   something out. It does not say the answers were complete. Only execution-verified evidence
@@ -66,10 +66,10 @@ No excerpts are quoted below because there are none to quote.
 Two guards make this particular zero mean more than "the scanner did not look". The test pins
 the corpus size, so a silently shrinking corpus fails rather than scoring clean; and it plants
 a known elision into a real committed sample and a real committed transcript and requires the
-scanner to fire on both. It also asserts all 18 transcripts contain assistant prose at all —
+scanner to fire on both. It also asserts every transcript contains assistant prose at all —
 a corpus with nothing to flag would score zero forever.
 
-**What this scan does support:** across 30 committed artefacts, the style produced no
+**What this scan does support:** across 36 committed artefacts, the style produced no
 placeholder-style elisions, and neither did the unstyled arm. It is a null result, reported
 because a null result that was actually measured is worth more than an adequacy claim that
 was not.

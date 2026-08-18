@@ -16,16 +16,25 @@ import {
 } from '../lib/compression-report.mjs'
 import { detectElisions, scanTranscript } from '../lib/compression.mjs'
 
+// The compression report predates the adequacy sweep, whose 6 hidden-edges transcripts
+// now share the directory. Its corpus figures — 18 transcripts, 9 per arm — describe the
+// Component 3 sweep, so they are pinned on that subset; the scanner itself still sweeps
+// everything on disk, and the zero-elision and prose checks below run over the full set,
+// because a zero that ignored newly committed transcripts would quietly stop meaning
+// "everything this repository paid for".
+const isComponent3 = entry => !entry.file.includes('-hidden-edges-')
+
 test('the corpus is the size the report says it is', async () => {
   const { samples, transcripts } = await scanCommittedCorpus()
   assert.equal(samples.length, 12, 'the report quotes 12 committed prose samples')
-  assert.equal(transcripts.length, 18, 'the report quotes all 18 agentic transcripts')
+  assert.equal(transcripts.filter(isComponent3).length, 18, 'the report quotes all 18 agentic transcripts of the Component 3 sweep')
 })
 
-test('every transcript is attributed to a real condition, 9 per arm', async () => {
-  const { totals } = await scanCommittedCorpus()
-  assert.equal(totals.transcripts.baseline.files, 9)
-  assert.equal(totals.transcripts.bluf.files, 9)
+test('every transcript is attributed to a real condition, 9 per arm in the Component 3 sweep', async () => {
+  const { transcripts, totals } = await scanCommittedCorpus()
+  const component3 = transcripts.filter(isComponent3)
+  assert.equal(component3.filter(entry => entry.condition === 'baseline').length, 9)
+  assert.equal(component3.filter(entry => entry.condition === 'bluf').length, 9)
   assert.equal(totals.transcripts.unknown, undefined, 'an unattributed transcript would corrupt the split')
 })
 
@@ -91,7 +100,8 @@ test('the transcripts actually contain assistant prose to scan', async () => {
       .reduce((sum, block) => sum + block.text.length, 0)
     if (chars > 0) withProse += 1
   }
-  assert.equal(withProse, 18, 'every transcript must carry assistant prose for the zero to mean anything')
+  assert.equal(withProse, transcripts.length, 'every transcript must carry assistant prose for the zero to mean anything')
+  assert.ok(transcripts.length >= 18, 'the corpus can only grow; shrinking below the reported 18 means transcripts were lost')
 })
 
 test('condition attribution is decided by rule, not by guessing', () => {
