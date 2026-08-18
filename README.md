@@ -10,6 +10,7 @@
 | **Tool-free prose, opus** | **not distinguishable from zero**; an earlier −30.9% is **retracted** | [The Opus result](#the-opus-result-stated-plainly) |
 | **Agentic coding work** | billed cost **+18.3%** — 9 of 9 pairs positive | [What happens in agentic work](#what-happens-in-agentic-work) |
 | **Is what remains enough?** | typical answer sits **+4.2%** above a minimal-sufficient floor; on one case it falls below | [Is what remains enough?](#is-what-remains-enough) |
+| **Wall-clock time** | **no measurable effect** — 6 of 12 pairs faster, 6 slower | [Does it make anything faster?](#does-it-make-anything-faster) |
 
 The detail behind each, and the reasons they point in different directions:
 
@@ -24,6 +25,45 @@ The detail behind each, and the reasons they point in different directions:
 - **Version 0.1.0 of these rules made Opus 32.2% more verbose.** Measuring across models caught it. See [The 0.1.0 regression](#the-010-regression-on-opus).
 
 All numbers come from [`evals/results/`](evals/results/), committed in this repo. The headline output figures come from [`report.md`](evals/results/report.md) and the `clean-*.jsonl` rows behind it; the input-cost and break-even figures from the session-amortization slice in the `amortization-*.jsonl` files. The agentic figures come from [`report-agentic-0.1.0.md`](evals/results/report-agentic-0.1.0.md), and the three adequacy instruments from [`report-adequacy-0.1.0.md`](evals/results/report-adequacy-0.1.0.md), [`report-compression-0.1.0.md`](evals/results/report-compression-0.1.0.md), and [`report-floor-0.1.0.md`](evals/results/report-floor-0.1.0.md). The superseded 3-trial measurement is preserved at [`report-0.2.0.md`](evals/results/report-0.2.0.md) rather than deleted. Every row records the model that actually ran, the CLI version, the style file's SHA-256, and which execution schedule produced it. The name is [the briefing convention](https://en.wikipedia.org/wiki/BLUF_(communication)): put the bottom line up front.
+
+## In plain terms
+
+The measurement side of this project is genuinely fiddly, and the findings are easier to trust
+once you can picture them. Four things, without the numbers:
+
+**Why "fewer output tokens" doesn't mean "cheaper".** You pay for what you send as well as what
+you get back. The style is a page of instructions that gets sent with *every* message, forever.
+In a chat that's a fine trade: the reply shrinks by more than the instructions cost. In coding
+work it isn't, because the replies are already short — most of what the model produces is tool
+calls, and most of what you pay for is the file contents and command output being sent *to* it.
+You end up paying the instruction tax on every turn to shorten the one part that was never the
+expensive bit.
+
+**Why measuring this is harder than it sounds.** You can't just run it once each way. The same
+question asked twice gets answers of different lengths, so a single comparison mostly measures
+luck. The fix is to repeat it many times and compare like with like — which is why this repo has
+hundreds of recorded calls behind figures that could have been guessed at in ten minutes.
+
+**Why we deleted a result we'd already published.** We first measured the style in a normal
+setup, where the tool carries a lot of background context. That made the result specific to one
+machine, so we re-ran it in a stripped-down "clean room" to make it portable. The number
+collapsed. It turned out the clean room was the problem: with almost no context, one model
+started giving very short answers *on its own*, about half the time. There was nothing left for
+a brevity style to trim. The room we built to measure honestly had put the model somewhere no
+real user ever is. We kept the retraction anyway, because the two runs differ in a second way we
+can't undo — a fuller explanation is in [The Opus result](#the-opus-result-stated-plainly).
+
+**Why "it saves a third" isn't the whole story.** Cutting a third off an answer is good if the
+answer was padded and bad if it wasn't. So we wrote out, by hand, the shortest version of each
+answer that would still fully answer the question, and compared. Without the style there's
+plenty of slack. With it, the typical answer is barely above that line — and on one question,
+about debugging with almost no evidence to go on, it drops below. Brevity rules can't tell the
+difference between padding and the part where you explain how to find out.
+
+**One thing this project cannot tell you:** whether *you* will like the answers. Everything here
+measures length, cost, and whether code still worked. None of it measures whether the shorter
+reply was the one you wanted. That judgement is yours, and it takes about five minutes — see
+[Try it yourself](#try-it-yourself).
 
 ## Before / after
 
@@ -73,6 +113,47 @@ mkdir -p ~/.claude/output-styles && cp bluf/output-styles/*.md ~/.claude/output-
 ```
 
 Then run `/config`, select **Output style**, pick **BLUF**, and run `/clear`. `/config` opens a menu in the terminal. In the desktop app, set the `outputStyle` field in a settings file instead.
+
+## Try it yourself
+
+Everything measured here is length, cost, and whether the code still worked. **None of it measures
+whether you liked the answer.** That takes about five minutes and only you can do it.
+
+The fastest honest test is a side-by-side on your own work. Ask the same question twice, once
+under each style, in a fresh session each time — the style is read once at session start, so
+switching mid-session changes nothing until you `/clear`.
+
+```bash
+claude -p 'in git, what does --no-ff do on a merge?' --settings '{"outputStyle":"Default"}'
+```
+
+```bash
+claude -p 'in git, what does --no-ff do on a merge?' --settings '{"outputStyle":"BLUF"}'
+```
+
+That per-invocation `--settings` flag is how the whole benchmark selects conditions; it leaves your
+own configuration untouched. For day-to-day use instead, run `/config`, pick **Output style** →
+**BLUF**, then `/clear`.
+
+**What to judge, given what the measurements already say.** Three places the numbers predict you
+will notice something, and one they say nothing about:
+
+- **Short factual questions** — the style's best case by far. Expect one line where you used to get
+  a paragraph and a caveat.
+- **Debugging with thin evidence** — the style's measured weak spot. This is the one case where the
+  styled answer fell below a hand-written sufficiency floor. If BLUF ever feels like it skipped the
+  part where it explains *how to find out*, that is the failure mode this repo found, and it would
+  be worth telling us.
+- **Agentic coding work** — expect the visible chat to get terser while the work itself looks the
+  same. Measured: the same turns, the same tool calls, the same success rate, and an 18% higher
+  bill. If terser narration is worth that to you, that is a legitimate answer; the point is that it
+  is a taste decision, not a saving.
+- **Whether it is faster** — it is not, and the clock will not tell you anything. 6 of 12 paired
+  runs went each way.
+
+**One thing to check on your own machine:** `ls ~/.claude/output-styles/`. If `bluf-terse.md` is
+there, that is the [retired variant](#the-retired-terse-variant) — it is no longer shipped or
+measured, and leaving it installed makes it easy to pick the wrong one from the `/config` menu.
 
 ## The rules
 
@@ -150,7 +231,26 @@ The 12 prompts fall into 5 categories, and prompts within a category are correla
 
 The cause is measurable and it is not the style. Answering the same 12 questions with **no style applied**, opus's total output per trial was 8,608 / 15,463 / 14,819 / 11,673 / 11,954 — an **80% spread**. Fable's was 10,880 / 12,467 / 10,914 / 9,665 / 11,797, a 29% spread. For comparison, opus in the previous, config-heavy environment varied **3.2%**. No effect of the size BLUF plausibly has can be resolved against a baseline moving 80%.
 
-This is why the earlier −30.9% is retracted rather than merely superseded: it was measured in an environment carrying ~122,000 tokens of the operator's configuration, at three trials that were back-to-back repeats rather than independent sweeps. The isolated, properly-scheduled measurement does not reproduce it. **Why a sparse context should destabilise Opus's output length is an open question this project has not answered.**
+This is why the earlier −30.9% is retracted rather than merely superseded: it was measured in an environment carrying ~122,000 tokens of the operator's configuration, at three trials that were back-to-back repeats rather than independent sweeps. The isolated, properly-scheduled measurement does not reproduce it.
+
+**The cause is now measured, and it is stranger than "noise".** A follow-up study — 70 further calls, written up in [`evals/analysis/README.md`](evals/analysis/README.md) and reproducible with `node evals/analysis/density.mjs` — found that in a sparse context `claude-opus-5` has **two discrete answer modes**, not a spread. It either answers briefly or writes the full treatment, with almost nothing in between:
+
+```
+clean   opus-5    303  355  378  394  547 | 2246 3005 3505 3675 3720
+padded  opus-5                             2459 2608 2621 2792 2807 2982 3044 3072 3254 3283
+```
+
+Three findings follow, each from committed rows:
+
+- **Context density gates the mode, and the content of that context is irrelevant.** Sparse opus-5 returned a short answer on 12 of 20 calls; dense opus-5 on **0 of 20** (Fisher exact, p = 4.5 × 10⁻⁵). 460,024 characters of *meaningless filler* suppressed the short mode exactly as well as the operator's real configuration did.
+- **It is one model, not a trend.** In the same sparse environment, `claude-opus-4-8`, `claude-sonnet-5` and `claude-fable-5` produced **zero** short answers in thirty calls, at 7.3–10.8% variation. Sparse opus-5 sat at 68.6%.
+- **It is not a harness fault.** No cache effect, no ordering effect, no trial-level state; every one of the 240 clean rows was a cold cache write and input varied by ~40 tokens across an entire file.
+
+**What that means for the retraction, stated carefully.** It explains the collapse without rescuing the number. In a sparse room opus-5's *unstyled* answer is already 300–550 characters on half of calls — at or below what BLUF itself produces — so there is nothing left to cut and the measured effect goes to zero. In a dense room the unstyled baseline is reliably 2,261–4,263 characters and the style has real work to do. **The −30.9% was never wrong about a dense context; it was never a statement about a sparse one.**
+
+It stays retracted regardless, for a reason the diagnosis cannot remove: every `full-*.jsonl` row is schedule version 1 and records no CLI version, while every `clean-*.jsonl` row is version 2 on CLI 2.1.222. The dense-versus-sparse comparison rests on exactly the cross-generation comparison this repo already says is not valid. Publishing it would mean trusting a confound we have written down twice.
+
+**The uncomfortable implication is about the measurement, not the style.** A sparse "clean room" was adopted to remove the operator's machine from the result. For opus-5 it introduced a regime that real Claude Code sessions — which always carry substantial context — never occupy. The isolation that made the number portable also made it describe something nobody experiences.
 
 ### What it costs
 
@@ -424,6 +524,28 @@ ordering, not a commit hash.
 - **12/12 task success shows no adequacy penalty *at this scale*; it does not show there is
   none.** That question gets its own section below.
 
+## Does it make anything faster?
+
+**No. The style has no measurable effect on wall-clock time.** 6 of 12 pairs faster under the
+style, 6 slower; the median difference is **0.27 seconds** on calls averaging about 18 seconds, and
+the total across all pairs moved **+0.8%**. That is not a slowdown and it is not a speed-up — it is
+nothing.
+
+This figure came free, and how it was recovered is worth a sentence. **No result row in this
+repository records a duration** — the schema was designed around billing and wall-clock never made
+it in. But the agentic sweeps committed their raw transcripts, and the CLI's result event carries
+`duration_ms`. So the 24 committed transcripts answered the question without buying a call.
+`evals/test/timing.test.mjs` recomputes every number here from them.
+
+Two limits. It covers the **agentic sweeps only** — the 260-call prose sweep stored no transcripts,
+so its timing is gone and cannot be recovered without paying again. And every timed call is
+`claude-fable-5`; there is no opus timing anywhere in the repo.
+
+Why the null is unsurprising in hindsight: the style cuts output tokens, and generation time scales
+with output — but in agentic work output is a sliver of the total, and most of the wall-clock is
+spent on tool execution and re-sending context, neither of which the style touches. The same
+mechanism that makes the cost go up keeps the clock flat.
+
 ## Is what remains enough?
 
 **Three instruments, three honest results: one did not discriminate, one found nothing but
@@ -568,6 +690,7 @@ Nobody asked about port collisions or overrides. In the current run, the unstyle
 - **In agentic work a large output reduction is a small cost reduction.** Generated output is roughly a tenth of cost-equivalent tokens once tool results, file contents, and re-sent context are counted; a design-time measurement on this machine put it at 7.5–12.4%, consistent with a published 2,908-run study at 10.4%. Cutting a third of a tenth is not cutting a third.
 - **A separate, smaller figure — the raw token share — comes from the agentic sweep: output was 0.96% of billed tokens** (9,331 output against 959,532 input in the baseline arm). **This is not a correction of the bullet above and does not replace it.** They measure different things: a *cost-equivalent* share weights each token by what it bills, and since cache reads bill at a fraction of uncached input while output bills at a multiple of it, the cost-equivalent share is legitimately much larger than the raw share. Quote the 7.5–12.4% figure for money and the 0.96% figure for rate limits and context budget.
 - **The `$48–54` figure in [Reproducing](#reproducing) is an API-list-price equivalent, not an observed bill.** The harness passes no API key and authenticates exactly as the operator's CLI does, so on a subscription that spend is quota, not cash. The practical risk of a large sweep is exhausting a rate limit, not an invoice.
+- **More trials cannot narrow this result; more prompts can.** Decomposing the paired delta on opus gives a between-prompt SD of **427** and a run-to-run SD of **849**. The second shrinks as 1/√n; the first does not shrink at all. With twelve prompts the 95% interval on the mean effect cannot get below roughly **±25% of a baseline response** however many trials are bought. Going from 5 trials to 40 costs eight times the calls and buys seven points; going from 12 prompts to 60 at 5 trials costs five times the calls and buys twenty-two. The 5-trial design here was the more expensive of the two available moves. Full table in [`evals/analysis/README.md`](evals/analysis/README.md).
 - **Per-message `output_tokens` in Claude Code transcripts are unreliable.** A design-time probe summed 189 output tokens across assistant messages for a call whose result event reported 5,065 — a 27× undercount. This harness reads the result event, which is why its figures do not inherit that error; tools built on transcript parsing may.
 
 ## Reproducing
