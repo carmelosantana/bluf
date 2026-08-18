@@ -4,6 +4,8 @@
 
 **Use it for conversational prose. Do not expect it to save money in agentic coding work — there it costs more.**
 
+<img src="assets/01-regimes.png" width="900" alt="Two panels. Left: with BLUF, a question gets a shorter answer — output tokens −25.7% at the median, 5 of 5 trials negative. Right: in agentic coding work the same nine runs cost $2.49 without the style and $2.94 with it, +18.3%, positive in 9 of 9 pairs.">
+
 | | Result | Where |
 | --- | --- | --- |
 | **Tool-free prose, fable** | output **−25.7%** (5/5 trials negative, −20.6% to −49.3%) | [Measured results](#measured-results) |
@@ -441,6 +443,8 @@ a tool-free, single-turn prose figure, measured where output *is* the product an
 context is re-sent. Agentic work is a different regime, and the same mechanism has the
 opposite sign there. One style, two regimes, both measured.
 
+<img src="assets/02-token-mix.png" width="900" alt="A single bar of one agentic arm's billed tokens. 959,532 input tokens are 99.04% of the total; 9,331 output tokens are 0.96%. The style removes 10.2% of that sliver while adding 2,032 input tokens on every turn.">
+
 **What was measured.** 18 paid calls — 3 fixture projects × 3 trials × 2 conditions, on
 `claude-fable-5`, in the same isolated `clean` environment as the prose sweep. The fixtures
 are an exploration task (`explain-cache`), a failing-test fix (`failing-test`), and a
@@ -600,6 +604,8 @@ brief. A clean scan says the style did not visibly announce that it left somethi
 does not say the answers were complete.
 
 ### The minimal-sufficient floor — the sharpest result
+
+<img src="assets/03-floor.png" width="900" alt="Response length against a hand-written minimal-sufficient floor. The typical case sits +4.2% over the floor with BLUF against +73.3% without it. On ci-exit-1 the unstyled answer cleared the floor at +29.7% and the styled answer fell to −62.5% on 5 of 5 trials. On 401-no-evidence both arms are under the floor and BLUF is the longer of the two.">
 
 **The styled arm's median case sits +4.2% over a hand-written minimal-sufficient answer;
 the unstyled arm sits +73.3% over it.** Source:
