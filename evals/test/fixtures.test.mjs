@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, basename } from 'node:path'
+import { join, basename, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { loadFixtures, copyFixture, runFixtureTest, runHiddenTest, applyOracle, applyPartialOracle, applyNaive, FIXTURE_ROOT } from '../lib/fixtures.mjs'
 import { CONTAMINANT_TOOLS } from '../lib/agentic.mjs'
@@ -150,14 +150,18 @@ test('no fixture test command uses the Node 22 directory-as-module trap', async 
     // The hidden suite is scored on exit code exactly like the visible one, so the
     // same trap would silently turn every hidden run into MODULE_NOT_FOUND — and
     // hiddenPassed: false in both arms would read as an adequacy result while
-    // measuring nothing. Check the manifest command and the script it points at.
+    // measuring nothing. Check the manifest command and the scripts it will inject:
+    // the hidden scripts live in the manifest's hiddenScripts now, injected into the
+    // copy's package.json at scoring time — the committed package.json must not
+    // carry them (the leak test below pins that), so they are checked at the source.
     if (fixture.hiddenCommand !== undefined) {
       const hidden = [fixture.hiddenCommand, ...fixture.hiddenArgs].join(' ')
       assert.ok(!hitsNode22DirectoryTrap(hidden),
         `${fixture.name}'s hidden command is \`${hidden}\`; a bare directory after --test fails MODULE_NOT_FOUND on Node 22`)
-      const hiddenScript = pkg.scripts?.['test:hidden'] ?? ''
-      assert.ok(!hitsNode22DirectoryTrap(hiddenScript),
-        `${fixture.name}'s package.json test:hidden script is \`${hiddenScript}\`; a bare directory after --test fails MODULE_NOT_FOUND on Node 22`)
+      for (const [scriptName, script] of Object.entries(fixture.hiddenScripts ?? {})) {
+        assert.ok(!hitsNode22DirectoryTrap(script),
+          `${fixture.name}'s injected ${scriptName} script is \`${script}\`; a bare directory after --test fails MODULE_NOT_FOUND on Node 22`)
+      }
     }
   }
 })
@@ -181,16 +185,94 @@ test('a fixture copy never contains the answer key', async () => {
     assert.ok(entries.includes('package.json'), `${fixture.name} copy is missing package.json`)
   }
 
-  // And the exclusion must not over-match: the real source survives the copy — including
-  // the hidden TEST FILES, which must reach the copy because they have to run there.
+  // And the exclusion must not over-match: the real source survives the copy. The
+  // hidden TEST FILES are the deliberate exception — they are answer key too, withheld
+  // from the copy and injected only at scoring time; the dedicated leak test below
+  // pins their absence and the injection.
   const dir = await copyFixture('failing-test', await mkdtemp(join(tmpdir(), 'bluf-fixture-')))
   for (const kept of ['src/parse-duration.mjs', 'test/parse-duration.test.mjs', 'package.json']) {
     await readFile(join(dir, kept)) // throws ENOENT if the copy dropped it
   }
   const hiddenDir = await copyFixture('hidden-edges', await mkdtemp(join(tmpdir(), 'bluf-fixture-')))
-  for (const kept of ['src/ordinal.mjs', 'test/ordinal.test.mjs', 'test-hidden/ordinal-edges.test.mjs', 'package.json']) {
+  for (const kept of ['src/ordinal.mjs', 'test/ordinal.test.mjs', 'package.json']) {
     await readFile(join(hiddenDir, kept)) // throws ENOENT if the copy dropped it
   }
+})
+
+test('the hidden suite is absent from the model\'s copy: no hidden file, no reference in any copied byte', async () => {
+  // The confound this closes: the copy used to carry test-hidden/ and a test:hidden
+  // script, and the model has Read, Glob, Grep and Bash — it could discover the hidden
+  // suite, read the edge-case assertions, and fix for them directly. That turns the one
+  // execution-verified adequacy instrument in this repository into a measure of "did
+  // the model go poking around". So the copy must contain NO trace: not the hiddenPaths
+  // subtrees, not the script, not a mention in any byte the model can read.
+  const hidden = (await loadFixtures()).find(f => f.shape === 'hidden-edges')
+  assert.ok(hidden, 'the committed hidden-edges fixture must exist')
+  assert.ok(Array.isArray(hidden.hiddenPaths) && hidden.hiddenPaths.length > 0,
+    'the hidden-edges fixture must declare where its hidden suite lives')
+
+  const dir = await copyFixture(hidden.name, await mkdtemp(join(tmpdir(), 'bluf-fixture-')))
+  const entries = await readdir(dir, { recursive: true, withFileTypes: true })
+  const names = entries.map(entry => relative(dir, join(entry.parentPath, entry.name)))
+
+  // No file or directory under any hidden path.
+  for (const hiddenPath of hidden.hiddenPaths) {
+    for (const name of names) {
+      assert.ok(name !== hiddenPath && !name.startsWith(hiddenPath + '/'),
+        `the copy leaks ${name}, under the hidden path ${hiddenPath}`)
+    }
+  }
+
+  // The copied package.json advertises no hidden script.
+  const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'))
+  for (const scriptName of Object.keys(hidden.hiddenScripts ?? {})) {
+    assert.equal(pkg.scripts?.[scriptName], undefined,
+      `the copy's package.json advertises the hidden script ${scriptName}`)
+  }
+
+  // And no copied byte references the hidden suite at all — grep every file the model
+  // could Read, for the directory name, the script name, and both literal spellings.
+  const markers = new Set([
+    'test-hidden', 'test:hidden',
+    ...hidden.hiddenPaths,
+    ...Object.keys(hidden.hiddenScripts ?? {})
+  ])
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    const path = join(entry.parentPath, entry.name)
+    const content = await readFile(path, 'utf8')
+    for (const marker of markers) {
+      assert.ok(!content.includes(marker),
+        `${relative(dir, path)} mentions ${JSON.stringify(marker)}; the model's copy must carry no reference to the hidden suite`)
+    }
+  }
+
+  // Positive control — withholding must not have hollowed the instrument: the hidden
+  // suite still runs against this very copy, injected at scoring time, and on the
+  // unpatched bug it FAILS (visible FAIL / hidden FAIL is the unpatched split).
+  const result = await runHiddenTest(dir)
+  assert.match(result.stdout, /^# tests 3$/m,
+    `the injected hidden suite must collect its 3 tests, not die before running them:\n${result.stdout}\n${result.stderr}`)
+  assert.equal(result.passed, false, 'unpatched, the hidden suite must fail')
+})
+
+test('scoring-time injection runs exactly the committed hidden suite, even over a directory the model planted', async () => {
+  // The model cannot know the hidden path exists, but nothing stops it from creating a
+  // directory with the same name — and a model-authored file must never ride along in
+  // the adequacy run. Injection replaces the hiddenPaths subtrees wholesale.
+  const hidden = (await loadFixtures()).find(f => f.shape === 'hidden-edges')
+  const dir = await copyFixture(hidden.name, await mkdtemp(join(tmpdir(), 'bluf-fixture-')))
+  await applyOracle(hidden.name, dir)
+  const planted = join(dir, hidden.hiddenPaths[0])
+  await mkdir(planted, { recursive: true })
+  await writeFile(join(planted, 'planted.test.mjs'),
+    "import { test } from 'node:test'\ntest('planted', () => { throw new Error('planted') })\n")
+
+  const result = await runHiddenTest(dir)
+  assert.equal(result.passed, true,
+    `the injected run must replace the planted directory with the committed suite:\n${result.stdout}\n${result.stderr}`)
+  assert.match(result.stdout, /^# tests 3$/m,
+    `exactly the 3 committed hidden tests run, nothing planted:\n${result.stdout}`)
 })
 
 test('a test run that exceeds its timeout is scored as a failure with a numeric-or-null exit code', async () => {
@@ -360,6 +442,8 @@ test('loadFixtures rejects a hidden-suite manifest that is declared by halves or
     testArgs: ['test'],
     hiddenCommand: 'npm',
     hiddenArgs: ['run', 'test:hidden'],
+    hiddenPaths: ['test-hidden'],
+    hiddenScripts: { 'test:hidden': "node --test 'test-hidden/*.test.mjs'" },
     allowedTools: ['Read', 'Edit', 'Bash']
   }
 
@@ -391,7 +475,7 @@ test('loadFixtures rejects a hidden-suite manifest that is declared by halves or
     /shape hidden-edges but declares no hiddenCommand\/hiddenArgs/
   )
 
-  // Positive control: the full manifest loads, with the pair intact.
+  // Positive control: the full manifest loads, with the pair and the assets intact.
   const okRoot = await mkdtemp(join(tmpdir(), 'bluf-fixture-root-'))
   await mkdir(join(okRoot, 'whole'))
   await writeFile(join(okRoot, 'whole', 'fixture.json'), JSON.stringify(manifest))
@@ -399,4 +483,61 @@ test('loadFixtures rejects a hidden-suite manifest that is declared by halves or
   assert.equal(loaded.length, 1)
   assert.equal(loaded[0].hiddenCommand, 'npm')
   assert.deepEqual(loaded[0].hiddenArgs, ['run', 'test:hidden'])
+  assert.deepEqual(loaded[0].hiddenPaths, ['test-hidden'])
+  assert.deepEqual(loaded[0].hiddenScripts, { 'test:hidden': "node --test 'test-hidden/*.test.mjs'" })
+})
+
+test('loadFixtures rejects a hidden suite without declared assets, and orphaned or unsafe assets', async () => {
+  const manifest = {
+    shape: 'hidden-edges',
+    prompt: 'fix it',
+    testCommand: 'npm',
+    testArgs: ['test'],
+    hiddenCommand: 'npm',
+    hiddenArgs: ['run', 'test:hidden'],
+    hiddenPaths: ['test-hidden'],
+    hiddenScripts: { 'test:hidden': "node --test 'test-hidden/*.test.mjs'" },
+    allowedTools: ['Read', 'Edit', 'Bash']
+  }
+  const rejects = async (mutate, pattern, reason) => {
+    const root = await mkdtemp(join(tmpdir(), 'bluf-fixture-root-'))
+    await mkdir(join(root, 'leaky'))
+    const mutated = { ...manifest }
+    mutate(mutated)
+    await writeFile(join(root, 'leaky', 'fixture.json'), JSON.stringify(mutated))
+    await assert.rejects(loadFixtures(pathToFileURL(root + '/')), pattern, reason)
+  }
+
+  // A hidden command without hiddenPaths: copyFixture would have nothing to withhold,
+  // so the hidden suite would be copied straight into the model's working tree — the
+  // leak this whole arrangement exists to close.
+  await rejects(m => { delete m.hiddenPaths }, /declares a hidden suite but no hiddenPaths/,
+    'a hidden suite must declare where it lives on disk')
+  await rejects(m => { m.hiddenPaths = [] }, /declares a hidden suite but no hiddenPaths/,
+    'an empty hiddenPaths withholds nothing')
+
+  // Hidden assets on a fixture with no hidden suite: withheld from the copy, never run.
+  await rejects(m => {
+    m.shape = 'failing-test'
+    delete m.hiddenCommand
+    delete m.hiddenArgs
+    delete m.hiddenScripts
+  }, /hiddenPaths\/hiddenScripts without hiddenCommand/,
+    'orphaned hiddenPaths must be rejected')
+  await rejects(m => {
+    m.shape = 'failing-test'
+    delete m.hiddenCommand
+    delete m.hiddenArgs
+    delete m.hiddenPaths
+  }, /hiddenPaths\/hiddenScripts without hiddenCommand/,
+    'orphaned hiddenScripts must be rejected')
+
+  // Entries that could escape the fixture or mean nothing as a copy filter.
+  for (const unsafe of ['/etc', '../escape', '']) {
+    await rejects(m => { m.hiddenPaths = [unsafe] }, /unsafe hiddenPaths entry/,
+      `hiddenPaths entry ${JSON.stringify(unsafe)} must be rejected`)
+  }
+  // And a hiddenScripts that is not an object of script strings.
+  await rejects(m => { m.hiddenScripts = { 'test:hidden': 42 } }, /not an object of script strings/)
+  await rejects(m => { m.hiddenScripts = ['node --test'] }, /not an object of script strings/)
 })

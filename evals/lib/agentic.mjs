@@ -376,7 +376,10 @@ export async function runAgenticTask (fixture, condition, model, trial = 1, {
   const testResult = await runFixtureTest(cwd)
 
   // Adequacy ground truth, scored AFTER the run and never shown to the model: the
-  // hidden suite, for fixtures that ship one. A fixture with NO hidden suite records
+  // hidden suite, for fixtures that ship one. The copy the model worked in never
+  // contained it — copyFixture withholds the hiddenPaths subtrees and the committed
+  // package.json carries no hidden script — and runHiddenTest injects both at this
+  // point, after taskPassed above was scored from the visible suite. A fixture with NO hidden suite records
   // hiddenPassed: null — NEVER false, which would read as "the styled arm failed
   // adequacy" on a fixture that was never tested for it, and NEVER absent, which
   // JSON.stringify would drop so the column silently vanished from the committed
