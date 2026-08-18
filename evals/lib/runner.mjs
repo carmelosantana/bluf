@@ -90,35 +90,45 @@ export function buildArgs (prompt, styleName, model, environment) {
   ]
 }
 
+// An absent or malformed count is UNKNOWN, and unknown must never be recorded as
+// zero — a fabricated 0 is a valid-looking number no downstream guard can catch,
+// and it reads as "this tier cost nothing". Every real payload carries all four
+// flat fields (see the capture in .superpowers/sdd/task-5-report.md), so absence
+// is evidence of a malformed response, not a benign omission.
+//
+// Exported (rather than duplicated) so the agentic runner applies the exact same
+// strictness to its result-event fields; this repo has shipped the silent-zero
+// defect more than once, and a second copy of this helper is how the next one
+// would arrive. `label` is the full name the error reports — parseUsage prefixes
+// its own fields with `usage.`.
+export const tokenField = (source, name, label = name) => {
+  const value = source[name]
+  if (value === undefined) {
+    throw new Error(`${label} is absent; an unknown token count cannot be recorded as zero`)
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${label} is not a finite number: ${JSON.stringify(value)}`)
+  }
+  return value
+}
+
 export function parseUsage (payload) {
   const usage = payload?.usage
   if (!usage) throw new Error('response has no usage block')
 
-  // An absent or malformed count is UNKNOWN, and unknown must never be recorded as
-  // zero — a fabricated 0 is a valid-looking number no downstream guard can catch,
-  // and it reads as "this tier cost nothing". Every real payload carries all four
-  // flat fields (see the capture in .superpowers/sdd/task-5-report.md), so absence
-  // is evidence of a malformed response, not a benign omission.
-  const tokenField = (source, name, label = name) => {
-    const value = source[name]
-    if (value === undefined) {
-      throw new Error(`usage.${label} is absent; an unknown token count cannot be recorded as zero`)
-    }
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-      throw new Error(`usage.${label} is not a finite number: ${JSON.stringify(value)}`)
-    }
-    return value
-  }
+  // Same strict helper, with every reported name anchored under `usage.` exactly
+  // as before the helper was hoisted for export.
+  const usageField = (source, name, label = name) => tokenField(source, name, `usage.${label}`)
 
   // These three bill at different rates — roughly 1x for uncached input, 0.1x for a cache
   // read, and 1.25x-2x for a cache write. Summing them into one number, as this function
   // used to, makes a row impossible to price and is what produced the retracted cost claim
   // in the README. inputTokens keeps the summed meaning so stored rows stay comparable.
-  const inputUncached = tokenField(usage, 'input_tokens')
-  const inputCacheRead = tokenField(usage, 'cache_read_input_tokens')
-  const inputCacheWrite = tokenField(usage, 'cache_creation_input_tokens')
+  const inputUncached = usageField(usage, 'input_tokens')
+  const inputCacheRead = usageField(usage, 'cache_read_input_tokens')
+  const inputCacheWrite = usageField(usage, 'cache_creation_input_tokens')
   const inputTokens = inputUncached + inputCacheRead + inputCacheWrite
-  const outputTokens = tokenField(usage, 'output_tokens')
+  const outputTokens = usageField(usage, 'output_tokens')
 
   // 1h-TTL and 5m-TTL cache writes bill at different rates, so the flat
   // cache_creation_input_tokens total cannot be priced on its own — the same
@@ -128,8 +138,8 @@ export function parseUsage (payload) {
   let inputCacheWrite5m
   const cacheCreation = usage.cache_creation
   if (cacheCreation != null) {
-    inputCacheWrite1h = tokenField(cacheCreation, 'ephemeral_1h_input_tokens', 'cache_creation.ephemeral_1h_input_tokens')
-    inputCacheWrite5m = tokenField(cacheCreation, 'ephemeral_5m_input_tokens', 'cache_creation.ephemeral_5m_input_tokens')
+    inputCacheWrite1h = usageField(cacheCreation, 'ephemeral_1h_input_tokens', 'cache_creation.ephemeral_1h_input_tokens')
+    inputCacheWrite5m = usageField(cacheCreation, 'ephemeral_5m_input_tokens', 'cache_creation.ephemeral_5m_input_tokens')
     const split = inputCacheWrite1h + inputCacheWrite5m
     if (split !== inputCacheWrite) {
       throw new Error(`usage.cache_creation TTL tiers sum to ${split} but cache_creation_input_tokens is ${inputCacheWrite}; a row whose split disagrees with its flat total cannot be priced`)

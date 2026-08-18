@@ -1977,3 +1977,10 @@ test('settingSourcesOf throws a diagnosable error when --setting-sources has no 
     delete ENVIRONMENTS['broken-test-only']
   }
 })
+
+test('the style keeps the coding instructions', async () => {
+  // Defaults to FALSE. Losing it turns every agentic run into "BLUF versus Default minus
+  // the coding instructions" — a much larger effect than the style's, entirely misattributed.
+  const style = await readFile(new URL('../../output-styles/bluf.md', import.meta.url), 'utf8')
+  assert.match(style, /^keep-coding-instructions:\s*true$/m)
+})
