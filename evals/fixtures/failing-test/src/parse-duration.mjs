@@ -1,0 +1,9 @@
+// Parses a duration string like "5m", "2h", "300ms" into milliseconds.
+const UNITS = { ms: 1, s: 1000, m: 60000, h: 3600000, d: 86400000 }
+
+export function parseDuration (input) {
+  const match = /^(\d+)(ms|s|m|h|d)$/.exec(input)
+  if (!match) throw new Error(`unparseable duration: ${input}`)
+  // BUG: multiplies by the unit key's length instead of its value.
+  return Number(match[1]) * match[2].length
+}
