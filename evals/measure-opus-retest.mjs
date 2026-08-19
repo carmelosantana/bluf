@@ -40,11 +40,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   CONDITIONS, buildArgs, parseUsage, parseProvenance, assertNotErrored, assertModelResolved,
-  readCliVersion, defaultExecute, settingSourcesOf, installProjectStyle, assertProjectStyleInstalled,
+  readCliVersion, settingSourcesOf, installProjectStyle, assertProjectStyleInstalled,
   loadCases, PROMPTS_SHA256, STYLE_SHA256
 } from './lib/runner.mjs'
+// NOTE: this driver deliberately does NOT use runner's defaultExecute. That helper runs the
+// subprocess AND JSON.parses its output in one call; wrapping it in retry (as an earlier draft
+// did) put JSON decoding inside the retry boundary, so a parse defect could trigger another
+// paid call. executeRaw below is subprocess-only, and JSON.parse happens outside the retry.
 import { scheduleSweep, SCHEDULE_VERSION } from './lib/schedule.mjs'
-import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls } from './lib/retest.mjs'
+import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls, assertPaddingTarget } from './lib/retest.mjs'
 
 const run = promisify(execFile)
 const RESULTS = new URL('./results/', import.meta.url)
@@ -58,8 +62,10 @@ const TRIALS = Number(process.env.TRIALS ?? MAX_TRIALS)
 // 189,836 tokens (~2.42 char/token); 290k chars targets ~120k tokens. The preflight enforces a
 // floor, so an under-tokenising machine aborts rather than measuring a too-sparse room.
 const PAD_TARGET_CHARS = Number(process.env.PAD_TARGET_CHARS ?? 290_000)
-const MIN_PADDED_INPUT = 100_000
-const MAX_RETRIES = 5 // per call, on transient 529/transport errors only
+assertPaddingTarget(PAD_TARGET_CHARS) // bound the env override so a typo cannot multiply input cost
+const MIN_PADDED_INPUT = 100_000 // floor: padding loaded and the room is dense
+const MAX_PADDED_INPUT = 200_000 // ceiling: padding did NOT tokenise far above target (cost guard)
+const MAX_RETRIES = 3 // retries per call, transient 529/transport ONLY, so <= 4 invocations per scheduled call
 const EXECUTE = process.env.EXECUTE === '1'
 
 // Optional prompt filter (Phase 2b or debugging): CASES=port-default,git-no-ff
@@ -91,12 +97,34 @@ async function isTracked (path) {
   }
 }
 
-// Retry a single paid call on transient overload/transport failures only. A validation/parse
-// error is a real defect and propagates immediately.
+// Every CLI invocation is counted toward a hard ceiling, not just the successful ones. A call
+// that times out or resets connection is AMBIGUOUS — the server may have processed and billed it
+// — so a retry is a possible second charge. Counting attempts (not successes) and capping the
+// total bounds the worst-case spend even under a pathological retry storm. main() sets the
+// ceiling once the plan size is known.
+let attempts = 0
+let maxAttempts = Infinity
+
+// Subprocess ONLY — returns raw stdout. JSON decoding happens in the caller, OUTSIDE the retry
+// boundary, so a malformed response is a hard stop, never a re-paid call.
+async function executeRaw (args, cwd) {
+  if (attempts >= maxAttempts) {
+    throw new Error(
+      `invocation ceiling reached (${attempts}/${maxAttempts}). Aborting to bound spend rather than ` +
+      'retrying further — a run hitting this ceiling is failing abnormally and should be inspected.'
+    )
+  }
+  attempts++
+  const { stdout } = await run('claude', args, { cwd, maxBuffer: 32 * 1024 * 1024 })
+  return stdout
+}
+
+// Retry the SUBPROCESS on transient overload/transport failures only. A validation or JSON
+// parse error is a real defect and propagates immediately (parsing is outside this boundary).
 async function executeWithRetry (args, cwd, label) {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await defaultExecute(args, cwd)
+      return await executeRaw(args, cwd)
     } catch (error) {
       if (!isRetryable(error) || attempt >= MAX_RETRIES) throw error
       const wait = backoffMs(attempt)
@@ -133,6 +161,10 @@ async function main () {
   const padding = buildPadding(PAD_TARGET_CHARS)
   const padSha = paddingSha(padding)
   const totalCalls = planCalls({ cases, conditions, trials: TRIALS })
+  // Hard ceiling on billed CLI invocations, not just successes: each scheduled call may retry up
+  // to MAX_RETRIES times, so the worst case is totalCalls * (1 + MAX_RETRIES). executeRaw enforces
+  // it. A timeout/reset is ambiguous — the server may have billed it — so retries must be counted.
+  maxAttempts = totalCalls * (1 + MAX_RETRIES)
 
   console.log(`re-test   opus prose, padded-dense (Phase 2a)`)
   console.log(`model     ${MODEL}`)
@@ -140,7 +172,8 @@ async function main () {
   console.log(`trials    ${TRIALS}   conditions ${conditions.join(' / ')}   schedule v${SCHEDULE_VERSION}`)
   console.log(`padding   ${padding.length} chars, sha ${padSha.slice(0, 12)} (targets ~120k input tokens)`)
   console.log(`cli       ${cliVersion}`)
-  console.log(`plan      ${totalCalls} paid calls (schedule length ${schedule.length})`)
+  console.log(`plan      ${totalCalls} scheduled calls (typical spend); up to ${MAX_RETRIES} retries each on transient failure`)
+  console.log(`ceiling   <= ${maxAttempts} billed CLI invocations worst case (retries count — an ambiguous timeout may still bill)`)
 
   // Gate 2: never overwrite or append into committed / existing result rows.
   for (const condition of conditions) {
@@ -154,13 +187,23 @@ async function main () {
   }
 
   if (!EXECUTE) {
-    console.log(`\nDRY RUN — nothing spent. Set EXECUTE=1 to run the ${totalCalls} paid calls.`)
-    console.log(`Timing: no cost difference by hour; a modest reliability edge ~9pm–2am ET; retries handle 529s.`)
-    console.log(`Writes on execute: ${conditions.map(c => `padded-${MODEL}-${c}.jsonl`).join(', ')} under evals/results/`)
+    console.log(`\nDRY RUN — nothing spent. Set EXECUTE=1 to run.`)
+    console.log(`Spend: ${totalCalls} calls typical, hard ceiling ${maxAttempts} billed invocations; each padded call carries ~120k input tokens (cold cache).`)
+    console.log(`Timing: no cost difference by hour; a modest reliability edge ~9pm–2am ET; retries handle transient 529s.`)
+    console.log(`Writes on execute: ${conditions.map(c => `padded-${MODEL}-${c}.jsonl`).join(', ')} under evals/results/ (claimed exclusively before the first call).`)
     return
   }
 
-  console.log(`\nEXECUTE=1 — spending ${totalCalls} paid calls on ${MODEL}.\n`)
+  // Claim both output files ATOMICALLY before spending. The existence checks above are a friendly
+  // early error; this exclusive create is the race-proof backstop — two drivers launched together
+  // cannot both pass the check and then contaminate the same files, because the second `wx` create
+  // fails. An aborted run leaves the claimed file(s); the existence gate refuses to append to them
+  // on a later run (move them aside), which is the correct add-only behaviour.
+  for (const condition of conditions) {
+    await writeFile(outputFile(condition), '', { flag: 'wx' })
+  }
+
+  console.log(`\nEXECUTE=1 — spending up to ${maxAttempts} invocations (${totalCalls} typical) on ${MODEL}.\n`)
   let spent = 0
   for (const step of schedule) {
     const caseRow = caseById.get(step.caseId)
@@ -175,18 +218,29 @@ async function main () {
     }
 
     const args = buildArgs(caseRow.prompt, CONDITIONS[condition], MODEL, 'clean')
-    const payload = await executeWithRetry(args, cwd, label)
+    const stdout = await executeWithRetry(args, cwd, label)
     spent++
+    let payload
+    try {
+      // OUTSIDE the retry boundary: a malformed response is a hard stop, never a re-paid call.
+      payload = JSON.parse(stdout)
+    } catch (cause) {
+      throw new Error(`could not parse claude output as JSON for ${label.trim()}: ${cause.message}`, { cause })
+    }
     assertNotErrored(payload, { caseId: step.caseId, condition })
     const usage = parseUsage(payload)
     const provenance = parseProvenance(payload, { model: MODEL })
     assertModelResolved(provenance, { model: MODEL })
 
-    // Preflight on the very first paid call: if the padding did not load, abort now.
-    if (spent === 1 && usage.inputTokens < MIN_PADDED_INPUT) {
+    // Two-sided preflight on the first paid call: too FEW input tokens means the padding did not
+    // load (a sparse room measures nothing); far too MANY means it tokenised above target (a cost
+    // blow-out). Either way abort after one call, not the whole sweep.
+    if (spent === 1 && (usage.inputTokens < MIN_PADDED_INPUT || usage.inputTokens > MAX_PADDED_INPUT)) {
       throw new Error(
-        `PREFLIGHT FAILED: first call carried only ${usage.inputTokens} input tokens, under ${MIN_PADDED_INPUT}. ` +
-        'The project CLAUDE.md did not load, so the room is not dense and the re-test would measure nothing. ' +
+        `PREFLIGHT FAILED: first call carried ${usage.inputTokens} input tokens, outside [${MIN_PADDED_INPUT}, ${MAX_PADDED_INPUT}]. ` +
+        (usage.inputTokens < MIN_PADDED_INPUT
+          ? 'The project CLAUDE.md did not load, so the room is not dense and the re-test would measure nothing. '
+          : 'The padding tokenised far above target — check PAD_TARGET_CHARS before spending more. ') +
         `Aborting after ${spent} paid call instead of ${totalCalls}.`
       )
     }

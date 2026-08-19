@@ -47,12 +47,42 @@ export const paddingSha = padding => createHash('sha256').update(padding).digest
 // matter of course. Retry ONLY transport/overload failures — NEVER a validation or parse
 // error, which is a real defect that must stop the run rather than be silently re-paid. A
 // single-shot `claude -p` that 529s produced no completion, so retrying it cannot double-bill.
+//
+// The driver's PRIMARY guard is the retry boundary: JSON decoding happens OUTSIDE the retry,
+// so a parse error never reaches this classifier. This function is the second line of defence,
+// tightened after a review reproduced a JSON "at position 500" error being read as an HTTP 500.
+// A bare number is NOT a status: a status must be QUALIFIED by status/code/http/error text
+// within a few characters (so "position 500" and "revision 503" do not match), while transport
+// codes and named overload phrases are matched directly.
 export function isRetryable (error) {
   const text = `${error?.code ?? ''} ${error?.stderr ?? ''} ${error?.message ?? ''}`.toLowerCase()
-  if (/\b(429|500|502|503|529)\b/.test(text)) return true
-  if (/overloaded|rate.?limit|too many requests|service unavailable|bad gateway|gateway timeout|timeout|timed out/.test(text)) return true
+  // Transport-level failures (structured .code or in the message).
   if (/econnreset|econnrefused|enetunreach|etimedout|socket hang up|eai_again|epipe/.test(text)) return true
+  // Named transient-server / overload phrases.
+  if (/overloaded|rate.?limit|too many requests|service unavailable|bad gateway|gateway timeout|temporarily unavailable|timeout|timed out/.test(text)) return true
+  // An HTTP status ONLY when qualified as one — never a bare number that happens to be 500/503.
+  if (/(?:status|code|http|error)\D{0,8}(?:429|500|502|503|529)\b/.test(text)) return true
   return false
+}
+
+// PAD_TARGET_CHARS is overridable from the environment, and the token preflight only enforces a
+// FLOOR — so a typo (2_900_000 for 290_000) would multiply input cost before the first row.
+// This bounds the override to a band around the Phase 2a target (~120k input tokens at the
+// committed density-probe ratio). Widen deliberately if a future phase runs a lower-density arm.
+export const PADDING_CHAR_MIN = 200_000
+export const PADDING_CHAR_MAX = 400_000
+
+export function assertPaddingTarget (target, { min = PADDING_CHAR_MIN, max = PADDING_CHAR_MAX } = {}) {
+  if (!Number.isInteger(target) || target <= 0) {
+    throw new Error(`PAD_TARGET_CHARS must be a positive integer, got: ${JSON.stringify(target)}`)
+  }
+  if (target < min || target > max) {
+    throw new Error(
+      `PAD_TARGET_CHARS=${target} is outside the allowed band [${min}, ${max}] chars (~120k input tokens). ` +
+      'A value this far off would change the density measured or multiply input cost. ' +
+      'If a different density is intended, widen the band in evals/lib/retest.mjs deliberately.'
+    )
+  }
 }
 
 // Exponential backoff with full jitter, capped. Deterministic when a rng is injected, so the

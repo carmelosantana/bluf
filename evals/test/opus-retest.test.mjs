@@ -8,7 +8,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls } from '../lib/retest.mjs'
+import {
+  buildPadding, paddingSha, isRetryable, backoffMs, planCalls,
+  assertPaddingTarget, PADDING_CHAR_MIN, PADDING_CHAR_MAX
+} from '../lib/retest.mjs'
 
 test('padding is deterministic — the dense room is byte-reproducible', () => {
   const a = buildPadding(290_000)
@@ -64,6 +67,29 @@ test('the retry classifier does NOT retry real defects — they must stop the ru
   ]) {
     assert.equal(isRetryable(t), false, `must NOT retry (real defect): ${JSON.stringify(t)}`)
   }
+})
+
+test('a bare status-like number is NOT a status — the review repro must not retry', () => {
+  // The exact case the review reproduced: a JSON parse error whose position happens to be a
+  // status number. It must classify as a hard defect, not a transient failure.
+  assert.equal(isRetryable({ message: 'SyntaxError: Unexpected token < in JSON at position 500' }), false)
+  assert.equal(isRetryable({ message: 'Unexpected number in JSON at position 503' }), false)
+  assert.equal(isRetryable({ message: '- record 000500: state sealed, revision 529' }), false, 'padding-shaped text must not look retryable')
+  // But a genuinely qualified status still retries.
+  assert.equal(isRetryable({ message: 'API error 529 overloaded_error' }), true)
+  assert.equal(isRetryable({ stderr: 'HTTP 503 from upstream' }), true)
+  assert.equal(isRetryable({ message: 'request failed with status 429' }), true)
+})
+
+test('assertPaddingTarget bounds the env override so a typo cannot multiply cost', () => {
+  assert.doesNotThrow(() => assertPaddingTarget(290_000)) // the Phase 2a default
+  assert.doesNotThrow(() => assertPaddingTarget(PADDING_CHAR_MIN))
+  assert.doesNotThrow(() => assertPaddingTarget(PADDING_CHAR_MAX))
+  assert.throws(() => assertPaddingTarget(PADDING_CHAR_MAX + 1), /outside the allowed band/)
+  assert.throws(() => assertPaddingTarget(2_900_000), /outside the allowed band/, 'a 10x typo must be rejected')
+  assert.throws(() => assertPaddingTarget(PADDING_CHAR_MIN - 1), /outside the allowed band/)
+  assert.throws(() => assertPaddingTarget(0), /positive integer/)
+  assert.throws(() => assertPaddingTarget(Number.NaN), /positive integer/)
 })
 
 test('backoff is exponential, jittered, capped, and deterministic under an injected rng', () => {
