@@ -4,7 +4,7 @@
 
 **Use it for conversational prose. Do not expect it to save money in agentic coding work — there it costs more.**
 
-<img src="assets/01-regimes.png" width="900" alt="Two panels. Left: with BLUF, a question gets a shorter answer — output tokens −25.7% at the median, 5 of 5 trials negative. Right: in agentic coding work the same nine runs cost $2.49 without the style and $2.94 with it, +18.3%, positive in 9 of 9 pairs.">
+<img src="assets/01-regimes.png" width="900" alt="Two panels. Left: with BLUF, a question gets a shorter answer — output tokens −25.7% at the median, 5 of 5 trials negative. Right: in agentic coding work the same nine runs cost $2.49 without the style and $2.94 with it, +18.3%, positive in 9 of 9 pairs. Task success was 12 of 12 in both arms, and turns and tool calls were identical in 6 of 9 pairs.">
 
 | | Result | Where |
 | --- | --- | --- |
