@@ -7,6 +7,9 @@ import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { buildPadding, paddingSha } from './retest.mjs'
+import { STYLE_SHA256, settingSourcesOf } from './runner.mjs'
+import { SCHEDULE_VERSION } from './schedule.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 export const PROMPTS_PHASE2_FILE = join(ROOT, 'prompts-phase2.jsonl')
@@ -15,6 +18,47 @@ export const PROMPTS_PHASE2_FILE = join(ROOT, 'prompts-phase2.jsonl')
 export const PROMPTS_PHASE2_SHA256 = '977ddd201e258b6c72cc50a444017597ce007ec5353525a3dc81671359d7be35'
 
 export const PROMPT_SET = 'phase2'
+// Registered execution identity — a confirmatory run is opus-5 in the 290k-char room, nothing else
+// (Sol round-4 P1#2). The measurement entry pins these (rejecting env overrides), and the analyzer
+// requires every row to EQUAL them, not merely be internally homogeneous.
+export const PHASE2_MODEL = 'claude-opus-5'
+export const PHASE2_PAD_TARGET_CHARS = 290_000
+export const PHASE2_ENVIRONMENT = 'clean'
+
+// The exact per-row identity every confirmatory row must match. Derived (padding sha computed from
+// the pinned target) so it cannot drift from what the driver actually stamps.
+export function phase2Identity () {
+  const padding = buildPadding(PHASE2_PAD_TARGET_CHARS)
+  return {
+    model: PHASE2_MODEL,
+    canonicalModel: PHASE2_MODEL,
+    environment: PHASE2_ENVIRONMENT,
+    scheduleVersion: SCHEDULE_VERSION,
+    paddingChars: padding.length,
+    paddingSha: paddingSha(padding),
+    styleSha256: STYLE_SHA256,
+    settingSources: settingSourcesOf(PHASE2_ENVIRONMENT),
+    retest: 'opus-padded',
+    padded: true,
+    promptSet: PROMPT_SET
+  }
+}
+
+// Reject env overrides that would make a "confirmatory" run something other than the registered
+// opus-5 / 290k / full-roster experiment (Sol round-4 P1#2). Pure, so it is unit-tested without
+// spawning the driver.
+export function assertConfirmatoryEnv (env = process.env) {
+  if (env.MODEL && env.MODEL !== PHASE2_MODEL) {
+    throw new Error(`the confirmatory Phase 2b run is pinned to ${PHASE2_MODEL}; MODEL=${env.MODEL} is not allowed here.`)
+  }
+  if (env.PAD_TARGET_CHARS && Number(env.PAD_TARGET_CHARS) !== PHASE2_PAD_TARGET_CHARS) {
+    throw new Error(`the confirmatory Phase 2b dense room is pinned to ${PHASE2_PAD_TARGET_CHARS} chars; PAD_TARGET_CHARS override is not allowed here.`)
+  }
+  if ((env.CASES ?? '').trim()) {
+    throw new Error('CASES filtering is not allowed for the confirmatory Phase 2b run — it must cover the full pinned 30-prompt roster.')
+  }
+}
+
 export const PHASE2_TRIALS = [1, 2, 3, 4, 5]
 export const PHASE2_CATEGORIES = ['short-lookup', 'multi-step', 'debug-partial-evidence', 'options', 'long-list', 'conceptual-explain']
 export const PHASE2_PROMPTS_PER_CATEGORY = 5

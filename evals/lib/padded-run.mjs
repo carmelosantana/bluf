@@ -19,7 +19,10 @@ import { scheduleSweep, SCHEDULE_VERSION } from './schedule.mjs'
 import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls, transcriptRecord, densityViolation } from './retest.mjs'
 
 const run = promisify(execFile)
-const RESULTS = new URL('./results/', import.meta.url) // -> evals/results/  (this module lives in evals/lib/)
+// This module lives in evals/lib/, so results live one directory UP at evals/results/. (A `./results/`
+// here would resolve to evals/lib/results/ and ENOENT on the exclusive claim — Sol round-4 P1#1.)
+const RESULTS = new URL('../results/', import.meta.url)
+export const RESULTS_DIR = RESULTS.pathname // exported so a test can assert it points at evals/results/
 
 export async function runPaddedSweep ({
   phaseLabel,
@@ -113,7 +116,12 @@ export async function runPaddedSweep ({
 
   if (!EXECUTE) {
     console.log(`\nDRY RUN — nothing spent. Set EXECUTE=1 to run.`)
-    console.log(`Spend: ${totalCalls} calls typical, hard ceiling ${maxAttempts} billed invocations; each padded call carries ~120k input tokens (cold cache).`)
+    console.log(`Spend: ${totalCalls} calls TYPICAL, hard ceiling ${maxAttempts} billed invocations WORST CASE.`)
+    // Distinguish typical from worst-case token exposure (Sol round-4 P1#6): the worst case bills every
+    // retry, and a call may carry up to the density ceiling, not just the ~120k target.
+    const typM = Math.round(totalCalls * 120_000 / 1e6)
+    const worstM = Math.round(maxAttempts * MAX_PADDED_INPUT / 1e6)
+    console.log(`Token exposure: TYPICAL ~${typM}M input (${totalCalls} calls × ~120k); hard WORST CASE up to ~${worstM}M (${maxAttempts} billed × ${MAX_PADDED_INPUT / 1000}k ceiling).`)
     console.log(`Also writes gitignored sidecars: ${conditions.map(c => `${filePrefix}-${c}-text.jsonl`).join(', ')} (transcripts) and -quarantine.jsonl on a density violation.`)
     return { totalCalls, maxAttempts, spent: 0, executed: false }
   }

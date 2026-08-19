@@ -121,6 +121,15 @@ test('validateCorpus (confirmatory) REJECTS a truncated roster / trial set — S
   assert.throws(() => validateCorpus(t1(base), t1(bluf), { expectedRoster: roster, expectedTrials: [1, 2, 3] }), /trial set/)
 })
 
+test('validateCorpus (confirmatory) REJECTS a corpus that is self-consistent but the WRONG identity', () => {
+  // A homogeneous Haiku corpus is internally consistent but must not pass a confirmatory opus run.
+  const haiku = arm => arm.map(r => ({ ...r, model: 'claude-haiku-4-5', canonicalModel: 'claude-haiku-4-5' }))
+  const { base, bluf } = corpus()
+  const want = { model: 'claude-opus-5', canonicalModel: 'claude-opus-5' }
+  assert.doesNotThrow(() => validateCorpus(base, bluf, { requireEqual: want }))
+  assert.throws(() => validateCorpus(haiku(base), haiku(bluf), { requireEqual: want }), /does not match the registered confirmatory identity/)
+})
+
 test('validateCorpus (confirmatory) REJECTS a row outside the density band', () => {
   const { base, bluf } = corpus()
   const drifted = bluf.map((r, i) => i === 0 ? { ...r, inputTokens: 250000 } : r)

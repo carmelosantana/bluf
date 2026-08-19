@@ -71,7 +71,8 @@ function assertRowSane (r, expectedCondition) {
 //   expectedTrials   — the exact trial set (e.g. [1..5]); a 1-trial corpus is rejected
 //   densityBand      — [min,max]; every row's inputTokens must fall inside it
 export function validateCorpus (base, bluf, {
-  requirePromptSet, requirePromptsSha, requirePresent = false, expectedRoster, expectedTrials, densityBand
+  requirePromptSet, requirePromptsSha, requirePresent = false, expectedRoster, expectedTrials, densityBand,
+  requireEqual
 } = {}) {
   if (!Array.isArray(base) || !Array.isArray(bluf) || !base.length || !bluf.length) {
     throw new Error('validateCorpus requires non-empty baseline and bluf row arrays')
@@ -89,6 +90,16 @@ export function validateCorpus (base, bluf, {
     }
     if (requirePresent && (rows[0][key] === null || rows[0][key] === undefined)) {
       throw new Error(`required identity key ${key} is absent from every row; a confirmatory corpus must carry it`)
+    }
+  }
+  // Confirmatory identity: every row must EQUAL the registered values (not merely be homogeneous —
+  // otherwise a self-consistent Haiku / wrong-padding corpus would pass, Sol round-4 P1#2).
+  // Homogeneity above guarantees all rows share a value, so checking rows[0] is sufficient.
+  if (requireEqual) {
+    for (const [key, want] of Object.entries(requireEqual)) {
+      if (JSON.stringify(rows[0][key] ?? null) !== JSON.stringify(want)) {
+        throw new Error(`${key}=${JSON.stringify(rows[0][key] ?? null)} does not match the registered confirmatory identity (${JSON.stringify(want)})`)
+      }
     }
   }
   // Confirmatory pins: a Phase 2b run must carry promptSet + the pinned prompt-file digest.
