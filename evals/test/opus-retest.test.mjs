@@ -81,6 +81,32 @@ test('a bare status-like number is NOT a status — the review repro must not re
   assert.equal(isRetryable({ message: 'request failed with status 429' }), true)
 })
 
+test('a validation error carrying "timeout" or "error 500" is NOT retried', () => {
+  // The second review's repros: validation-shaped subprocess failures that a broad `timeout`
+  // phrase or a generic `error <code>` qualifier would wrongly classify as transient.
+  assert.equal(isRetryable({ message: 'configuration error 500: invalid timeout setting' }), false)
+  assert.equal(isRetryable({ message: 'validation failed: timeout must be a positive integer' }), false)
+  assert.equal(isRetryable({ message: 'error: --max-budget-usd must be a number' }), false)
+  assert.equal(isRetryable({ stderr: 'invalid setting: request timeout invalid' }), false, 'a bare "timeout" without a transport context word must not retry')
+  // But a genuinely transport-qualified timeout still retries.
+  assert.equal(isRetryable({ message: 'request timed out after 600000ms' }), true)
+  assert.equal(isRetryable({ code: 'ETIMEDOUT', message: 'connect ETIMEDOUT' }), true)
+  assert.equal(isRetryable({ stderr: '{"type":"api_error","message":"internal"}' }), true, 'Anthropic error type shapes retry')
+})
+
+test('the padding char band is consistent with the driver token preflight', () => {
+  // The driver's token preflight floor is 100k and ceiling 200k; the committed density-probe
+  // ratio is ~2.42 char/token. The char band must predict tokens INSIDE that preflight band, or a
+  // documented-valid override spends a call only to abort (the exact P2 the review found at 200k).
+  const CHAR_PER_TOKEN = 2.42
+  const MIN_TOKENS = 100_000
+  const MAX_TOKENS = 200_000
+  assert.ok(PADDING_CHAR_MIN / CHAR_PER_TOKEN > MIN_TOKENS,
+    `PADDING_CHAR_MIN=${PADDING_CHAR_MIN} predicts ${Math.round(PADDING_CHAR_MIN / CHAR_PER_TOKEN)} tokens, at or below the ${MIN_TOKENS} preflight floor`)
+  assert.ok(PADDING_CHAR_MAX / CHAR_PER_TOKEN < MAX_TOKENS,
+    `PADDING_CHAR_MAX=${PADDING_CHAR_MAX} predicts ${Math.round(PADDING_CHAR_MAX / CHAR_PER_TOKEN)} tokens, at or above the ${MAX_TOKENS} preflight ceiling`)
+})
+
 test('assertPaddingTarget bounds the env override so a typo cannot multiply cost', () => {
   assert.doesNotThrow(() => assertPaddingTarget(290_000)) // the Phase 2a default
   assert.doesNotThrow(() => assertPaddingTarget(PADDING_CHAR_MIN))

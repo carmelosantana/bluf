@@ -56,20 +56,35 @@ export const paddingSha = padding => createHash('sha256').update(padding).digest
 // codes and named overload phrases are matched directly.
 export function isRetryable (error) {
   const text = `${error?.code ?? ''} ${error?.stderr ?? ''} ${error?.message ?? ''}`.toLowerCase()
-  // Transport-level failures (structured .code or in the message).
-  if (/econnreset|econnrefused|enetunreach|etimedout|socket hang up|eai_again|epipe/.test(text)) return true
-  // Named transient-server / overload phrases.
-  if (/overloaded|rate.?limit|too many requests|service unavailable|bad gateway|gateway timeout|temporarily unavailable|timeout|timed out/.test(text)) return true
-  // An HTTP status ONLY when qualified as one — never a bare number that happens to be 500/503.
-  if (/(?:status|code|http|error)\D{0,8}(?:429|500|502|503|529)\b/.test(text)) return true
+  // Structured transport-level failures.
+  if (/econnreset|econnrefused|enetunreach|etimedout|eai_again|epipe|socket hang up/.test(text)) return true
+  // A transient timeout as an EVENT ("… timed out"), qualified by a transport-context word. NOT
+  // the bare noun "timeout", which validation/config messages carry ("invalid timeout setting",
+  // "request timeout invalid", "timeout must be a positive integer") — matching the noun re-opens
+  // exactly the never-retry-a-validation-error hole the review found.
+  if (/(?:request|operation|connection|read|socket|gateway|network|client)\s+timed out/.test(text)) return true
+  // Named overload / capacity conditions (standard HTTP reason phrases + Anthropic error `type`
+  // values). There is deliberately no generic "error <code>" branch: "configuration error 500"
+  // must not retry. Conservative by design — an unmatched genuine transient stops the run cleanly
+  // rather than risking a re-paid defect.
+  if (/overloaded|rate.?limit|too many requests|service unavailable|bad gateway|gateway timeout|temporarily unavailable/.test(text)) return true
+  if (/"type"\s*:\s*"(?:overloaded_error|overloaded|rate_limit_error|api_error)"/.test(text)) return true
+  // An HTTP status ONLY in an explicit status shape — never a bare number, never "error 500".
+  if (/\bhttp\s*(?:status\s*)?(?:429|500|502|503|504|529)\b/.test(text)) return true
+  if (/\bstatus(?:\s*code)?[\s:=]+(?:429|500|502|503|504|529)\b/.test(text)) return true
   return false
 }
 
 // PAD_TARGET_CHARS is overridable from the environment, and the token preflight only enforces a
 // FLOOR — so a typo (2_900_000 for 290_000) would multiply input cost before the first row.
 // This bounds the override to a band around the Phase 2a target (~120k input tokens at the
-// committed density-probe ratio). Widen deliberately if a future phase runs a lower-density arm.
-export const PADDING_CHAR_MIN = 200_000
+// committed density-probe ratio, ~2.42 char/token). The band is kept CONSISTENT with the
+// driver's 100k–200k token preflight: 250k chars predicts ~103k tokens (just above the 100k
+// floor, so the allowed minimum can actually pass), 400k predicts ~165k (under the 200k
+// ceiling). An earlier 200k minimum predicted ~84.6k tokens — below the floor — so a
+// documented-valid override would spend one call only to abort. Widen deliberately if a future
+// phase runs a lower-density arm (and lower the token floor to match).
+export const PADDING_CHAR_MIN = 250_000
 export const PADDING_CHAR_MAX = 400_000
 
 export function assertPaddingTarget (target, { min = PADDING_CHAR_MIN, max = PADDING_CHAR_MAX } = {}) {

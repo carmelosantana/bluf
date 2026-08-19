@@ -241,7 +241,7 @@ async function main () {
         (usage.inputTokens < MIN_PADDED_INPUT
           ? 'The project CLAUDE.md did not load, so the room is not dense and the re-test would measure nothing. '
           : 'The padding tokenised far above target — check PAD_TARGET_CHARS before spending more. ') +
-        `Aborting after ${spent} paid call instead of ${totalCalls}.`
+        `Aborting after ${spent} logical call (${attempts} billed invocation${attempts === 1 ? '' : 's'}) instead of ${totalCalls}.`
       )
     }
 
@@ -264,10 +264,10 @@ async function main () {
       ...usage
     }) + '\n')
 
-    console.log(`  ${label} in ${String(usage.inputTokens).padStart(7)}  out ${String(usage.outputTokens).padStart(6)}  chars ${String(usage.chars).padStart(6)}  (${spent}/${totalCalls})`)
+    console.log(`  ${label} in ${String(usage.inputTokens).padStart(7)}  out ${String(usage.outputTokens).padStart(6)}  chars ${String(usage.chars).padStart(6)}  (${spent}/${totalCalls}, ${attempts} billed)`)
   }
 
-  console.log(`\nDone. ${spent} paid calls. Rows in evals/results/padded-${MODEL}-{${conditions.join(',')}}.jsonl`)
+  console.log(`\nDone. ${spent} logical calls completed in ${attempts} billed CLI invocation${attempts === 1 ? '' : 's'}. Rows in evals/results/padded-${MODEL}-{${conditions.join(',')}}.jsonl`)
   console.log(`Next: analyse the paired deltas (cluster-robust indicative range) and compare to the clean null and the retracted full figure.`)
 }
 
