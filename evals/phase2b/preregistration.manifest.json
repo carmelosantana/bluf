@@ -4,9 +4,9 @@
   "randomizationSeed": "dd94f85aae49718f802c7e067a76c082",
   "artifacts": {
     "evals/prompts-phase2.jsonl": "977ddd201e258b6c72cc50a444017597ce007ec5353525a3dc81671359d7be35",
-    "docs/design/phase2b-preregistration.md": "68e7410f47c73755d821815134ef2c6d2c3aa53cecab8fa41a64edde5246f794",
+    "docs/design/phase2b-preregistration.md": "0fd50b17e376af381d53c43fcc49949d35c10d77c89c680561adca9002f30330",
     "docs/design/phase2b-quality-checklists.md": "591b8a56d8398c5733da496923f5e9ce829a4dcae3784fda0b52e4d3785ffd07",
-    "docs/design/phase2b-judge-protocol.md": "a8cb5726345653b3fcb300880f66ce7fc75a4c6e4342d799f1a33652bf0cc02f",
+    "docs/design/phase2b-judge-protocol.md": "b3a94d4364a626ee6c9d6d15a6796447ad0ad755237e4658ebf65b13b89b8f60",
     "docs/design/phase2b-prompts-draft.md": "9a6f20225fc30ce80a785610e57f879b84a3711df5c08a0a4cd211d4bfe25383"
   }
 }

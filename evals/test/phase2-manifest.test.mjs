@@ -39,6 +39,11 @@ test('verifyManifest REJECTS a null / non-sha256 artifact value', () => {
   assert.throws(() => verifyManifest({ manifest: nulled }), /not a valid sha256/)
 })
 
+test('verifyManifest REJECTS a null / short randomization seed (Sol round-6 P1#1)', () => {
+  assert.throws(() => verifyManifest({ manifest: { ...real, randomizationSeed: null } }), /randomizationSeed is not a valid hex seed/)
+  assert.throws(() => verifyManifest({ manifest: { ...real, randomizationSeed: 'tooshort' } }), /randomizationSeed is not a valid hex seed/)
+})
+
 test('verifyManifest REJECTS a present artifact whose hash does not match', () => {
   const tampered = { ...real, artifacts: { ...real.artifacts, 'evals/prompts-phase2.jsonl': 'b'.repeat(64) } }
   assert.throws(() => verifyManifest({ manifest: tampered }), /hash .* != manifest/)

@@ -46,6 +46,11 @@ export function verifyManifest ({ requireAll = false, manifest = readManifest(),
       throw new Error(`manifest entry for ${rel} is not a valid sha256: ${JSON.stringify(hash)}`)
     }
   }
+  // The randomization seed must be a real hex seed (Sol round-6 P1#1) — a null/short seed cannot drive
+  // the frozen sort-by-hash randomization reproducibly, so it fails closed here too.
+  if (!/^[0-9a-f]{32,}$/.test(manifest.randomizationSeed ?? '')) {
+    throw new Error(`manifest randomizationSeed is not a valid hex seed (>=32 hex chars): ${JSON.stringify(manifest.randomizationSeed ?? null)}`)
+  }
   const checked = []
   const skipped = []
   for (const rel of ARTIFACTS) {
