@@ -118,3 +118,30 @@ export function planCalls ({ cases, conditions, trials }) {
   if (!Number.isInteger(trials) || trials < 1) throw new Error(`planCalls requires trials >= 1, got: ${JSON.stringify(trials)}`)
   return cases.length * conditions.length * trials
 }
+
+// The first run discarded every response body and kept only token/char COUNTS, so a
+// surprising result (BLUF apparently lengthening an answer) could not be read back without
+// re-paying for the call. This builds the sidecar record that captures the actual text next
+// to its counts, so Phase 2b's transcripts are legible for free. It refuses a non-string
+// `result` rather than silently capturing an empty string — the same fail-closed stance the
+// measurement path takes on `payload.result` (evals/lib/runner.mjs parseUsage). `chars` is the
+// text length by construction, so it always agrees with the measurement row's `chars`. The
+// captured file is gitignored scratch (padded-*-text.jsonl), never a committed record.
+export function transcriptRecord ({ trial, caseId, condition }, payload, { model } = {}) {
+  const text = payload?.result
+  if (typeof text !== 'string') {
+    throw new Error(`transcriptRecord requires payload.result to be a string, got: ${typeof text}`)
+  }
+  return { retest: 'opus-padded', trial, caseId, condition, model, chars: text.length, text }
+}
+
+// Classify a call's input-token count against the density band (Sol P1#1: validate EVERY call, not
+// just the first). Returns null when the row is in-band and comparable, or a human reason string
+// when it must be quarantined and the sweep stopped. A first-call floor breach is distinguished
+// because it specifically means the project CLAUDE.md never loaded at all.
+export function densityViolation (inputTokens, { min, max, isFirst = false } = {}) {
+  if (!Number.isFinite(inputTokens)) return 'input token count is not a finite number'
+  if (inputTokens < min) return isFirst ? 'padding did not load — first call below the density floor' : 'input below the density floor'
+  if (inputTokens > max) return 'input above the density ceiling (possible context drift or cache double-count)'
+  return null
+}

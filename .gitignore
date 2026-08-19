@@ -4,3 +4,8 @@ node_modules/
 # Repo-root specs and plans stay local and unpublished. Anchored so it does NOT
 # swallow nested docs/ directories (a fixture's docs/ must be committed).
 /docs/
+# Re-test diagnostic sidecars: full transcripts and quarantined anomalous rows kept locally for
+# diagnosis, never committed (the repo stays light; padded-*.jsonl count rows remain the source of
+# truth). These suffixes never match the committable padded-<model>-<condition>.jsonl count files.
+evals/results/padded-*-text.jsonl
+evals/results/padded-*-quarantine.jsonl

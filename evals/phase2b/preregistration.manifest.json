@@ -1,0 +1,11 @@
+{
+  "purpose": "Phase 2b preregistration commit-reveal manifest",
+  "note": "Committed BEFORE any Phase 2b spend; git supplies the pre-data timestamp. Artifacts under docs/ are revealed at publication — verify each hashes to the value below. Amendments require a new dated commit.",
+  "randomizationSeed": "dd94f85aae49718f802c7e067a76c082",
+  "artifacts": {
+    "evals/prompts-phase2.jsonl": "977ddd201e258b6c72cc50a444017597ce007ec5353525a3dc81671359d7be35",
+    "docs/design/phase2b-preregistration.md": "a83787de1d0dee0ef61fc5a262822157b11c9588d9f76f5b60deb863d6d49c24",
+    "docs/design/phase2b-quality-checklists.md": "c3f695e20393fb0cf2daf594174a652248fed2ab173c9ff8345d7939fa7fc2a8",
+    "docs/design/phase2b-prompts-draft.md": "9a6f20225fc30ce80a785610e57f879b84a3711df5c08a0a4cd211d4bfe25383"
+  }
+}

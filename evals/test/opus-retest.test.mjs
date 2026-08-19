@@ -10,7 +10,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildPadding, paddingSha, isRetryable, backoffMs, planCalls,
-  assertPaddingTarget, PADDING_CHAR_MIN, PADDING_CHAR_MAX
+  assertPaddingTarget, PADDING_CHAR_MIN, PADDING_CHAR_MAX, transcriptRecord, densityViolation
 } from '../lib/retest.mjs'
 
 test('padding is deterministic — the dense room is byte-reproducible', () => {
@@ -128,6 +128,46 @@ test('backoff is exponential, jittered, capped, and deterministic under an injec
   // Capped: a large attempt cannot exceed the cap.
   assert.ok(backoffMs(20, { base: 1000, cap: 60000, rng: () => 0.999999 }) < 60000)
   assert.throws(() => backoffMs(-1), /attempt >= 0/)
+})
+
+test('transcriptRecord captures the response text, with chars equal to its length', () => {
+  const answer = 'Use `Array.prototype.toSorted()` — it returns a sorted copy.'
+  const rec = transcriptRecord(
+    { trial: 2, caseId: 'to-sorted', condition: 'bluf' },
+    { result: answer, usage: { output_tokens: 57 } },
+    { model: 'claude-opus-5' }
+  )
+  assert.equal(rec.text, answer, 'the full text must be preserved so it can be read without re-paying')
+  assert.equal(rec.chars, answer.length, 'chars must equal the text length so it agrees with the measurement row')
+  assert.equal(rec.retest, 'opus-padded')
+  assert.equal(rec.trial, 2)
+  assert.equal(rec.caseId, 'to-sorted')
+  assert.equal(rec.condition, 'bluf')
+  assert.equal(rec.model, 'claude-opus-5')
+})
+
+test('transcriptRecord refuses a non-string result rather than capturing a silent empty', () => {
+  // Mirrors the measurement path's fail-closed stance: an absent/garbled body is a defect to
+  // surface, not an empty transcript to record as if the model said nothing.
+  assert.throws(() => transcriptRecord({ trial: 1, caseId: 'x', condition: 'baseline' }, {}, { model: 'm' }), /to be a string/)
+  assert.throws(() => transcriptRecord({ trial: 1, caseId: 'x', condition: 'baseline' }, { result: 123 }, { model: 'm' }), /to be a string/)
+  assert.throws(() => transcriptRecord({ trial: 1, caseId: 'x', condition: 'baseline' }, null, { model: 'm' }), /to be a string/)
+})
+
+test('densityViolation validates EVERY call against the band, flagging first-call floor breaches distinctly', () => {
+  const band = { min: 100_000, max: 200_000 }
+  // in band → no violation
+  assert.equal(densityViolation(120_000, band), null)
+  assert.equal(densityViolation(100_000, band), null)
+  assert.equal(densityViolation(200_000, band), null)
+  // above ceiling → the Phase 2a anomaly (242k, 246k) that the first-call-only guard let through
+  assert.match(densityViolation(242_213, band), /ceiling/)
+  assert.match(densityViolation(246_284, band), /ceiling/)
+  // below floor: a mid-sweep breach vs the first-call "padding never loaded" case
+  assert.match(densityViolation(3_600, { ...band, isFirst: false }), /below the density floor/)
+  assert.match(densityViolation(3_600, { ...band, isFirst: true }), /padding did not load/)
+  // a garbage count is a violation, never silently in-band
+  assert.match(densityViolation(NaN, band), /not a finite number/)
 })
 
 test('planCalls is cases × conditions × trials — the number the dry run must advertise', () => {
