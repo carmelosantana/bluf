@@ -3,7 +3,9 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { deterministicOrder, deterministicBit, stratifiedSample } from '../lib/rng.mjs'
+import { deterministicOrder, deterministicBit, stratifiedSample, balancedPairPlacement } from '../lib/rng.mjs'
+import { loadPhase2Prompts } from '../lib/phase2.mjs'
+import { readManifest } from '../phase2b/manifest.mjs'
 
 const SEED = 'dd94f85aae49718f802c7e067a76c082'
 
@@ -32,16 +34,46 @@ test('a bad seed is rejected (fail-closed, matches the manifest seed gate)', () 
   assert.throws(() => deterministicBit('nothex-nothex-nothex-nothex-1234', 'x'), /hex seed/)
 })
 
-test('stratifiedSample takes exactly perCat per category, deterministically', () => {
+test('stratifiedSample is canonicalized — input Map/array order cannot change the result', () => {
   const roster = new Map([
     ['short-lookup', ['a', 'b', 'c', 'd', 'e']],
     ['multi-step', ['f', 'g', 'h', 'i', 'j']]
   ])
-  const one = stratifiedSample(roster, 1, SEED, 'human6')
-  assert.equal(one.length, 2, '1 per category × 2 categories')
-  assert.deepEqual(one, stratifiedSample(roster, 1, SEED, 'human6'), 'reproducible')
-  const two = stratifiedSample(roster, 2, SEED, 'human12')
-  assert.equal(two.length, 4, '2 per category × 2 categories')
-  // every chosen id belongs to the roster
-  for (const id of two) assert.ok(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'].includes(id))
+  const rev = new Map([...roster].reverse().map(([c, a]) => [c, [...a].reverse()]))
+  assert.deepEqual(stratifiedSample(roster, 1, SEED, 'human6'), stratifiedSample(rev, 1, SEED, 'human6'),
+    'reversing category and id order must NOT change the sample (Sol round-7 P1#1)')
+})
+
+test('balancedPairPlacement gives every prompt 2-or-3 baseline-A and 50% globally', () => {
+  const ids = Array.from({ length: 30 }, (_, i) => `p${String(i).padStart(2, '0')}`)
+  const place = balancedPairPlacement(ids, SEED)
+  let total = 0
+  const dist = {}
+  for (const flags of place.values()) {
+    const c = flags.filter(Boolean).length
+    assert.ok(c === 2 || c === 3, `each prompt must place baseline-A 2 or 3 of 5, got ${c}`)
+    dist[c] = (dist[c] ?? 0) + 1
+    total += c
+  }
+  assert.deepEqual(dist, { 2: 15, 3: 15 }, 'exactly 15 prompts give baseline the majority')
+  assert.equal(total, 75, 'baseline is A in exactly 75/150 pairs (50%)')
+  // input order invariant
+  assert.deepEqual([...balancedPairPlacement([...ids].reverse(), SEED)].sort(), [...place].sort())
+})
+
+// COMMITTED KNOWN VECTORS (Sol round-7): pinned so any re-implementation of the frozen algorithm on the
+// committed seed + roster must reproduce these exact blinded mappings and human samples.
+test('known vectors for the committed seed + roster', () => {
+  const seed = readManifest().randomizationSeed
+  assert.equal(seed, SEED, 'the committed manifest seed')
+  assert.deepEqual(deterministicOrder(10, seed, 'responses|port-default'), [0, 2, 6, 7, 3, 9, 8, 5, 4, 1])
+
+  const { roster } = loadPhase2Prompts()
+  const place = balancedPairPlacement([...roster.keys()], seed)
+  assert.deepEqual(place.get('port-default'), [false, false, true, true, true])
+
+  const byCat = new Map()
+  for (const [id, cat] of roster) { if (!byCat.has(cat)) byCat.set(cat, []); byCat.get(cat).push(id) }
+  assert.deepEqual(stratifiedSample(byCat, 1, seed, 'human6'),
+    ['db-migrations', 'event-loop', 'flaky-tests', 'health-endpoint', 'memory-climb', 'port-default'])
 })

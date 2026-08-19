@@ -27,13 +27,40 @@ export function deterministicBit (seed, namespace) {
 }
 
 // Stratified sample: from each category's id list take the first `perCat` after the frozen shuffle.
-// rosterByCategory: Map(category -> id[]). Returns the chosen ids, globally sorted for a stable report.
+// Inputs are CANONICALIZED (Sol round-7 P1#1) — categories iterated in sorted-name order, ids sorted
+// within each category — so the caller's Map/array ordering cannot change the result. Returns the
+// chosen ids, globally sorted for a stable report.
 export function stratifiedSample (rosterByCategory, perCat, seed, namespace) {
   const out = []
-  for (const [cat, ids] of rosterByCategory) {
+  for (const cat of [...rosterByCategory.keys()].sort()) {
+    const ids = [...rosterByCategory.get(cat)].sort()
     if (ids.length < perCat) throw new Error(`category ${cat} has ${ids.length} ids, need ${perCat} for the sample`)
     const order = deterministicOrder(ids.length, seed, `${namespace}|${cat}`)
     out.push(...order.slice(0, perCat).map(i => ids[i]))
   }
   return out.sort()
+}
+
+// BALANCED A/B placement (Sol round-7 P1#1). Independent per-pair bits are NOT balanced (the committed
+// seed put baseline on A 69/150 times, 0/5 to 5/5 per prompt) and would confound the win-count endpoint.
+// This guarantees each prompt places BASELINE on side A in exactly 2 or 3 of its `trials` pairs, and
+// balances WHICH condition gets the extra slot across prompts: exactly floor(N/2) prompts give baseline
+// the majority (ceil(trials/2)) — so for 30 prompts × 5 trials, baseline is A in exactly 75/150 (50%).
+// Input order is canonicalized (sorted) so it cannot vary. Returns Map(promptId -> boolean[trials]),
+// where true = baseline is on side A for that trial-pair.
+export function balancedPairPlacement (promptIds, seed, trials = 5) {
+  if (!/^[0-9a-f]{32,}$/.test(seed ?? '')) throw new Error('balancedPairPlacement needs a hex seed of >=32 chars')
+  const ids = [...new Set(promptIds)].sort()
+  const majOrder = deterministicOrder(ids.length, seed, 'placement-majority')
+  const majoritySet = new Set(majOrder.slice(0, Math.floor(ids.length / 2)).map(i => ids[i]))
+  const hi = Math.ceil(trials / 2) // 3 of 5
+  const lo = Math.floor(trials / 2) // 2 of 5
+  const map = new Map()
+  for (const id of ids) {
+    const count = majoritySet.has(id) ? hi : lo
+    const order = deterministicOrder(trials, seed, `placement-slots|${id}`)
+    const baselineA = new Set(order.slice(0, count))
+    map.set(id, Array.from({ length: trials }, (_, t) => baselineA.has(t)))
+  }
+  return map
 }
