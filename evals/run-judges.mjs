@@ -12,6 +12,8 @@ import { readFile, writeFile, readdir } from 'node:fs/promises'
 import { verifyManifest } from './phase2b/manifest.mjs'
 import { runJudgeOverPackets } from './lib/judge-run.mjs'
 import { assertOllamaPinned, ollamaDriver, ollamaSeedInt, OLLAMA_MODEL } from './lib/judge-ollama.mjs'
+import { codexDriver, CODEX_MODEL } from './lib/judge-codex.mjs'
+import { claudeDriver, CLAUDE_JUDGE_MODEL } from './lib/judge-claude.mjs'
 
 const ROOT = new URL('../', import.meta.url)
 const rel = p => new URL(p, ROOT).pathname
@@ -37,8 +39,19 @@ const REGISTRY = {
     billed: false,
     preflight: async () => { await assertOllamaPinned(); return 'digest pin OK' },
     driver: ollamaDriver({ seedInt: ollamaSeedInt(seed) })
+  }),
+  codex: async () => ({
+    label: `Codex ${CODEX_MODEL} (independent GPT, free — not billed to the opus budget)`,
+    billed: false,
+    preflight: async () => 'codex exec, read-only sandbox, output-schema',
+    driver: codexDriver({})
+  }),
+  sonnet: async () => ({
+    label: `Claude ${CLAUDE_JUDGE_MODEL} (Anthropic, BILLED; default temperature — CLI has no temp flag)`,
+    billed: true,
+    preflight: async () => 'claude CLI, no MCP, no tools; schema appended as framing',
+    driver: claudeDriver({})
   })
-  // codex, sonnet registered as their drivers land.
 }
 
 if (!REGISTRY[JUDGE]) {
