@@ -16,7 +16,7 @@ import {
   readCliVersion, settingSourcesOf, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256
 } from './runner.mjs'
 import { scheduleSweep, SCHEDULE_VERSION } from './schedule.mjs'
-import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls, transcriptRecord, densityViolation } from './retest.mjs'
+import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls, transcriptRecord, densityViolation, degradedUsage } from './retest.mjs'
 
 const run = promisify(execFile)
 // This module lives in evals/lib/, so results live one directory UP at evals/results/. (A `./results/`
@@ -70,16 +70,48 @@ export async function runPaddedSweep ({
     return stdout
   }
 
-  async function executeWithRetry (args, cwd, label) {
+  // Invoke, parse, and validate usage inside ONE retry boundary. Two failure modes share the transient
+  // budget: a retryable transport error (executeRaw throws), and a well-formed response whose usage
+  // telemetry came back zeroed (degradedUsage — impossible for a padded turn, so a billing glitch, not
+  // thin padding). Both retry (each retry re-bills via executeRaw → counts toward the ceiling) but stay
+  // ONE logical call. A malformed body or an errored payload remains a HARD stop, never retried — that
+  // preserves the prior out-of-retry-boundary semantics. Returns { payload, usage, provenance }.
+  async function invokeParsed (args, cwd, label, meta) {
     for (let attempt = 0; ; attempt++) {
+      let stdout
       try {
-        return await executeRaw(args, cwd)
+        stdout = await executeRaw(args, cwd)
       } catch (error) {
         if (!isRetryable(error) || attempt >= MAX_RETRIES) throw error
         const wait = backoffMs(attempt)
         console.log(`    ${label}: transient failure (${(error.message ?? '').split('\n')[0]}); retry ${attempt + 1}/${MAX_RETRIES} in ${wait}ms`)
         await sleep(wait)
+        continue
       }
+      let payload
+      try {
+        payload = JSON.parse(stdout) // a malformed response is a hard stop — never retried.
+      } catch (cause) {
+        throw new Error(`could not parse claude output as JSON for ${label.trim()}: ${cause.message}`, { cause })
+      }
+      assertNotErrored(payload, meta) // an errored payload is a hard stop — never retried.
+      const usage = parseUsage(payload)
+      const provenance = parseProvenance(payload, { model: MODEL })
+      assertModelResolved(provenance, { model: MODEL })
+      const degraded = degradedUsage(usage)
+      if (degraded) {
+        if (attempt >= MAX_RETRIES) {
+          throw new Error(
+            `DEGRADED USAGE on ${label.trim()} persisted after ${MAX_RETRIES} retries (${attempt + 1} attempts): ${degraded}. ` +
+            `A valid response reported zero input tokens repeatedly — a systemic telemetry failure, not a one-off. ` +
+            `Aborting for investigation instead of recording a zero-token row.`)
+        }
+        const wait = backoffMs(attempt)
+        console.log(`    ${label}: degraded usage telemetry (${degraded}); retry ${attempt + 1}/${MAX_RETRIES} in ${wait}ms`)
+        await sleep(wait)
+        continue
+      }
+      return { payload, usage, provenance }
     }
   }
 
@@ -148,18 +180,8 @@ export async function runPaddedSweep ({
     }
 
     const args = buildArgs(caseRow.prompt, CONDITIONS[condition], MODEL, 'clean')
-    const stdout = await executeWithRetry(args, cwd, label)
+    const { payload, usage, provenance } = await invokeParsed(args, cwd, label, { caseId: step.caseId, condition })
     spent++
-    let payload
-    try {
-      payload = JSON.parse(stdout) // OUTSIDE the retry boundary: a malformed response is a hard stop.
-    } catch (cause) {
-      throw new Error(`could not parse claude output as JSON for ${label.trim()}: ${cause.message}`, { cause })
-    }
-    assertNotErrored(payload, { caseId: step.caseId, condition })
-    const usage = parseUsage(payload)
-    const provenance = parseProvenance(payload, { model: MODEL })
-    assertModelResolved(provenance, { model: MODEL })
 
     const row = {
       retest: 'opus-padded',
