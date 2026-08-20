@@ -13,3 +13,5 @@ evals/results/padded-*-quarantine.jsonl
 # local. The judge outputs (judge-*.jsonl, scores only) and the reveal map (blinding key, no transcript
 # text) ARE committed as the quality evidence the verdict traces to.
 evals/results/phase2b-judge/packet-*.txt
+evals/results/phase2b-judge/rating-data.json
+evals/results/phase2b-judge/rating-app.html
