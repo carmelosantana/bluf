@@ -9,6 +9,7 @@ node_modules/
 # truth). These suffixes never match the committable padded-<model>-<condition>.jsonl count files.
 evals/results/padded-*-text.jsonl
 evals/results/padded-*-quarantine.jsonl
-# Phase 2b judge working dir: blinded packets embed the (gitignored) transcripts, plus the reveal map
-# and raw judge outputs — all local, never committed. The aggregated quality verdict is what ships.
-evals/results/phase2b-judge/
+# Phase 2b judge working dir: the blinded PACKETS embed the (gitignored) transcripts, so they stay
+# local. The judge outputs (judge-*.jsonl, scores only) and the reveal map (blinding key, no transcript
+# text) ARE committed as the quality evidence the verdict traces to.
+evals/results/phase2b-judge/packet-*.txt
