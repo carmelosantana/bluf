@@ -7,6 +7,9 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { JUDGE_JSON_SCHEMA } from './judge-schema.mjs'
 
 const run = promisify(execFile)
@@ -24,12 +27,19 @@ export function claudeJudgePrompt (packet) {
 }
 
 export async function callClaudeJudge ({ packet, model = CLAUDE_JUDGE_MODEL }) {
-  const args = ['-p', claudeJudgePrompt(packet), '--output-format', 'json', '--model', model,
-    '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--tools', '']
-  const { stdout } = await run('claude', args, { maxBuffer: 32 * 1024 * 1024 })
-  const payload = JSON.parse(stdout)
-  if (payload.is_error) throw new Error(`claude judge errored: ${payload.result ?? payload.subtype ?? 'unknown'}`)
-  return stripFences(payload.result ?? '')
+  // Run in a fresh EMPTY temp cwd with no setting sources, so no repo CLAUDE.md / output style / project
+  // settings leak into the judge — a clean, blinded claude-sonnet-5, no tools, no MCP.
+  const cwd = await mkdtemp(join(tmpdir(), 'claude-judge-'))
+  try {
+    const args = ['-p', claudeJudgePrompt(packet), '--output-format', 'json', '--model', model,
+      '--setting-sources', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--tools', '']
+    const { stdout } = await run('claude', args, { cwd, maxBuffer: 32 * 1024 * 1024 })
+    const payload = JSON.parse(stdout)
+    if (payload.is_error) throw new Error(`claude judge errored: ${payload.result ?? payload.subtype ?? 'unknown'}`)
+    return stripFences(payload.result ?? '')
+  } finally {
+    await rm(cwd, { recursive: true, force: true })
+  }
 }
 
 export function claudeDriver ({ model } = {}) {
