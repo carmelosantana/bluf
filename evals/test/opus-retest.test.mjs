@@ -10,7 +10,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildPadding, paddingSha, isRetryable, backoffMs, planCalls,
-  assertPaddingTarget, PADDING_CHAR_MIN, PADDING_CHAR_MAX, transcriptRecord, densityViolation
+  assertPaddingTarget, PADDING_CHAR_MIN, PADDING_CHAR_MAX, transcriptRecord, densityViolation,
+  resumeCellKey, completedCells, assertResumeCompatible
 } from '../lib/retest.mjs'
 
 test('padding is deterministic — the dense room is byte-reproducible', () => {
@@ -172,6 +173,43 @@ test('densityViolation validates EVERY call against the band, flagging first-cal
   assert.match(densityViolation(3_600, { ...band, isFirst: true }), /padding did not load/)
   // a garbage count is a violation, never silently in-band
   assert.match(densityViolation(NaN, band), /not a finite number/)
+})
+
+test('resume: completedCells indexes rows by (caseId,condition,trial) so only missing cells re-run', () => {
+  const rows = [
+    { caseId: 'a', condition: 'baseline', trial: 1 },
+    { caseId: 'a', condition: 'bluf', trial: 1 },
+    { caseId: 'b', condition: 'baseline', trial: 2 }
+  ]
+  const done = completedCells(rows)
+  assert.equal(done.size, 3)
+  assert.ok(done.has(resumeCellKey({ caseId: 'a', condition: 'baseline', trial: 1 })))
+  // a schedule filter keeps ONLY the cells not already on disk
+  const schedule = [
+    { caseId: 'a', condition: 'baseline', trial: 1 }, // done
+    { caseId: 'a', condition: 'bluf', trial: 2 }, // pending
+    { caseId: 'b', condition: 'baseline', trial: 2 } // done
+  ]
+  const pending = schedule.filter(s => !done.has(resumeCellKey(s)))
+  assert.deepEqual(pending, [{ caseId: 'a', condition: 'bluf', trial: 2 }])
+})
+
+test('resume: assertResumeCompatible fails closed on any provenance mismatch, passes on a match', () => {
+  const expected = {
+    model: 'claude-opus-5', paddingSha: 'abc', paddingChars: 290070, promptSet: 'phase2',
+    promptsSha: '977ddd', styleSha256: 'a01835', scheduleVersion: 2, environment: 'clean',
+    retest: 'opus-padded', padded: true, cliVersion: '2.1.222 (Claude Code)'
+  }
+  const good = { caseId: 'a', condition: 'baseline', trial: 1, ...expected }
+  assert.doesNotThrow(() => assertResumeCompatible([good], expected))
+  // a different prompt set on disk → refuse (would splice two datasets)
+  assert.throws(() => assertResumeCompatible([{ ...good, promptsSha: 'DIFFERENT' }], expected), /resume refused.*promptsSha/)
+  // a different model, padding, style, schedule, or CLI version → refuse
+  assert.throws(() => assertResumeCompatible([{ ...good, model: 'claude-sonnet-5' }], expected), /resume refused.*model/)
+  assert.throws(() => assertResumeCompatible([{ ...good, paddingSha: 'zzz' }], expected), /resume refused.*paddingSha/)
+  assert.throws(() => assertResumeCompatible([{ ...good, cliVersion: '9.9.9' }], expected), /resume refused.*cliVersion/)
+  // only keys present in `expected` are checked — extra row fields are ignored
+  assert.doesNotThrow(() => assertResumeCompatible([{ ...good, someExtra: 42 }], expected))
 })
 
 test('planCalls is cases × conditions × trials — the number the dry run must advertise', () => {

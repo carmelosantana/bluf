@@ -12,6 +12,7 @@ import { verifyManifest } from './phase2b/manifest.mjs'
 
 const TRIALS = 5 // confirmatory: fixed at 5 (the analysis pins expectedTrials [1..5]); no env override.
 const EXECUTE = process.env.EXECUTE === '1'
+const RESUME = process.env.RESUME === '1' // continue an aborted sweep from the rows already on disk
 
 // The confirmatory identity is PINNED, not selectable (Sol round-4 P1#2): reject MODEL / PAD_TARGET_CHARS
 // / CASES overrides rather than silently ignoring them.
@@ -37,5 +38,10 @@ await runPaddedSweep({
   filePrefix: `padded-phase2-${PHASE2_MODEL}`,
   rowExtra: { promptSet: PROMPT_SET, promptsSha: sha },
   EXECUTE,
+  resume: RESUME,
+  // The API can return transient 529 Overloaded bursts that zero out usage (opus never runs; the call
+  // barely bills). 8 retries with the existing exponential backoff (up to the 60s cap) rides out a
+  // typical overload window; a persistent one still aborts, and RESUME=1 then continues without re-spend.
+  MAX_RETRIES: 8,
   casesNote: 'pinned 30-prompt roster, 6×5'
 })

@@ -145,3 +145,32 @@ export function densityViolation (inputTokens, { min, max, isFirst = false } = {
   if (inputTokens > max) return 'input above the density ceiling (possible context drift or cache double-count)'
   return null
 }
+
+// The (caseId, condition, trial) coordinate of one measurement cell — the unit of resume. A sweep that
+// aborts partway (e.g., a sustained API-529 overload burst outlasting the retry budget) leaves complete
+// rows on disk; resuming runs only the cells NOT already present, so completed calls are never re-spent.
+export function resumeCellKey (o) {
+  return `${o.caseId}|${o.condition}|${o.trial}`
+}
+
+// The set of cells already written, from the rows read off disk.
+export function completedCells (rows) {
+  return new Set(rows.map(resumeCellKey))
+}
+
+// A resumed corpus must be ONE homogeneous dataset. Every already-written row has to match the current
+// run's pinned identity on the provenance fields that define the measurement; otherwise resuming would
+// silently splice incompatible measurements (a different model, padding, prompt set, style, schedule,
+// or CLI version). Fail closed. Only the keys present in `expected` are checked.
+export function assertResumeCompatible (rows, expected) {
+  const fields = ['model', 'paddingSha', 'paddingChars', 'promptSet', 'promptsSha', 'styleSha256', 'scheduleVersion', 'environment', 'retest', 'padded', 'cliVersion']
+  for (const row of rows) {
+    for (const k of fields) {
+      if (k in expected && row[k] !== expected[k]) {
+        throw new Error(
+          `resume refused: on-disk row ${resumeCellKey(row)} has ${k}=${JSON.stringify(row[k])}, ` +
+          `but this run has ${k}=${JSON.stringify(expected[k])}. Refusing to mix incompatible measurements.`)
+      }
+    }
+  }
+}

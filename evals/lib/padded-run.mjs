@@ -4,7 +4,7 @@
 // to stamp (Phase 2b stamps promptSet + the prompt-file digest). Everything paid lives below the
 // EXECUTE gate; a dry run spends nothing. See measure-opus-retest.mjs for the full spend-safety notes.
 
-import { appendFile, writeFile, mkdtemp } from 'node:fs/promises'
+import { appendFile, writeFile, readFile, mkdtemp } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { execFile } from 'node:child_process'
@@ -16,7 +16,7 @@ import {
   readCliVersion, settingSourcesOf, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256
 } from './runner.mjs'
 import { scheduleSweep, SCHEDULE_VERSION } from './schedule.mjs'
-import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls, transcriptRecord, densityViolation } from './retest.mjs'
+import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls, transcriptRecord, densityViolation, resumeCellKey, completedCells, assertResumeCompatible } from './retest.mjs'
 
 const run = promisify(execFile)
 // This module lives in evals/lib/, so results live one directory UP at evals/results/. (A `./results/`
@@ -37,6 +37,7 @@ export async function runPaddedSweep ({
   MIN_PADDED_INPUT = 100_000,
   MAX_PADDED_INPUT = 200_000,
   MAX_RETRIES = 3,
+  resume = false, // continue an aborted sweep: run only cells not already on disk, append (not wx-claim)
   repoRoot = new URL('../../', import.meta.url).pathname
 }) {
   const outputFile = condition => new URL(`./${filePrefix}-${condition}.jsonl`, RESULTS)
@@ -57,9 +58,10 @@ export async function runPaddedSweep ({
   }
 
   // Every CLI invocation is counted toward a hard ceiling, not just successes — a timeout/reset is
-  // ambiguous (the server may have billed it), so a retry is a possible second charge.
+  // ambiguous (the server may have billed it), so a retry is a possible second charge. On a resume the
+  // ceiling is scaled to the REMAINING cells (set below, once the completed cells are known).
   let attempts = 0
-  const maxAttempts = planCalls({ cases, conditions: Object.keys(CONDITIONS), trials: TRIALS }) * (1 + MAX_RETRIES)
+  let maxAttempts = planCalls({ cases, conditions: Object.keys(CONDITIONS), trials: TRIALS }) * (1 + MAX_RETRIES)
 
   async function executeRaw (args, cwd) {
     if (attempts >= maxAttempts) {
@@ -120,7 +122,32 @@ export async function runPaddedSweep ({
   const cliVersion = await readCliVersion()
   const padding = buildPadding(PAD_TARGET_CHARS)
   const padSha = paddingSha(padding)
-  const totalCalls = planCalls({ cases, conditions, trials: TRIALS })
+
+  // RESUME: read any rows already on disk, verify they belong to THIS exact measurement (fail closed on
+  // any provenance drift), and run only the cells not yet present. A sweep aborted by a sustained API-529
+  // overload leaves complete in-band rows behind; resuming banks them instead of re-spending. The
+  // per-call identity below is what each row must match.
+  const rowIdentity = {
+    model: MODEL, paddingSha: padSha, paddingChars: padding.length, styleSha256: STYLE_SHA256,
+    scheduleVersion: SCHEDULE_VERSION, environment: 'clean', retest: 'opus-padded', padded: true,
+    cliVersion, ...rowExtra
+  }
+  let done = new Set()
+  if (resume) {
+    const priorRows = []
+    for (const condition of conditions) {
+      const f = outputFile(condition)
+      if (existsSync(f.pathname)) {
+        const rows = (await readFile(f.pathname, 'utf8')).split('\n').filter(Boolean).map(l => JSON.parse(l))
+        assertResumeCompatible(rows, rowIdentity)
+        priorRows.push(...rows)
+      }
+    }
+    done = completedCells(priorRows)
+  }
+  const pending = resume ? schedule.filter(s => !done.has(resumeCellKey(s))) : schedule
+  const totalCalls = pending.length
+  maxAttempts = totalCalls * (1 + MAX_RETRIES)
 
   console.log(phaseLabel)
   console.log(`model     ${MODEL}`)
@@ -128,21 +155,28 @@ export async function runPaddedSweep ({
   console.log(`trials    ${TRIALS}   conditions ${conditions.join(' / ')}   schedule v${SCHEDULE_VERSION}`)
   console.log(`padding   ${padding.length} chars, sha ${padSha.slice(0, 12)} (targets ~120k input tokens)`)
   console.log(`cli       ${cliVersion}`)
+  if (resume) console.log(`resume    ${done.size} cells already on disk; ${totalCalls} remaining to run`)
   console.log(`plan      ${totalCalls} scheduled calls (typical spend); up to ${MAX_RETRIES} retries each on transient failure`)
   console.log(`ceiling   <= ${maxAttempts} billed CLI invocations worst case (retries count — an ambiguous timeout may still bill)`)
   console.log(`writes    ${conditions.map(c => `${filePrefix}-${c}.jsonl`).join(', ')} under evals/results/`)
 
-  // Gate: never overwrite / append into committed or existing rows; the text and quarantine sidecars
-  // share the result files' fate (gitignored, so never tracked — the disk check is what applies).
+  // Gate: never write over committed rows. On a fresh run an existing result file is a hard stop
+  // (would mix two runs); on a RESUME an existing file is expected and appended to. A git-tracked file
+  // is refused in BOTH modes — published evidence is never rewritten.
   for (const condition of conditions) {
     for (const f of [outputFile(condition), transcriptFile(condition), quarantineFile(condition)]) {
       if (await isTracked(f.pathname)) {
         throw new Error(`${f.pathname} is git-tracked; refusing to write over committed/force-added evidence.`)
       }
-      if (existsSync(f.pathname)) {
-        throw new Error(`${f.pathname} already exists. Move it aside rather than mixing a second run's rows.`)
+      if (!resume && existsSync(f.pathname)) {
+        throw new Error(`${f.pathname} already exists. Move it aside rather than mixing a second run's rows (or set RESUME=1 to continue it).`)
       }
     }
+  }
+
+  if (resume && totalCalls === 0) {
+    console.log(`\nRESUME: all ${done.size} cells already complete — nothing to run.`)
+    return { totalCalls: 0, maxAttempts, spent: 0, executed: false }
   }
 
   if (!EXECUTE) {
@@ -157,16 +191,18 @@ export async function runPaddedSweep ({
     return { totalCalls, maxAttempts, spent: 0, executed: false }
   }
 
-  // Claim result + transcript files ATOMICALLY before spending (race-proof backstop).
+  // Fresh run: claim result + transcript files ATOMICALLY before spending (race-proof backstop).
+  // Resume: the files already exist and are appended to; create any missing one so append has a target.
   for (const condition of conditions) {
-    await writeFile(outputFile(condition), '', { flag: 'wx' })
-    await writeFile(transcriptFile(condition), '', { flag: 'wx' })
+    for (const f of [outputFile(condition), transcriptFile(condition)]) {
+      if (resume) { if (!existsSync(f.pathname)) await writeFile(f.pathname, '', { flag: 'wx' }) } else await writeFile(f.pathname, '', { flag: 'wx' })
+    }
   }
 
   console.log(`\nEXECUTE=1 — spending up to ${maxAttempts} invocations (${totalCalls} typical) on ${MODEL}.\n`)
   let spent = 0
   let transcriptsCaptured = 0
-  for (const step of schedule) {
+  for (const step of pending) {
     const caseRow = caseById.get(step.caseId)
     const { condition, trial } = step
     const label = `t${trial} ${step.caseId} ${condition}`.padEnd(38)
