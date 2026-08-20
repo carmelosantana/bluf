@@ -15,6 +15,7 @@ export function unblindResponses (revealEntry, responses) {
   const arms = { baseline: [], bluf: [] }
   for (const [label, meta] of Object.entries(revealEntry.responses)) {
     const s = responses[label]
+    if (!s) continue // partial ratings (a human who skipped items): omit un-scored responses. Model judges always score all 10, so this never drops a judge response.
     arms[meta.condition].push({ trial: meta.trial, Q: qOf(s), correctness: s.correctness, completeness: s.completeness, omission: s.omission })
   }
   arms.baseline.sort((a, b) => a.trial - b.trial)
