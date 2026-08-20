@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  buildJudgePacket, packetFitsContext, PACKET_CHAR_BUDGET, CONTEXT_TOKEN_BUDGET, RESERVED_OUTPUT_TOKENS
+  buildJudgePacket, packetFitsContext, PACKET_BYTE_BUDGET, CONTEXT_TOKEN_BUDGET, RESERVED_OUTPUT_TOKENS
 } from '../lib/judge-packet.mjs'
 
 const args = {
@@ -15,9 +15,9 @@ const args = {
   pairs: Array.from({ length: 5 }, (_, i) => ({ a: `R${i + 1}`, b: `R${i + 6}` }))
 }
 
-test('the char budget is the pinned context minus reserved output', () => {
-  assert.equal(PACKET_CHAR_BUDGET, CONTEXT_TOKEN_BUDGET - RESERVED_OUTPUT_TOKENS)
-  assert.equal(PACKET_CHAR_BUDGET, 122880)
+test('the byte budget is the pinned context minus reserved output', () => {
+  assert.equal(PACKET_BYTE_BUDGET, CONTEXT_TOKEN_BUDGET - RESERVED_OUTPUT_TOKENS)
+  assert.equal(PACKET_BYTE_BUDGET, 122880)
 })
 
 test('buildJudgePacket is deterministic and labels R1..R10 and P1..P5', () => {
@@ -32,8 +32,16 @@ test('buildJudgePacket requires exactly 10 responses and 5 pairs', () => {
   assert.throws(() => buildJudgePacket({ ...args, pairs: args.pairs.slice(0, 4) }), /exactly 5 pairs/)
 })
 
-test('packetFitsContext is a pure char-count guarantee (chars <= budget)', () => {
+test('packetFitsContext is a UTF-8 BYTE guarantee, not UTF-16 length (Sol round-8)', () => {
   assert.equal(packetFitsContext(buildJudgePacket(args)), true, 'a small packet fits')
-  assert.equal(packetFitsContext('x'.repeat(PACKET_CHAR_BUDGET)), true, 'exactly at the budget fits')
-  assert.equal(packetFitsContext('x'.repeat(PACKET_CHAR_BUDGET + 1)), false, 'one over the budget aborts')
+  assert.equal(packetFitsContext('x'.repeat(PACKET_BYTE_BUDGET)), true, 'ASCII exactly at the budget fits (1 byte each)')
+  assert.equal(packetFitsContext('x'.repeat(PACKET_BYTE_BUDGET + 1)), false, 'one byte over aborts')
+  // Sol's exact probe: an arrow is 3 UTF-8 bytes, so this is 368,640 bytes — a naive .length check
+  // (122,880) would wrongly accept it; the byte check must reject it.
+  const arrows = '→'.repeat(PACKET_BYTE_BUDGET)
+  assert.equal(arrows.length, PACKET_BYTE_BUDGET, 'UTF-16 length is only 122,880…')
+  assert.equal(Buffer.byteLength(arrows, 'utf8'), PACKET_BYTE_BUDGET * 3, '…but 368,640 UTF-8 bytes')
+  assert.equal(packetFitsContext(arrows), false, 'multibyte content over the BYTE budget aborts')
+  // Just-fitting multibyte: budget/3 arrows = exactly the byte budget.
+  assert.equal(packetFitsContext('→'.repeat(PACKET_BYTE_BUDGET / 3)), true)
 })
