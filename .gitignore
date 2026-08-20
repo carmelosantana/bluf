@@ -15,6 +15,10 @@ evals/results/padded-*-quarantine.jsonl
 evals/results/phase2b-judge/packet-*.txt
 evals/results/phase2b-judge/rating-data.json
 evals/results/phase2b-judge/rating-app.html
+# Omission-adjudication worksheet + its adjId→identity sidecar embed transcript text (stay local);
+# the operator's RULINGS record (omission-adjudication.json, scores only) IS committed.
+evals/results/phase2b-judge/adjudication-worksheet.*
+evals/results/phase2b-judge/adjudication-map.json
 
 # Human rater submissions (scores only) — kept local until the set is complete
 evals/results/phase2b-judge/raters/
