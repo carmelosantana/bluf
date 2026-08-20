@@ -77,8 +77,16 @@ a{color:var(--accent)}
 .resp.scored .tick{opacity:1}
 .body{max-height:300px;overflow:auto;padding:14px 16px;font-size:14px}
 .body.expanded{max-height:none}
-.body p{margin:0 0 10px;white-space:pre-wrap;word-break:break-word}
-.body pre{margin:0 0 10px;background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-x:auto;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.5}
+.body p{margin:0 0 10px;word-break:break-word}
+.body pre{margin:0 0 10px;background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-x:auto;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.5;white-space:pre}
+.body code{font-family:"IBM Plex Mono",monospace;font-size:.88em;background:var(--code-bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+.body pre code{background:none;border:none;padding:0}
+.body .mdh{font-size:14px;font-weight:700;margin:12px 0 6px;letter-spacing:-.01em}
+.body h1.mdh{font-size:16px}.body h2.mdh{font-size:15px}
+.body ul,.body ol{margin:0 0 10px;padding-left:22px}
+.body li{margin:2px 0}
+.body strong{font-weight:600}
+.body a{text-decoration:underline}
 .more{display:block;width:100%;text-align:center;padding:7px;font-size:12px;color:var(--accent);background:var(--code-bg);border:none;border-top:1px solid var(--line)}
 
 .controls{display:flex;flex-wrap:wrap;gap:18px;padding:14px 16px;background:var(--raised);border-top:1px solid var(--line)}
@@ -150,12 +158,27 @@ function promptDone(p){ const r=state.ratings[p.caseId]; let n=0; const tot=15;
   return {n,tot}; }
 function totalProgress(){ let n=0,tot=0; for(const p of PROMPTS){ const d=promptDone(p); n+=d.n; tot+=d.tot; } return {n,tot}; }
 
-function esc(s){ return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-function renderBody(text){ // split fenced code blocks; escape everything
-  const parts=text.split(/\`\`\`/); let out='';
-  parts.forEach((seg,i)=>{ if(i%2){ const body=seg.replace(/^[a-zA-Z0-9]*\\n/,''); out+='<pre>'+esc(body)+'</pre>'; }
-    else { seg.split(/\\n{2,}/).forEach(par=>{ if(par.trim()) out+='<p>'+esc(par)+'</p>'; }); } });
-  return out||'<p>'+esc(text)+'</p>'; }
+function esc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+// Safe markdown subset (escape FIRST, then structure): headings, bold, italic, inline code, links,
+// fenced code, ordered/unordered lists, paragraphs. Never injects HTML from the model text.
+function renderBody(src){
+  const lines=String(src).replace(/\\r\\n?/g,'\\n').split('\\n');
+  const inline=t=>esc(t)
+    .replace(/\`([^\`]+)\`/g,(m,c)=>'<code>'+c+'</code>')
+    .replace(/\\*\\*([^*]+)\\*\\*/g,'<strong>$1</strong>')
+    .replace(/(^|[^*])\\*([^*\\n]+)\\*/g,'$1<em>$2</em>')
+    .replace(/\\[([^\\]]+)\\]\\((https?:[^)\\s]+)\\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  let html='',i=0;
+  while(i<lines.length){ const l=lines[i];
+    if(/^\\s*\`\`\`/.test(l)){ i++; let code=''; while(i<lines.length&&!/^\\s*\`\`\`/.test(lines[i])){ code+=lines[i]+'\\n'; i++; } i++; html+='<pre>'+esc(code.replace(/\\n$/,''))+'</pre>'; continue; }
+    const h=l.match(/^(#{1,6})\\s+(.*)/); if(h){ const n=h[1].length; html+='<h'+n+' class="mdh">'+inline(h[2])+'</h'+n+'>'; i++; continue; }
+    if(/^\\s*[-*+]\\s+/.test(l)){ html+='<ul>'; while(i<lines.length&&/^\\s*[-*+]\\s+/.test(lines[i])){ html+='<li>'+inline(lines[i].replace(/^\\s*[-*+]\\s+/,''))+'</li>'; i++; } html+='</ul>'; continue; }
+    if(/^\\s*\\d+\\.\\s+/.test(l)){ html+='<ol>'; while(i<lines.length&&/^\\s*\\d+\\.\\s+/.test(lines[i])){ html+='<li>'+inline(lines[i].replace(/^\\s*\\d+\\.\\s+/,''))+'</li>'; i++; } html+='</ol>'; continue; }
+    if(l.trim()===''){ i++; continue; }
+    let par=l; i++; while(i<lines.length&&lines[i].trim()!==''&&!/^\\s*(#{1,6}\\s|\`\`\`|[-*+]\\s|\\d+\\.\\s)/.test(lines[i])){ par+='\\n'+lines[i]; i++; }
+    html+='<p>'+inline(par).replace(/\\n/g,'<br>')+'</p>';
+  }
+  return html||'<p>'+esc(src)+'</p>'; }
 
 function seg(kind,cid,rid,val){ let h='<div class="seg">'; for(let v=1;v<=5;v++){ h+='<button aria-pressed="'+(val===v)+'" onclick="setScore(\\''+cid+'\\',\\''+rid+'\\',\\''+kind+'\\','+v+')">'+v+'</button>'; } return h+'</div>'; }
 
@@ -204,28 +227,57 @@ function render(){
   app.innerHTML=h;
 }
 
-function finishView(tp,pct){
-  const complete=tp.n===tp.tot;
-  return '<div class="finish"><div class="eyebrow" style="color:var(--accent)">Almost done</div>'+
-    '<h2>'+(complete?'All answers rated':'Ratings in progress')+'</h2>'+
-    '<div class="summ"><div><b>'+tp.n+'</b>of '+tp.tot+' scored</div><div><b>'+pct+'%</b>complete</div><div><b>'+PROMPTS.length+'</b>questions</div></div>'+
-    '<p>'+(complete?'Copy your ratings below and paste them back into the Slack thread. Nothing is sent automatically — your work stays on this device until you copy it.':'You can copy partial ratings now and finish later on this same device (your progress is saved), or fill the remaining items first.')+'</p>'+
-    '<button class="copy" id="copyBtn" onclick="copyOut()">Copy my ratings</button>'+
-    '<textarea id="out" readonly placeholder="Your ratings JSON will appear here after you copy."></textarea>'+
-    '<p style="font-size:12px">Rater: <b>'+(esc(state.rater||'')||'(add your initials in the top bar)')+'</b></p></div>';
-}
-
-window.copyOut=async()=>{
+function safeName(){ return (state.rater||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,24); }
+function buildPayload(){
   const out={rater:state.rater||'anonymous', ratings:{}};
   for(const p of PROMPTS){ const r=state.ratings[p.caseId]; const resp={},pref={};
     for(let i=1;i<=10;i++){ const s=r.responses['R'+i]; if(s&&s.correctness&&s.completeness&&('omission'in s)) resp['R'+i]={correctness:s.correctness,completeness:s.completeness,omission:!!s.omission}; }
     for(let i=1;i<=5;i++){ if(r.preferences['P'+i]) pref['P'+i]={preference:r.preferences['P'+i]}; }
     out.ratings[p.caseId]={responses:resp,preferences:pref};
   }
-  const txt=JSON.stringify(out);
+  return out;
+}
+function finishView(tp,pct){
+  const complete=tp.n===tp.tot; const name=safeName();
+  return '<div class="finish"><div class="eyebrow" style="color:var(--accent)">Almost done</div>'+
+    '<h2>'+(complete?'All answers rated':'Ratings in progress')+'</h2>'+
+    '<div class="summ"><div><b>'+tp.n+'</b>of '+tp.tot+' scored</div><div><b>'+pct+'%</b>complete</div><div><b>'+PROMPTS.length+'</b>questions</div></div>'+
+    '<p>'+(complete?'Submit your ratings — they save straight to the study. If submit is unavailable, use “Copy” and paste the text into the Slack thread. Your work stays on this device until you submit or copy.':'You can submit or copy partial ratings now and finish later on this same device (your progress is saved).')+'</p>'+
+    (name?'':'<p style="color:var(--warn)"><b>Add your initials in the top bar first</b> so your ratings are attributed.</p>')+
+    '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:6px">'+
+    '<button class="copy" id="submitBtn" '+(name?'':'disabled')+' onclick="submitRatings()">Submit ratings</button>'+
+    '<button class="copy" id="copyBtn" style="background:var(--surface);color:var(--ink);border:1px solid var(--line)" onclick="copyOut()">Copy instead</button></div>'+
+    '<div id="submitMsg" style="margin-top:14px;font-size:13.5px;color:var(--muted)"></div>'+
+    '<textarea id="out" readonly placeholder="If you Copy, your ratings JSON appears here."></textarea>'+
+    '<p style="font-size:12px">Rater: <b>'+(esc(state.rater||'')||'(none)')+'</b></p></div>';
+}
+
+window.copyOut=async()=>{
+  const txt=JSON.stringify(buildPayload());
   document.getElementById('out').value=txt;
-  try{ await navigator.clipboard.writeText(txt); const b=document.getElementById('copyBtn'); b.textContent='Copied ✓'; b.classList.add('ok'); setTimeout(()=>{b.textContent='Copy my ratings';b.classList.remove('ok');},2200); }
+  try{ await navigator.clipboard.writeText(txt); const b=document.getElementById('copyBtn'); b.textContent='Copied ✓'; setTimeout(()=>{b.textContent='Copy instead';},2200); }
   catch(e){ document.getElementById('out').select(); }
+};
+
+window.submitRatings=async()=>{
+  const msg=document.getElementById('submitMsg'); const btn=document.getElementById('submitBtn');
+  const name=safeName(); if(!name){ msg.textContent='Add your initials first.'; return; }
+  btn.disabled=true; btn.textContent='Submitting…'; msg.style.color='var(--muted)'; msg.textContent='Saving your ratings…';
+  const payload=buildPayload();
+  let art=null; try{ art = window.claude && claude.use ? await claude.use('artifact') : null; }catch(e){ art=null; }
+  if(!art){ btn.textContent='Submit ratings'; btn.disabled=false; msg.style.color='var(--warn)';
+    msg.innerHTML='Direct submit isn’t available in this view. Click <b>Copy instead</b> and paste your ratings into the Slack thread.'; window.copyOut(); return; }
+  try{
+    await art.publish({['submissions/'+name+'.json']: JSON.stringify(payload)});
+    btn.textContent='Submitted ✓'; btn.classList.add('ok'); msg.style.color='var(--good)';
+    msg.innerHTML='<b>Saved.</b> Thank you — you can close this tab. (Re-submitting updates your ratings.)';
+  }catch(e){ const code=e&&e.code;
+    btn.disabled=false; btn.textContent='Submit ratings';
+    if(code==='conflict'){ msg.textContent='Another submission just landed — this view is reloading; press Submit again.'; }
+    else if(code==='not_writer'||code==='not_granted'||code==='consent_required'||code==='capability_disabled'){ msg.style.color='var(--warn)'; msg.innerHTML='This shared view is read-only for direct submit. Click <b>Copy instead</b> and paste into Slack.'; window.copyOut(); }
+    else if(code==='rate_limited'){ msg.textContent='Saving too fast — wait a moment and press Submit again.'; }
+    else { msg.style.color='var(--warn)'; msg.innerHTML='Submit failed ('+(code||'error')+'). Click <b>Copy instead</b> and paste into Slack.'; window.copyOut(); }
+  }
 };
 render();
 </script>`
