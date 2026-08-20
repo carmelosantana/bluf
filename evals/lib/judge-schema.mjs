@@ -102,6 +102,40 @@ const R_LABELS = Array.from({ length: 10 }, (_, i) => `R${i + 1}`)
 const P_LABELS = Array.from({ length: 5 }, (_, i) => `P${i + 1}`)
 const isInt15 = v => Number.isInteger(v) && v >= 1 && v <= 5
 
+// The same contract as a JSON Schema object, to hand structured-output APIs (Ollama `format`, Codex
+// `--output-schema`) so the model is guided to emit exactly this shape. validateJudgeResult remains the
+// authority — the schema only steers generation. Uses explicit properties (all required) rather than
+// patternProperties for the widest API support.
+const scoreProps = {
+  type: 'object', additionalProperties: false,
+  required: ['correctness', 'completeness', 'omission'],
+  properties: {
+    correctness: { type: 'integer', minimum: 1, maximum: 5 },
+    completeness: { type: 'integer', minimum: 1, maximum: 5 },
+    omission: { type: 'boolean' }
+  }
+}
+export const JUDGE_JSON_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['responses', 'preferences'],
+  properties: {
+    responses: {
+      type: 'object', additionalProperties: false,
+      required: R_LABELS,
+      properties: Object.fromEntries(R_LABELS.map(l => [l, scoreProps]))
+    },
+    preferences: {
+      type: 'object', additionalProperties: false,
+      required: P_LABELS,
+      properties: Object.fromEntries(P_LABELS.map(l => [l, {
+        type: 'object', additionalProperties: false,
+        required: ['preference'],
+        properties: { preference: { enum: ['A', 'tie', 'B'] } }
+      }]))
+    }
+  }
+}
+
 // Validate the parsed object against the exact frozen schema. Returns an array of human-readable errors
 // (empty = valid). additionalProperties:false is enforced by checking the key set exactly.
 export function validateJudgeResult (obj) {
