@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import {
   buildPadding, paddingSha, isRetryable, backoffMs, planCalls,
   assertPaddingTarget, PADDING_CHAR_MIN, PADDING_CHAR_MAX, transcriptRecord, densityViolation,
-  resumeCellKey, completedCells, assertResumeCompatible
+  resumeCellKey, completedCells, assertResumeCompatible, classifyResult
 } from '../lib/retest.mjs'
 
 test('padding is deterministic — the dense room is byte-reproducible', () => {
@@ -173,6 +173,20 @@ test('densityViolation validates EVERY call against the band, flagging first-cal
   assert.match(densityViolation(3_600, { ...band, isFirst: true }), /padding did not load/)
   // a garbage count is a violation, never silently in-band
   assert.match(densityViolation(NaN, band), /not a finite number/)
+})
+
+test('classifyResult: clean success is ok; caps abort; every other is_error retries', () => {
+  // a normal result is not an error
+  assert.equal(classifyResult({ is_error: false, result: 'ok', usage: {} }), 'ok')
+  assert.equal(classifyResult({ result: 'answer' }), 'ok')
+  // usage/session CAP — retry is futile until reset (Phase 2b: the 429 "session limit" abort)
+  assert.equal(classifyResult({ is_error: true, api_error_status: 429, result: "You've hit your session limit · resets 11pm" }), 'cap')
+  assert.equal(classifyResult({ is_error: true, result: 'usage limit exceeded' }), 'cap')
+  // TRANSIENT is_error — a fresh invocation usually succeeds, so retry
+  assert.equal(classifyResult({ is_error: true, api_error_status: 529, result: 'API Error: 529 Overloaded' }), 'transient')
+  assert.equal(classifyResult({ is_error: true, api_error_status: null, terminal_reason: 'malformed_tool_use_exhausted', result: "The model's tool call could not be parsed (retry also failed)." }), 'transient')
+  assert.equal(classifyResult({ is_error: true, api_error_status: 429, result: 'rate limit: too many requests' }), 'transient')
+  assert.equal(classifyResult(null), 'ok')
 })
 
 test('resume: completedCells indexes rows by (caseId,condition,trial) so only missing cells re-run', () => {

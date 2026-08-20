@@ -146,6 +146,19 @@ export function densityViolation (inputTokens, { min, max, isFirst = false } = {
   return null
 }
 
+// Classify a claude result payload for retry decisions. A padded turn should yield a clean success;
+// an `is_error` response is either a hard CAP (a usage/session limit — retrying is futile until it
+// resets, so abort cleanly and let RESUME continue later) or a TRANSIENT per-call failure (529
+// Overloaded, malformed-tool-use exhaustion, a plain rate-limit, etc. — a fresh invocation almost
+// always succeeds, so retry within budget). Keyed on the human-readable `result` so a 429 that is a
+// session CAP is separated from a 429 that is a transient rate-limit.
+export function classifyResult (payload) {
+  if (!payload || !payload.is_error) return 'ok'
+  const text = `${payload.result ?? ''}`.toLowerCase()
+  if (/session limit|usage limit|hit your (?:session|usage)|quota/.test(text)) return 'cap'
+  return 'transient'
+}
+
 // The (caseId, condition, trial) coordinate of one measurement cell — the unit of resume. A sweep that
 // aborts partway (e.g., a sustained API-529 overload burst outlasting the retry budget) leaves complete
 // rows on disk; resuming runs only the cells NOT already present, so completed calls are never re-spent.

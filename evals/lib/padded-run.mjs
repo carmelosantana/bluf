@@ -12,11 +12,11 @@ import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  CONDITIONS, buildArgs, parseUsage, parseProvenance, assertNotErrored, assertModelResolved,
+  CONDITIONS, buildArgs, parseUsage, parseProvenance, assertModelResolved,
   readCliVersion, settingSourcesOf, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256
 } from './runner.mjs'
 import { scheduleSweep, SCHEDULE_VERSION } from './schedule.mjs'
-import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls, transcriptRecord, densityViolation, resumeCellKey, completedCells, assertResumeCompatible } from './retest.mjs'
+import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls, transcriptRecord, densityViolation, classifyResult, resumeCellKey, completedCells, assertResumeCompatible } from './retest.mjs'
 
 const run = promisify(execFile)
 // This module lives in evals/lib/, so results live one directory UP at evals/results/. (A `./results/`
@@ -72,45 +72,65 @@ export async function runPaddedSweep ({
     return stdout
   }
 
-  // Invoke, parse, and validate usage inside ONE retry boundary. Two failure modes share the transient
-  // budget: a retryable transport error (executeRaw throws), and a well-formed response whose usage
-  // telemetry is OFF-BAND. The padding is deterministic, so every real turn reads ~121k/123k tokens;
-  // any out-of-band reading is a per-call accounting artifact, not a real density — observed as a
-  // 0-token undercount AND as a ~2x cache-write double-count (Phase 2 telemetry glitches). Each call
-  // writes a fresh CLAUDE.md in a fresh temp dir, so a retry is a clean re-measure. Both modes retry
-  // (each retry re-bills via executeRaw → counts toward the ceiling) but stay ONE logical call. A
-  // malformed body or an errored payload remains a HARD stop, never retried — that preserves the prior
-  // out-of-retry-boundary semantics. If an off-band reading PERSISTS past the budget, the last result
-  // is returned so the caller's density guard quarantines + aborts (systemic telemetry failure or real
-  // context drift — either way, stop). Returns { payload, usage, provenance }.
-  async function invokeParsed (args, cwd, label, meta) {
+  // Invoke, parse, classify, and validate one call inside ONE retry boundary. Phase 2 exposed four
+  // per-call failure modes under the dense padded context, all handled here so a single blip never
+  // wastes the sweep (RESUME then continues without re-spend):
+  //   • transport error (executeRaw rejects, e.g. ECONNRESET) → retry if isRetryable;
+  //   • is_error result that is a usage/session CAP → NON-retryable: abort cleanly for a later RESUME;
+  //   • any OTHER is_error result (529 Overloaded, malformed-tool-use exhaustion, rate-limit) → retry
+  //     (a fresh invocation almost always succeeds);
+  //   • a clean success whose usage telemetry is OFF-BAND (0-token undercount or ~2x cache-write
+  //     double-count) → retry; the padding is deterministic, so out-of-band is a per-call artifact.
+  // The CLI can signal an is_error either by a non-zero exit (error carries the JSON on .stdout) or by
+  // exit-0 with is_error:true — both are classified from the same payload. Each retry re-bills via
+  // executeRaw (counts toward the ceiling) but stays ONE logical call. Only a MALFORMED body with no
+  // recoverable payload is a hard parse stop. Returns { payload, usage, provenance }.
+  async function invokeParsed (args, cwd, label) {
     for (let attempt = 0; ; attempt++) {
-      let stdout
+      const retriable = (kind, detail) => {
+        if (attempt >= MAX_RETRIES) return false
+        const wait = backoffMs(attempt)
+        console.log(`    ${label}: ${kind} (${detail}); retry ${attempt + 1}/${MAX_RETRIES} in ${wait}ms`)
+        return sleep(wait).then(() => true)
+      }
+      let stdout, thrown = null
       try {
         stdout = await executeRaw(args, cwd)
       } catch (error) {
-        if (!isRetryable(error) || attempt >= MAX_RETRIES) throw error
-        const wait = backoffMs(attempt)
-        console.log(`    ${label}: transient failure (${(error.message ?? '').split('\n')[0]}); retry ${attempt + 1}/${MAX_RETRIES} in ${wait}ms`)
-        await sleep(wait)
-        continue
+        // A non-zero exit may still carry a JSON result on stdout (is_error responses do). Classify
+        // that below; only a transport error with NO payload uses isRetryable here.
+        thrown = error
+        stdout = typeof error?.stdout === 'string' ? error.stdout : null
+        if (stdout === null) {
+          if (await retriable('transient failure', (error.message ?? '').split('\n')[0])) continue
+          throw error
+        }
       }
       let payload
       try {
-        payload = JSON.parse(stdout) // a malformed response is a hard stop — never retried.
+        payload = JSON.parse(stdout)
       } catch (cause) {
+        if (thrown) throw thrown // non-zero exit + unparseable stdout → surface the original error
         throw new Error(`could not parse claude output as JSON for ${label.trim()}: ${cause.message}`, { cause })
       }
-      assertNotErrored(payload, meta) // an errored payload is a hard stop — never retried.
+      const klass = classifyResult(payload)
+      if (klass === 'cap') {
+        throw new Error(
+          `USAGE/SESSION CAP on ${label.trim()}: ${payload.result}. Not retryable now — re-run with ` +
+          `RESUME=1 once it resets to continue from disk without re-spending completed cells.`)
+      }
+      if (klass === 'transient') {
+        const detail = payload.terminal_reason ?? (payload.api_error_status != null ? `api_error ${payload.api_error_status}` : 'is_error')
+        if (await retriable('errored response', detail)) continue
+        throw new Error(`errored response persisted after ${MAX_RETRIES} retries on ${label.trim()}: ${payload.result ?? detail}. RESUME=1 continues later.`)
+      }
       const usage = parseUsage(payload)
       const provenance = parseProvenance(payload, { model: MODEL })
       assertModelResolved(provenance, { model: MODEL })
       const offBand = densityViolation(usage.inputTokens, { min: MIN_PADDED_INPUT, max: MAX_PADDED_INPUT })
-      if (offBand && attempt < MAX_RETRIES) {
-        const wait = backoffMs(attempt)
-        console.log(`    ${label}: off-band density ${usage.inputTokens} (${offBand}); retry ${attempt + 1}/${MAX_RETRIES} in ${wait}ms`)
-        await sleep(wait)
-        continue
+      if (offBand) {
+        if (await retriable('off-band density ' + usage.inputTokens, offBand)) continue
+        // persisted past the budget → return it so the caller's density guard quarantines + aborts.
       }
       return { payload, usage, provenance }
     }
@@ -215,7 +235,7 @@ export async function runPaddedSweep ({
     }
 
     const args = buildArgs(caseRow.prompt, CONDITIONS[condition], MODEL, 'clean')
-    const { payload, usage, provenance } = await invokeParsed(args, cwd, label, { caseId: step.caseId, condition })
+    const { payload, usage, provenance } = await invokeParsed(args, cwd, label)
     spent++
 
     const row = {
