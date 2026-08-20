@@ -70,8 +70,21 @@ export async function loadJudgeTemplate ({ path, expectedSha } = {}) {
   return parseJudgeTemplate(md)
 }
 
-// Read the two transcript sidecars into Map(caseId -> {baseline:[t1..t5], bluf:[t1..t5]}). Fails closed
-// unless every prompt has exactly 5 non-empty responses per condition.
+// Deterministic label redaction (Sol ruling): the harness temp-dir basename `bluf-retest-<suffix>`
+// embeds the study/style label into responses that reference the working directory. Replacing the
+// `bluf-retest-` prefix with `eval-retest-` (the suffix is preserved) removes the condition-label leak
+// with the smallest possible alteration — it does NOT touch the substantive answer or the agentic
+// scaffolding (which is genuine, treatment-responsive behavior the judge should score). Applied IN
+// MEMORY at load time; the raw sidecar files stay unchanged on disk (anchored in the quality-input
+// amendment). Matches the basename wherever it occurs, not only paths beginning `/tmp/`.
+export const HARNESS_LABEL_RE = /bluf-retest-/g
+export function redactHarnessLabel (text) {
+  return String(text).replace(HARNESS_LABEL_RE, 'eval-retest-')
+}
+
+// Read the two transcript sidecars into Map(caseId -> {baseline:[t1..t5], bluf:[t1..t5]}), with the
+// harness label redacted in memory. Fails closed unless every prompt has exactly 5 non-empty responses
+// per condition, AND no `bluf-retest` label survives redaction (P1 assertion).
 export async function loadJudgeTranscripts ({ baselinePath, blufPath }) {
   const byCase = new Map()
   for (const [condition, path] of [['baseline', baselinePath], ['bluf', blufPath]]) {
@@ -80,8 +93,10 @@ export async function loadJudgeTranscripts ({ baselinePath, blufPath }) {
       if (!line.trim()) continue
       const r = JSON.parse(line)
       if (typeof r.text !== 'string' || r.text.length === 0) throw new Error(`empty transcript text for ${r.caseId}/${condition}/t${r.trial}`)
+      const text = redactHarnessLabel(r.text)
+      if (/bluf-retest/.test(text)) throw new Error(`label redaction failed for ${r.caseId}/${condition}/t${r.trial}: bluf-retest label survives`)
       if (!byCase.has(r.caseId)) byCase.set(r.caseId, { baseline: new Map(), bluf: new Map() })
-      byCase.get(r.caseId)[condition].set(r.trial, r.text)
+      byCase.get(r.caseId)[condition].set(r.trial, text)
     }
   }
   const out = new Map()

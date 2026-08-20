@@ -4,7 +4,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  sourceMeta, parseChecklists, parseJudgeTemplate, assembleBlindedPrompt, assembleAll, TRIALS
+  sourceMeta, parseChecklists, parseJudgeTemplate, assembleBlindedPrompt, assembleAll, TRIALS,
+  redactHarnessLabel
 } from '../lib/judge-assemble.mjs'
 
 const SEED = 'dd94f85aae49718f802c7e067a76c082'
@@ -31,6 +32,20 @@ test('parseChecklists extracts one paragraph per **id** entry', () => {
   assert.match(cl.get('port-default'), /5173/)
   assert.match(cl.get('health-endpoint'), /503/)
   assert.ok(!cl.has('short-lookup')) // headers are not entries
+})
+
+test('redactHarnessLabel replaces the bluf-retest- basename, preserves the suffix, leaves scaffolding', () => {
+  // /tmp/-prefixed and nested-path forms both lose the label; the 6-char suffix survives
+  assert.equal(redactHarnessLabel('ls -la /tmp/bluf-retest-Xf7FrV'), 'ls -la /tmp/eval-retest-Xf7FrV')
+  assert.equal(redactHarnessLabel('/tmp/claude-1001/-tmp-bluf-retest-168KJJ/scratchpad/'), '/tmp/claude-1001/-tmp-eval-retest-168KJJ/scratchpad/')
+  // multiple occurrences in one response are all redacted
+  assert.equal(redactHarnessLabel('bluf-retest-aaaaaa and bluf-retest-bbbbbb'), 'eval-retest-aaaaaa and eval-retest-bbbbbb')
+  // no bluf-retest survives; scaffolding tokens without the label are untouched
+  const s = redactHarnessLabel('**Tool: Bash** {"command":"ls /tmp/bluf-retest-zONDdX"} antml:glob_tool')
+  assert.ok(!/bluf-retest/.test(s))
+  assert.match(s, /antml:glob_tool/) // scaffolding is NOT stripped
+  // text with no label is unchanged
+  assert.equal(redactHarnessLabel('a clean answer'), 'a clean answer')
 })
 
 test('parseJudgeTemplate strips the blockquote and stops at the next section', () => {

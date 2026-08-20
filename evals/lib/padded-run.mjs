@@ -227,7 +227,9 @@ export async function runPaddedSweep ({
     const { condition, trial } = step
     const label = `t${trial} ${step.caseId} ${condition}`.padEnd(38)
 
-    const cwd = await mkdtemp(join(tmpdir(), 'bluf-retest-'))
+    // Style-NEUTRAL temp prefix (Sol P2): a model that explores its cwd must not read the study/style
+    // name off the path. Does not affect the committed Phase 2b corpus (already redacted in judging).
+    const cwd = await mkdtemp(join(tmpdir(), 'eval-retest-'))
     await writeFile(join(cwd, 'CLAUDE.md'), padding) // the dense room
     if (condition === 'bluf') {
       await installProjectStyle(cwd)
