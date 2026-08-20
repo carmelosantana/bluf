@@ -94,6 +94,7 @@ const amendment = {
   purpose: 'Phase 2b quality-input amendment (append-only, pre-judging). NOT preregistration.',
   note: 'Anchors the raw transcript sidecars and freezes the deterministic label redaction applied IN MEMORY before judging. The original preregistration (evals/phase2b/preregistration.manifest.json) is immutable. Raw sidecars are gitignored and preserved off-machine.',
   measurementCorpus: 'evals/results/padded-phase2-claude-opus-5-{baseline,bluf}.jsonl (committed c661f6f)',
+  offMachineBackup: 'secret gist https://gist.github.com/carmelosantana/7a295bf97c61cd4e35a9b20c64db45ef (both raw sidecars, unredacted, hashes below)',
   rawTranscriptSidecars: rawSidecars,
   redaction: {
     rationale: 'Remove the study/style-label leak: the harness temp-dir basename bluf-retest-<suffix> appears in responses that referenced the working directory (24 baseline / 8 bluf). Scaffolding is intentionally NOT stripped — it is genuine treatment-responsive behavior. Study is condition-label-blinded, not behavior-blinded (Sol ruling).',
