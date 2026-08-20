@@ -11,6 +11,7 @@ import { existsSync } from 'node:fs'
 import { unblindResponses, promptQuality } from '../lib/judge-aggregate.mjs'
 import { krippendorffAlpha } from '../lib/krippendorff.mjs'
 import { loadPhase2Prompts } from '../lib/phase2.mjs'
+import { loadUpheldSet } from '../lib/upheld.mjs'
 
 const ROOT = new URL('../../', import.meta.url)
 const rel = p => new URL(p, ROOT).pathname
@@ -20,6 +21,7 @@ const MODELS = ['codex', 'sonnet', 'ollama']
 const reveal = JSON.parse(await readFile(rel('evals/results/phase2b-judge/reveal.json'), 'utf8'))
 const revealByCase = new Map(reveal.map(r => [r.caseId, r]))
 const ratingData = JSON.parse(await readFile(rel('evals/results/phase2b-judge/rating-data.json'), 'utf8'))
+const { upheldSet } = await loadUpheldSet({ path: rel('evals/results/phase2b-judge/omission-adjudication.json'), provisional: process.env.PROVISIONAL === '1' })
 const sample = ratingData.samples.human12
 const { prompts } = loadPhase2Prompts()
 const categoryOf = id => prompts.find(p => p.id === id)?.category ?? '?'
@@ -99,7 +101,7 @@ for (const r of raters) {
   for (const caseId of sample) {
     const rc = r.ratings[caseId]
     if (!rc || Object.keys(rc.responses).length < 10) continue
-    const q = promptQuality(revealByCase.get(caseId), { ok: true, result: rc })
+    const q = promptQuality(revealByCase.get(caseId), { ok: true, result: rc }, upheldSet)
     dq += q.deltaQ; np++; if (q.nonInferior) ni++
     bluf += q.prefs.bluf; tie += q.prefs.tie; base += q.prefs.baseline
   }

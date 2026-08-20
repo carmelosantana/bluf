@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises'
 import { loadPhase2Prompts } from '../lib/phase2.mjs'
 import { judgeQuality, unblindResponses, NONINFERIORITY_MARGIN } from '../lib/judge-aggregate.mjs'
 import { krippendorffAlpha, pairwiseAlphas } from '../lib/krippendorff.mjs'
+import { loadUpheldSet } from '../lib/upheld.mjs'
 
 const ROOT = new URL('../../', import.meta.url)
 const rel = p => new URL(p, ROOT).pathname
@@ -19,11 +20,12 @@ const reveal = JSON.parse(await readFile(rel('evals/results/phase2b-judge/reveal
 const { prompts } = loadPhase2Prompts()
 const categoryOf = id => prompts.find(p => p.id === id)?.category ?? '?'
 const revealByCase = new Map(reveal.map(r => [r.caseId, r]))
+const { upheldSet, mode } = await loadUpheldSet({ path: rel('evals/results/phase2b-judge/omission-adjudication.json'), provisional: process.env.PROVISIONAL === '1' })
 
 const loadJudge = async name => (await readFile(rel(`evals/results/phase2b-judge/judge-${name}.jsonl`), 'utf8'))
   .trim().split('\n').map(l => JSON.parse(l))
 const judgeResults = Object.fromEntries(await Promise.all(JUDGES.map(async j => [j, await loadJudge(j)])))
-const agg = Object.fromEntries(JUDGES.map(j => [j, judgeQuality({ reveal, results: judgeResults[j], categoryOf })]))
+const agg = Object.fromEntries(JUDGES.map(j => [j, judgeQuality({ reveal, results: judgeResults[j], categoryOf, upheldSet })]))
 const perPromptByJudge = Object.fromEntries(JUDGES.map(j => [j, new Map(agg[j].perPrompt.map(p => [p.caseId, p]))]))
 
 const median = xs => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
@@ -56,7 +58,9 @@ console.log('='.repeat(92))
 console.log('PHASE 2b QUALITY VERDICT — 3-judge panel (Codex gpt-5.6-sol · Claude sonnet-5 · Ollama qwen3.8)')
 console.log('='.repeat(92))
 console.log('Q = correctness + completeness (2-10); ΔQ = Q̄(bluf) − Q̄(baseline). non-inferior (per judge, per prompt):')
-console.log(`ΔQ ≥ ${NONINFERIORITY_MARGIN} AND bluf omission NOT upheld (<2/5). PRIMARY category verdict = every judge NI on every prompt.\n`)
+console.log(`ΔQ ≥ ${NONINFERIORITY_MARGIN} AND bluf omission NOT upheld (<2/5). PRIMARY category verdict = every judge NI on every prompt.`)
+if (mode === 'PROVISIONAL') console.log('⚠ PROVISIONAL — omission adjudication NOT applied (every model flag treated as upheld). Run the adjudication for the final verdict.\n')
+else console.log('Omission gate: operator-ADJUDICATED (only upheld flags count).\n')
 
 console.log('PER CATEGORY — mean ΔQ by judge | conservative all-judges-NI (PRIMARY) | Codex-only | median-ΔQ')
 console.log('  category                 codex  sonnet  ollama   PRIMARY   codex   median')
