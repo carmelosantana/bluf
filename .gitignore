@@ -15,3 +15,6 @@ evals/results/padded-*-quarantine.jsonl
 evals/results/phase2b-judge/packet-*.txt
 evals/results/phase2b-judge/rating-data.json
 evals/results/phase2b-judge/rating-app.html
+
+# Human rater submissions (scores only) — kept local until the set is complete
+evals/results/phase2b-judge/raters/
