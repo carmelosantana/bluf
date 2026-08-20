@@ -5,18 +5,22 @@
 // PRIMARY category verdict (every judge finds every prompt non-inferior) needs all judges and is computed
 // by the caller across per-judge results; this module is the per-judge core.
 
+import { EMPTY_UPHELD } from './adjudication.mjs'
+
 export const NONINFERIORITY_MARGIN = -0.5
-export const OMISSION_UPHELD_MIN = 2 // ≥2 of 5 bluf responses flagged → omission upheld (a quality gate)
+export const OMISSION_UPHELD_MIN = 2 // ≥2 of 5 bluf responses upheld → omission upheld (a quality gate)
 
 export const qOf = score => score.correctness + score.completeness
 
-// Un-blind the 10 response scores into the two arms (each an array of {trial, Q, omission}).
-export function unblindResponses (revealEntry, responses) {
+// Un-blind the 10 response scores into the two arms. Each entry carries the raw model `omission` flag
+// AND `upheld` = (flagged AND operator-upheld) via the upheldSet keyed `${caseId}|${label}` (prereg §6/§7).
+export function unblindResponses (revealEntry, responses, upheldSet = EMPTY_UPHELD) {
   const arms = { baseline: [], bluf: [] }
   for (const [label, meta] of Object.entries(revealEntry.responses)) {
     const s = responses[label]
     if (!s) continue // partial ratings (a human who skipped items): omit un-scored responses. Model judges always score all 10, so this never drops a judge response.
-    arms[meta.condition].push({ trial: meta.trial, Q: qOf(s), correctness: s.correctness, completeness: s.completeness, omission: s.omission })
+    const upheld = s.omission === true && upheldSet.has(`${revealEntry.caseId}|${label}`)
+    arms[meta.condition].push({ trial: meta.trial, Q: qOf(s), correctness: s.correctness, completeness: s.completeness, omission: s.omission, upheld })
   }
   arms.baseline.sort((a, b) => a.trial - b.trial)
   arms.bluf.sort((a, b) => a.trial - b.trial)
@@ -34,36 +38,41 @@ export function unblindPreferences (revealEntry, preferences) {
 
 const mean = xs => xs.reduce((a, b) => a + b, 0) / xs.length
 
-// Full per-prompt quality record for ONE judge.
-export function promptQuality (revealEntry, judgeResult) {
-  const arms = unblindResponses(revealEntry, judgeResult.result.responses)
+// Full per-prompt quality record for ONE judge. `upheldSet` is the operator-upheld omission set.
+export function promptQuality (revealEntry, judgeResult, upheldSet) {
+  if (upheldSet == null) throw new Error('promptQuality requires an upheldSet (no silent auto-uphold)')
+  const arms = unblindResponses(revealEntry, judgeResult.result.responses, upheldSet)
   const qBase = arms.baseline.map(r => r.Q)
   const qBluf = arms.bluf.map(r => r.Q)
   const qBaseMean = mean(qBase)
   const qBlufMean = mean(qBluf)
   const deltaQ = qBlufMean - qBaseMean
-  const blufOmissions = arms.bluf.filter(r => r.omission).length
-  const baseOmissions = arms.baseline.filter(r => r.omission).length
-  const omissionUpheld = blufOmissions >= OMISSION_UPHELD_MIN
+  const blufOmissionsFlagged = arms.bluf.filter(r => r.omission).length
+  const blufOmissionsUpheld = arms.bluf.filter(r => r.upheld).length
+  const baseOmissionsFlagged = arms.baseline.filter(r => r.omission).length
+  const baseOmissionsUpheld = arms.baseline.filter(r => r.upheld).length
+  const omissionUpheld = blufOmissionsUpheld >= OMISSION_UPHELD_MIN
   const prefs = unblindPreferences(revealEntry, judgeResult.result.preferences)
   const tally = { bluf: 0, baseline: 0, tie: 0 }
   for (const p of prefs) tally[p.winner]++
   return {
     caseId: revealEntry.caseId,
     qBaseMean, qBlufMean, deltaQ,
-    baseOmissions, blufOmissions, omissionUpheld,
+    baseOmissionsFlagged, baseOmissionsUpheld, blufOmissionsFlagged, blufOmissionsUpheld, omissionUpheld,
     prefs: tally,
     nonInferior: deltaQ >= NONINFERIORITY_MARGIN && !omissionUpheld
   }
 }
 
 // Aggregate ONE judge over all prompts (joined to reveal + category). `categoryOf` maps caseId->category.
-export function judgeQuality ({ reveal, results, categoryOf }) {
+// `upheldSet` (operator-upheld omissions) is REQUIRED — no silent auto-uphold.
+export function judgeQuality ({ reveal, results, categoryOf, upheldSet }) {
+  if (upheldSet == null) throw new Error('judgeQuality requires an upheldSet (no silent auto-uphold)')
   const byCase = new Map(results.map(r => [r.caseId, r]))
   const perPrompt = reveal.map(entry => {
     const jr = byCase.get(entry.caseId)
     if (!jr || !jr.ok) throw new Error(`no schema-valid judge result for ${entry.caseId}`)
-    return { category: categoryOf(entry.caseId), ...promptQuality(entry, jr) }
+    return { category: categoryOf(entry.caseId), ...promptQuality(entry, jr, upheldSet) }
   })
   const byCat = new Map()
   for (const p of perPrompt) {

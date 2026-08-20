@@ -45,7 +45,7 @@ test('unblindPreferences maps A/B picks to conditions', () => {
 })
 
 test('promptQuality: ΔQ, omission gate, preference tally', () => {
-  const q = promptQuality(reveal, judgeResult(true))
+  const q = promptQuality(reveal, judgeResult(true), new Set())
   assert.equal(q.qBaseMean, 6)
   assert.equal(q.qBlufMean, 8)
   assert.equal(q.deltaQ, 2) // bluf higher → non-inferior
@@ -56,24 +56,36 @@ test('promptQuality: ΔQ, omission gate, preference tally', () => {
 test('omission upheld (>=2/5 bluf) fails non-inferiority even when ΔQ passes', () => {
   const jr = judgeResult(true)
   jr.result.responses.R6.omission = true
-  jr.result.responses.R7.omission = true // 2 bluf omissions
-  const q = promptQuality(reveal, jr)
-  assert.equal(q.blufOmissions, 2)
+  jr.result.responses.R7.omission = true // 2 bluf omissions flagged (bluf trials 1,2)
+  const upheld = new Set(['demo|R6', 'demo|R7']) // operator upheld both
+  const q = promptQuality(reveal, jr, upheld)
+  assert.equal(q.blufOmissionsUpheld, 2)
   assert.equal(q.omissionUpheld, true)
   assert.equal(q.nonInferior, false, 'a positive ΔQ cannot rescue an upheld omission')
+})
+
+test('a flagged bluf omission the operator did NOT uphold does not count', () => {
+  const jr = judgeResult(true)
+  jr.result.responses.R6.omission = true
+  jr.result.responses.R7.omission = true
+  const q = promptQuality(reveal, jr, new Set()) // nothing upheld
+  assert.equal(q.blufOmissionsFlagged, 2)
+  assert.equal(q.blufOmissionsUpheld, 0)
+  assert.equal(q.omissionUpheld, false)
+  assert.equal(q.nonInferior, true)
 })
 
 test('ΔQ below the margin fails non-inferiority', () => {
   const jr = judgeResult(true)
   // make bluf worse: Q=5 vs baseline 6 → ΔQ=-1 < -0.5
   for (const t of [1, 2, 3, 4, 5]) jr.result.responses[`R${t + 5}`] = { correctness: 2, completeness: 3, omission: false }
-  const q = promptQuality(reveal, jr)
+  const q = promptQuality(reveal, jr, new Set())
   assert.ok(q.deltaQ < NONINFERIORITY_MARGIN)
   assert.equal(q.nonInferior, false)
 })
 
 test('judgeQuality rolls up per category', () => {
-  const agg = judgeQuality({ reveal: [reveal], results: [judgeResult(true)], categoryOf: () => 'short-lookup' })
+  const agg = judgeQuality({ reveal: [reveal], results: [judgeResult(true)], categoryOf: () => 'short-lookup', upheldSet: new Set() })
   assert.equal(agg.perPrompt.length, 1)
   assert.equal(agg.categories[0].category, 'short-lookup')
   assert.equal(agg.categories[0].allNonInferior, true)
