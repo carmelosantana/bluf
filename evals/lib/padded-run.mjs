@@ -16,7 +16,7 @@ import {
   readCliVersion, settingSourcesOf, installProjectStyle, assertProjectStyleInstalled, STYLE_SHA256
 } from './runner.mjs'
 import { scheduleSweep, SCHEDULE_VERSION } from './schedule.mjs'
-import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls, transcriptRecord, densityViolation, degradedUsage } from './retest.mjs'
+import { buildPadding, paddingSha, isRetryable, backoffMs, planCalls, transcriptRecord, densityViolation } from './retest.mjs'
 
 const run = promisify(execFile)
 // This module lives in evals/lib/, so results live one directory UP at evals/results/. (A `./results/`
@@ -72,10 +72,15 @@ export async function runPaddedSweep ({
 
   // Invoke, parse, and validate usage inside ONE retry boundary. Two failure modes share the transient
   // budget: a retryable transport error (executeRaw throws), and a well-formed response whose usage
-  // telemetry came back zeroed (degradedUsage — impossible for a padded turn, so a billing glitch, not
-  // thin padding). Both retry (each retry re-bills via executeRaw → counts toward the ceiling) but stay
-  // ONE logical call. A malformed body or an errored payload remains a HARD stop, never retried — that
-  // preserves the prior out-of-retry-boundary semantics. Returns { payload, usage, provenance }.
+  // telemetry is OFF-BAND. The padding is deterministic, so every real turn reads ~121k/123k tokens;
+  // any out-of-band reading is a per-call accounting artifact, not a real density — observed as a
+  // 0-token undercount AND as a ~2x cache-write double-count (Phase 2 telemetry glitches). Each call
+  // writes a fresh CLAUDE.md in a fresh temp dir, so a retry is a clean re-measure. Both modes retry
+  // (each retry re-bills via executeRaw → counts toward the ceiling) but stay ONE logical call. A
+  // malformed body or an errored payload remains a HARD stop, never retried — that preserves the prior
+  // out-of-retry-boundary semantics. If an off-band reading PERSISTS past the budget, the last result
+  // is returned so the caller's density guard quarantines + aborts (systemic telemetry failure or real
+  // context drift — either way, stop). Returns { payload, usage, provenance }.
   async function invokeParsed (args, cwd, label, meta) {
     for (let attempt = 0; ; attempt++) {
       let stdout
@@ -98,16 +103,10 @@ export async function runPaddedSweep ({
       const usage = parseUsage(payload)
       const provenance = parseProvenance(payload, { model: MODEL })
       assertModelResolved(provenance, { model: MODEL })
-      const degraded = degradedUsage(usage)
-      if (degraded) {
-        if (attempt >= MAX_RETRIES) {
-          throw new Error(
-            `DEGRADED USAGE on ${label.trim()} persisted after ${MAX_RETRIES} retries (${attempt + 1} attempts): ${degraded}. ` +
-            `A valid response reported zero input tokens repeatedly — a systemic telemetry failure, not a one-off. ` +
-            `Aborting for investigation instead of recording a zero-token row.`)
-        }
+      const offBand = densityViolation(usage.inputTokens, { min: MIN_PADDED_INPUT, max: MAX_PADDED_INPUT })
+      if (offBand && attempt < MAX_RETRIES) {
         const wait = backoffMs(attempt)
-        console.log(`    ${label}: degraded usage telemetry (${degraded}); retry ${attempt + 1}/${MAX_RETRIES} in ${wait}ms`)
+        console.log(`    ${label}: off-band density ${usage.inputTokens} (${offBand}); retry ${attempt + 1}/${MAX_RETRIES} in ${wait}ms`)
         await sleep(wait)
         continue
       }

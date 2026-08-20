@@ -145,14 +145,3 @@ export function densityViolation (inputTokens, { min, max, isFirst = false } = {
   if (inputTokens > max) return 'input above the density ceiling (possible context drift or cache double-count)'
   return null
 }
-
-// A padded turn ALWAYS reads the ~120k-token CLAUDE.md, so an exactly-zero input-token reading cannot
-// be a real density measurement — it means the CLI's usage telemetry did not populate on an otherwise
-// well-formed response (Phase 2b call 12: opus-5 resolved, 3564 chars of output, yet every token field
-// was 0). That is a transient billing/accounting glitch, retried within the transient budget rather
-// than aborting a whole sweep. Deliberately narrow: a genuine NONZERO-but-low count is a real thin-
-// padding fault and must fall through to densityViolation's hard abort, and a non-finite count likewise
-// stays a hard abort — so degradedUsage claims ONLY exact zero. Returns a reason string, else null.
-export function degradedUsage (usage) {
-  return usage && usage.inputTokens === 0 ? 'zero input tokens — usage telemetry did not populate' : null
-}

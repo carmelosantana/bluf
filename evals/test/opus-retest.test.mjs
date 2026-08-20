@@ -10,7 +10,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildPadding, paddingSha, isRetryable, backoffMs, planCalls,
-  assertPaddingTarget, PADDING_CHAR_MIN, PADDING_CHAR_MAX, transcriptRecord, densityViolation, degradedUsage
+  assertPaddingTarget, PADDING_CHAR_MIN, PADDING_CHAR_MAX, transcriptRecord, densityViolation
 } from '../lib/retest.mjs'
 
 test('padding is deterministic — the dense room is byte-reproducible', () => {
@@ -160,28 +160,18 @@ test('densityViolation validates EVERY call against the band, flagging first-cal
   assert.equal(densityViolation(120_000, band), null)
   assert.equal(densityViolation(100_000, band), null)
   assert.equal(densityViolation(200_000, band), null)
-  // above ceiling → the Phase 2a anomaly (242k, 246k) that the first-call-only guard let through
-  assert.match(densityViolation(242_213, band), /ceiling/)
+  // above ceiling → the Phase 2 telemetry glitch (242k, 246k): a ~2x cache-write double-count. The
+  // runner RETRIES any off-band reading within budget rather than aborting the sweep on a one-off.
+  assert.match(densityViolation(242_208, band), /ceiling/) // Phase 2b call 41: cacheWrite doubled
   assert.match(densityViolation(246_284, band), /ceiling/)
+  // the mirror glitch — a 0-token undercount (Phase 2b call 12: 0 tokens yet 3564 chars) is a floor
+  // breach, so the same off-band retry path handles both the under- and over-count telemetry failures.
+  assert.match(densityViolation(0, band), /below the density floor/)
   // below floor: a mid-sweep breach vs the first-call "padding never loaded" case
   assert.match(densityViolation(3_600, { ...band, isFirst: false }), /below the density floor/)
   assert.match(densityViolation(3_600, { ...band, isFirst: true }), /padding did not load/)
   // a garbage count is a violation, never silently in-band
   assert.match(densityViolation(NaN, band), /not a finite number/)
-})
-
-test('degradedUsage flags ONLY a zero-token reading (telemetry glitch), not a real low density', () => {
-  // A padded turn always reads the ~120k-token CLAUDE.md, so exactly-zero input tokens cannot be a
-  // real measurement: the CLI usage telemetry did not populate on an otherwise-valid response. That
-  // is retried within budget, NOT treated as a density abort (Phase 2b call 12: 0 tokens, 3564 chars).
-  assert.match(degradedUsage({ inputTokens: 0 }), /zero input tokens/)
-  // A genuine nonzero-but-low reading is a REAL methodology fault (thin padding) — NOT degraded; it
-  // must fall through to densityViolation's hard abort, so degradedUsage returns null here.
-  assert.equal(degradedUsage({ inputTokens: 3_600 }), null)
-  assert.equal(degradedUsage({ inputTokens: 120_000 }), null)
-  // Non-finite stays a hard density abort (unchanged), so degradedUsage does NOT claim it.
-  assert.equal(degradedUsage({ inputTokens: NaN }), null)
-  assert.equal(degradedUsage(null), null)
 })
 
 test('planCalls is cases × conditions × trials — the number the dry run must advertise', () => {
