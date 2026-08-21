@@ -1,0 +1,393 @@
+{
+  "generatedFrom": {
+    "worksheetSha256": "1a700c8e1c15dd042aa5d29334f82abac403f9a63626e77cebcddcb6427dc737",
+    "note": "blinded operator adjudication of load-bearing-omission flags; only upheld flags count (prereg §6/§7). Performed post-scoring, blinded to arm, uniformly over all flagged responses."
+  },
+  "rulings": [
+    {
+      "adjId": "9bdffb8b7082",
+      "caseId": "db-migrations",
+      "label": "R10",
+      "condition": "bluf",
+      "trial": 1,
+      "upheld": false
+    },
+    {
+      "adjId": "b6b4ae339042",
+      "caseId": "hydration-mismatch",
+      "label": "R4",
+      "condition": "baseline",
+      "trial": 2,
+      "upheld": false
+    },
+    {
+      "adjId": "f258627c3de3",
+      "caseId": "node-test-runner",
+      "label": "R2",
+      "condition": "baseline",
+      "trial": 1,
+      "upheld": true
+    },
+    {
+      "adjId": "badbcd83ddfb",
+      "caseId": "port-default",
+      "label": "R8",
+      "condition": "bluf",
+      "trial": 1,
+      "upheld": false
+    },
+    {
+      "adjId": "aabfb3deddcd",
+      "caseId": "401-no-evidence",
+      "label": "R5",
+      "condition": "baseline",
+      "trial": 3,
+      "upheld": false
+    },
+    {
+      "adjId": "5d568b8de228",
+      "caseId": "health-endpoint",
+      "label": "R10",
+      "condition": "baseline",
+      "trial": 3,
+      "upheld": false
+    },
+    {
+      "adjId": "d66c90c81901",
+      "caseId": "actions-workflow",
+      "label": "R6",
+      "condition": "bluf",
+      "trial": 1,
+      "upheld": true
+    },
+    {
+      "adjId": "eea5c10755ac",
+      "caseId": "class-to-hooks",
+      "label": "R8",
+      "condition": "bluf",
+      "trial": 5,
+      "upheld": false
+    },
+    {
+      "adjId": "4b1b17e8f80b",
+      "caseId": "port-default",
+      "label": "R9",
+      "condition": "baseline",
+      "trial": 5,
+      "upheld": false
+    },
+    {
+      "adjId": "c953cf17a856",
+      "caseId": "port-default",
+      "label": "R3",
+      "condition": "bluf",
+      "trial": 2,
+      "upheld": false
+    },
+    {
+      "adjId": "fcb6ef3365ba",
+      "caseId": "cjs-to-esm",
+      "label": "R6",
+      "condition": "baseline",
+      "trial": 2,
+      "upheld": true
+    },
+    {
+      "adjId": "52004d151b29",
+      "caseId": "401-no-evidence",
+      "label": "R7",
+      "condition": "baseline",
+      "trial": 5,
+      "upheld": false
+    },
+    {
+      "adjId": "c5dda2d41ae6",
+      "caseId": "cjs-to-esm",
+      "label": "R4",
+      "condition": "baseline",
+      "trial": 3,
+      "upheld": true
+    },
+    {
+      "adjId": "93bbd6fd5e5a",
+      "caseId": "docker-cache-miss",
+      "label": "R4",
+      "condition": "bluf",
+      "trial": 4,
+      "upheld": false
+    },
+    {
+      "adjId": "5ee6aa30919e",
+      "caseId": "ci-exit-1",
+      "label": "R9",
+      "condition": "baseline",
+      "trial": 2,
+      "upheld": true
+    },
+    {
+      "adjId": "e126fd4d434b",
+      "caseId": "401-no-evidence",
+      "label": "R3",
+      "condition": "baseline",
+      "trial": 2,
+      "upheld": false
+    },
+    {
+      "adjId": "3328e7a9ab20",
+      "caseId": "callbacks-to-async",
+      "label": "R2",
+      "condition": "baseline",
+      "trial": 5,
+      "upheld": true
+    },
+    {
+      "adjId": "241408b60a25",
+      "caseId": "callbacks-to-async",
+      "label": "R5",
+      "condition": "baseline",
+      "trial": 2,
+      "upheld": true
+    },
+    {
+      "adjId": "4e81c4264c07",
+      "caseId": "docker-cache-miss",
+      "label": "R9",
+      "condition": "baseline",
+      "trial": 1,
+      "upheld": false
+    },
+    {
+      "adjId": "8b77457fca3e",
+      "caseId": "port-default",
+      "label": "R4",
+      "condition": "bluf",
+      "trial": 3,
+      "upheld": false
+    },
+    {
+      "adjId": "50af09e6c334",
+      "caseId": "actions-workflow",
+      "label": "R10",
+      "condition": "baseline",
+      "trial": 4,
+      "upheld": true
+    },
+    {
+      "adjId": "9d7f1f2fd354",
+      "caseId": "ci-exit-1",
+      "label": "R10",
+      "condition": "baseline",
+      "trial": 1,
+      "upheld": true
+    },
+    {
+      "adjId": "3e03c77c2180",
+      "caseId": "ci-exit-1",
+      "label": "R2",
+      "condition": "bluf",
+      "trial": 2,
+      "upheld": true
+    },
+    {
+      "adjId": "304d16716b71",
+      "caseId": "actions-workflow",
+      "label": "R9",
+      "condition": "baseline",
+      "trial": 2,
+      "upheld": true
+    },
+    {
+      "adjId": "efc3c018e9be",
+      "caseId": "cjs-to-esm",
+      "label": "R9",
+      "condition": "baseline",
+      "trial": 1,
+      "upheld": true
+    },
+    {
+      "adjId": "e884fcea324c",
+      "caseId": "ci-exit-1",
+      "label": "R5",
+      "condition": "bluf",
+      "trial": 4,
+      "upheld": true
+    },
+    {
+      "adjId": "b89e1dfb620b",
+      "caseId": "actions-workflow",
+      "label": "R4",
+      "condition": "bluf",
+      "trial": 4,
+      "upheld": true
+    },
+    {
+      "adjId": "87887097b468",
+      "caseId": "port-default",
+      "label": "R6",
+      "condition": "bluf",
+      "trial": 5,
+      "upheld": false
+    },
+    {
+      "adjId": "38ca9b049490",
+      "caseId": "class-to-hooks",
+      "label": "R1",
+      "condition": "baseline",
+      "trial": 5,
+      "upheld": true
+    },
+    {
+      "adjId": "2e3a8812d03e",
+      "caseId": "401-no-evidence",
+      "label": "R4",
+      "condition": "baseline",
+      "trial": 4,
+      "upheld": false
+    },
+    {
+      "adjId": "f507bd28bf6b",
+      "caseId": "hydration-mismatch",
+      "label": "R1",
+      "condition": "baseline",
+      "trial": 5,
+      "upheld": false
+    },
+    {
+      "adjId": "bffa168721a9",
+      "caseId": "401-no-evidence",
+      "label": "R6",
+      "condition": "bluf",
+      "trial": 1,
+      "upheld": false
+    },
+    {
+      "adjId": "47be001d3491",
+      "caseId": "cjs-to-esm",
+      "label": "R5",
+      "condition": "baseline",
+      "trial": 5,
+      "upheld": true
+    },
+    {
+      "adjId": "07166c57fd9e",
+      "caseId": "callbacks-to-async",
+      "label": "R9",
+      "condition": "baseline",
+      "trial": 3,
+      "upheld": true
+    },
+    {
+      "adjId": "56c7ea43aa9f",
+      "caseId": "ci-exit-1",
+      "label": "R6",
+      "condition": "baseline",
+      "trial": 4,
+      "upheld": false
+    },
+    {
+      "adjId": "5a277c8aecb3",
+      "caseId": "cjs-to-esm",
+      "label": "R8",
+      "condition": "bluf",
+      "trial": 5,
+      "upheld": false
+    },
+    {
+      "adjId": "7577fdb579c8",
+      "caseId": "callbacks-to-async",
+      "label": "R3",
+      "condition": "bluf",
+      "trial": 2,
+      "upheld": true
+    },
+    {
+      "adjId": "8028caa85c90",
+      "caseId": "callbacks-to-async",
+      "label": "R4",
+      "condition": "bluf",
+      "trial": 4,
+      "upheld": true
+    },
+    {
+      "adjId": "c576707253a2",
+      "caseId": "ci-exit-1",
+      "label": "R3",
+      "condition": "bluf",
+      "trial": 3,
+      "upheld": false
+    },
+    {
+      "adjId": "6debb59b3a0d",
+      "caseId": "401-no-evidence",
+      "label": "R9",
+      "condition": "baseline",
+      "trial": 1,
+      "upheld": true
+    },
+    {
+      "adjId": "645c6b438aef",
+      "caseId": "port-default",
+      "label": "R7",
+      "condition": "bluf",
+      "trial": 4,
+      "upheld": false
+    },
+    {
+      "adjId": "2360e3c41344",
+      "caseId": "actions-workflow",
+      "label": "R5",
+      "condition": "baseline",
+      "trial": 5,
+      "upheld": true
+    },
+    {
+      "adjId": "82a0a6e94ea6",
+      "caseId": "actions-workflow",
+      "label": "R2",
+      "condition": "bluf",
+      "trial": 3,
+      "upheld": true
+    },
+    {
+      "adjId": "7e430460dd0e",
+      "caseId": "callbacks-to-async",
+      "label": "R8",
+      "condition": "bluf",
+      "trial": 3,
+      "upheld": true
+    },
+    {
+      "adjId": "2db840b8edef",
+      "caseId": "ci-exit-1",
+      "label": "R7",
+      "condition": "bluf",
+      "trial": 1,
+      "upheld": false
+    },
+    {
+      "adjId": "71bc9d05ae07",
+      "caseId": "ci-exit-1",
+      "label": "R4",
+      "condition": "bluf",
+      "trial": 5,
+      "upheld": false
+    },
+    {
+      "adjId": "b18814803836",
+      "caseId": "actions-workflow",
+      "label": "R8",
+      "condition": "baseline",
+      "trial": 1,
+      "upheld": true
+    }
+  ],
+  "counts": {
+    "total": 47,
+    "upheld": 24,
+    "overturned": 23,
+    "byArm": {
+      "baseline": 16,
+      "bluf": 8
+    }
+  }
+}
