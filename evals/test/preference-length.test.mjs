@@ -12,13 +12,16 @@ test('terciles splits into two cut points', () => {
   assert.ok(a < b)
 })
 
-test('perPairRecords signs the winner and computes bluf-minus-baseline chars', () => {
+test('perPairRecords signs the winner and computes bluf-minus-baseline chars and ΔQ', () => {
   const reveal = [{ caseId: 'p1', responses: {}, pairs: [
     { label: 'P1', trial: 1, A: { condition: 'bluf', label: 'R1' }, B: { condition: 'baseline', label: 'R2' } }
   ] }]
-  // Judge picked A (=bluf) → winnerSign +1
-  const judgeResult = { caseId: 'p1', result: { preferences: { P1: { preference: 'A' } } } }
+  // Judge picked A (=bluf) → winnerSign +1; bluf R1 Q=8, baseline R2 Q=6 → ΔQ +2
+  const judgeResult = { caseId: 'p1', result: {
+    preferences: { P1: { preference: 'A' } },
+    responses: { R1: { correctness: 4, completeness: 4 }, R2: { correctness: 3, completeness: 3 } }
+  } }
   const charsByKey = new Map([['p1|bluf|1', 100], ['p1|baseline|1', 300]])
   const recs = perPairRecords({ reveal, judgeResult, charsByKey })
-  assert.deepEqual(recs, [{ trial: 1, winnerSign: 1, dChars: -200 }])
+  assert.deepEqual(recs, [{ trial: 1, winnerSign: 1, dChars: -200, dQ: 2 }])
 })

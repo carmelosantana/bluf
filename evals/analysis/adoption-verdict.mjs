@@ -14,6 +14,7 @@ import { loadPhase2Prompts } from '../lib/phase2.mjs'
 import { perPrompt, byCategory } from './padded-retest.mjs'
 import { judgeQuality } from '../lib/judge-aggregate.mjs'
 import { loadUpheldSet } from '../lib/upheld.mjs'
+import { flaggedResponses } from '../lib/adjudication.mjs'
 
 const ROOT = new URL('../../', import.meta.url)
 const rel = p => new URL(p, ROOT).pathname
@@ -23,7 +24,9 @@ const load = async p => (await readFile(rel(p), 'utf8')).trim().split('\n').map(
 const base = await load('evals/results/padded-phase2-claude-opus-5-baseline.jsonl')
 const bluf = await load('evals/results/padded-phase2-claude-opus-5-bluf.jsonl')
 const reveal = JSON.parse(await readFile(rel('evals/results/phase2b-judge/reveal.json'), 'utf8'))
-const { upheldSet, mode } = await loadUpheldSet({ path: rel('evals/results/phase2b-judge/omission-adjudication.json'), provisional: process.env.PROVISIONAL === '1' })
+const judgeResultsByModel = Object.fromEntries(await Promise.all(MODELS.map(async m => [m, await load(`evals/results/phase2b-judge/judge-${m}.jsonl`)])))
+const expectedKeys = new Set(flaggedResponses({ reveal, judgeResultsByModel }).map(f => `${f.caseId}|${f.label}`))
+const { upheldSet, mode } = await loadUpheldSet({ path: rel('evals/results/phase2b-judge/omission-adjudication.json'), provisional: process.env.PROVISIONAL === '1', expectedKeys })
 const { prompts } = loadPhase2Prompts()
 const categoryOf = id => prompts.find(p => p.id === id)?.category ?? '?'
 
@@ -33,7 +36,7 @@ const tokCat = new Map(byCategory(perPrompt(base, bluf, 'outputTokens')).map(c =
 
 // Quality: conservative-unanimous non-inferiority per category, across the 3 model judges.
 const aggByJudge = {}
-for (const m of MODELS) aggByJudge[m] = judgeQuality({ reveal, results: await load(`evals/results/phase2b-judge/judge-${m}.jsonl`), categoryOf, upheldSet })
+for (const m of MODELS) aggByJudge[m] = judgeQuality({ reveal, results: judgeResultsByModel[m], categoryOf, upheldSet })
 const perPromptNI = Object.fromEntries(MODELS.map(m => [m, new Map(aggByJudge[m].perPrompt.map(p => [p.caseId, p.nonInferior]))]))
 
 const categories = [...new Set(prompts.map(p => p.category))]

@@ -12,6 +12,7 @@ import { unblindResponses, promptQuality } from '../lib/judge-aggregate.mjs'
 import { krippendorffAlpha } from '../lib/krippendorff.mjs'
 import { loadPhase2Prompts } from '../lib/phase2.mjs'
 import { loadUpheldSet } from '../lib/upheld.mjs'
+import { flaggedResponses } from '../lib/adjudication.mjs'
 
 const ROOT = new URL('../../', import.meta.url)
 const rel = p => new URL(p, ROOT).pathname
@@ -21,7 +22,10 @@ const MODELS = ['codex', 'sonnet', 'ollama']
 const reveal = JSON.parse(await readFile(rel('evals/results/phase2b-judge/reveal.json'), 'utf8'))
 const revealByCase = new Map(reveal.map(r => [r.caseId, r]))
 const ratingData = JSON.parse(await readFile(rel('evals/results/phase2b-judge/rating-data.json'), 'utf8'))
-const { upheldSet } = await loadUpheldSet({ path: rel('evals/results/phase2b-judge/omission-adjudication.json'), provisional: process.env.PROVISIONAL === '1' })
+const judgeResultsByModel = Object.fromEntries(await Promise.all(MODELS.map(async m =>
+  [m, (await readFile(rel(`evals/results/phase2b-judge/judge-${m}.jsonl`), 'utf8')).trim().split('\n').map(l => JSON.parse(l))])))
+const expectedKeys = new Set(flaggedResponses({ reveal, judgeResultsByModel }).map(f => `${f.caseId}|${f.label}`))
+const { upheldSet } = await loadUpheldSet({ path: rel('evals/results/phase2b-judge/omission-adjudication.json'), provisional: process.env.PROVISIONAL === '1', expectedKeys })
 const sample = ratingData.samples.human12
 const { prompts } = loadPhase2Prompts()
 const categoryOf = id => prompts.find(p => p.id === id)?.category ?? '?'

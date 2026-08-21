@@ -25,3 +25,23 @@ test('reads the record when present', async () => {
   assert.equal(upheldSet.has('p1|R2'), false)
   await rm(dir, { recursive: true, force: true })
 })
+
+test('fails closed when expectedKeys are given and the record is incomplete (e.g. {})', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'adj-'))
+  const p = join(dir, 'omission-adjudication.json')
+  await writeFile(p, JSON.stringify({}))
+  const expectedKeys = new Set(['p1|R1', 'p1|R2'])
+  await assert.rejects(() => loadUpheldSet({ path: p, provisional: false, expectedKeys }), /does not cover the exact flagged set/)
+  await rm(dir, { recursive: true, force: true })
+})
+
+test('passes when the record covers exactly the expected flagged set', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'adj-'))
+  const p = join(dir, 'omission-adjudication.json')
+  await writeFile(p, JSON.stringify({ rulings: [{ caseId: 'p1', label: 'R1', upheld: true }, { caseId: 'p1', label: 'R2', upheld: false }] }))
+  const expectedKeys = new Set(['p1|R1', 'p1|R2'])
+  const { upheldSet, mode } = await loadUpheldSet({ path: p, provisional: false, expectedKeys })
+  assert.equal(mode, 'ADJUDICATED')
+  assert.equal(upheldSet.has('p1|R1'), true)
+  await rm(dir, { recursive: true, force: true })
+})

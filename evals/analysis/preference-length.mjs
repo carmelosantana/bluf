@@ -28,16 +28,23 @@ export function terciles (values) {
   return [at(1 / 3), at(2 / 3)]
 }
 
+const qOf = s => s.correctness + s.completeness
+
 export function perPairRecords ({ reveal, judgeResult, charsByKey }) {
   const prefs = judgeResult.result.preferences
+  const resp = judgeResult.result.responses
   const entry = reveal.find(r => r.caseId === judgeResult.caseId)
   return entry.pairs.map(p => {
     const pick = prefs[p.label].preference // 'A' | 'tie' | 'B'
     const winner = pick === 'tie' ? 'tie' : (pick === 'A' ? p.A.condition : p.B.condition)
     const winnerSign = winner === 'bluf' ? 1 : winner === 'baseline' ? -1 : 0
+    const blufLabel = p.A.condition === 'bluf' ? p.A.label : p.B.label
+    const baseLabel = p.A.condition === 'baseline' ? p.A.label : p.B.label
     const blufChars = charsByKey.get(`${entry.caseId}|bluf|${p.trial}`)
     const baseChars = charsByKey.get(`${entry.caseId}|baseline|${p.trial}`)
-    return { trial: p.trial, winnerSign, dChars: blufChars - baseChars }
+    // checklist ΔQ for this exact pair (same judge): Q(bluf) − Q(baseline)
+    const dQ = qOf(resp[blufLabel]) - qOf(resp[baseLabel])
+    return { trial: p.trial, winnerSign, dChars: blufChars - baseChars, dQ }
   })
 }
 
@@ -60,7 +67,11 @@ async function main () {
     const recs = rows.flatMap(jr => perPairRecords({ reveal, judgeResult: jr, charsByKey }))
     const tally = { bluf: 0, tie: 0, base: 0 }
     for (const r of recs) tally[r.winnerSign === 1 ? 'bluf' : r.winnerSign === -1 ? 'base' : 'tie']++
-    const corr = pearson(recs.map(r => r.dChars), recs.map(r => r.winnerSign))
+    const corrLen = pearson(recs.map(r => r.dChars), recs.map(r => r.winnerSign))
+    const corrQ = pearson(recs.map(r => r.dQ), recs.map(r => r.winnerSign))
+    // Among non-ties, how often did the LONGER answer win?
+    const nonTies = recs.filter(r => r.winnerSign !== 0)
+    const longerWon = nonTies.filter(r => (r.winnerSign > 0 && r.dChars > 0) || (r.winnerSign < 0 && r.dChars < 0)).length
     const [t1, t2] = terciles(recs.map(r => Math.abs(r.dChars)))
     const bins = [[-Infinity, t1], [t1, t2], [t2, Infinity]]
     const binRate = bins.map(([lo, hi]) => {
@@ -69,11 +80,14 @@ async function main () {
       return inBin.length ? `${baseWins}/${inBin.length} (${(100 * baseWins / inBin.length).toFixed(0)}%)` : 'n/a'
     })
     console.log(`${j.padEnd(8)} tally bluf ${tally.bluf} / tie ${tally.tie} / base ${tally.base} of 150`)
-    console.log(`         corr(pref, dChars) = ${corr.toFixed(3)}  (positive = judge prefers the LONGER answer)`)
+    console.log(`         among non-ties, LONGER answer won ${longerWon}/${nonTies.length} (${(100 * longerWon / nonTies.length).toFixed(0)}%)`)
+    console.log(`         corr(pref, Δchars) = ${corrLen.toFixed(3)} | corr(pref, checklist ΔQ) = ${corrQ.toFixed(3)}`)
     console.log(`         baseline-pref rate by |Δchars| tercile: small ${binRate[0]} | mid ${binRate[1]} | large ${binRate[2]}\n`)
   }
-  console.log('READ AS BIAS EVIDENCE, NOT A VERDICT. If baseline preference concentrates in the large-gap')
-  console.log('tercile and fades in the small-gap tercile, the tally is length-confounded (verbosity bias).')
+  console.log('ASSOCIATION, NOT CAUSATION. Preference is strongly ASSOCIATED with relative length; because')
+  console.log('length and substantive content co-vary, this cannot determine how much reflects verbosity bias')
+  console.log('vs genuine perceived usefulness/completeness. corr(pref, ΔQ) is shown so both associations are')
+  console.log('visible. Reported as a secondary endpoint, never a verdict.')
 }
 
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) main()
