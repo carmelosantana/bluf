@@ -35,6 +35,19 @@ test('fails closed when expectedKeys are given and the record is incomplete (e.g
   await rm(dir, { recursive: true, force: true })
 })
 
+test('fails closed on a conflicting duplicate ruling for the same response', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'adj-'))
+  const p = join(dir, 'omission-adjudication.json')
+  await writeFile(p, JSON.stringify({ rulings: [
+    { caseId: 'p1', label: 'R1', upheld: false },
+    { caseId: 'p1', label: 'R1', upheld: true },
+    { caseId: 'p1', label: 'R2', upheld: false }
+  ] }))
+  const expectedKeys = new Set(['p1|R1', 'p1|R2'])
+  await assert.rejects(() => loadUpheldSet({ path: p, provisional: false, expectedKeys }), /duplicate ruling/)
+  await rm(dir, { recursive: true, force: true })
+})
+
 test('passes when the record covers exactly the expected flagged set', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'adj-'))
   const p = join(dir, 'omission-adjudication.json')

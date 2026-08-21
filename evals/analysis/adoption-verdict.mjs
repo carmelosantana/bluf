@@ -71,5 +71,6 @@ console.log(`  NEUTRAL (${tally.NEUTRAL.length}): ${tally.NEUTRAL.join(', ') || 
 console.log(`  CAUTION (${tally.CAUTION.length}): ${tally.CAUTION.join(', ') || '—'}`)
 console.log('\nQuality bar here is CONSERVATIVE (any judge failing any prompt fails the category). Under the')
 console.log('Codex-primary and median SENSITIVITY rules more categories pass — see quality-verdict.mjs.')
-console.log('Multi-step note: 3 of its 5 prompts are multi-file transformations; cjs-to-esm is an APPARENT')
-console.log('length regression driven by baseline agentic stubbing, not a confirmed one (Sol Q4).')
+console.log('Multi-step note: 3 of its 5 prompts are multi-file transformations; cjs-to-esm is a CONFIRMED')
+console.log('per-prompt token regression (+100%, 1/5 wins, prereg §7) — baseline agentic stubbing explains')
+console.log('WHY but does not reclassify it; the transformation class does NOT replicate (1/3 < 2/3).')

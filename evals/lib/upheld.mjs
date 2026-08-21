@@ -19,6 +19,14 @@ export async function loadUpheldSet ({ path, provisional = false, expectedKeys =
   // every un-ruled flag as overturned). When the caller supplies the exact flagged-response set, the
   // record's rulings must match it one-for-one, and every upheld value must be boolean.
   if (expectedKeys) {
+    // Reject duplicate keys BEFORE collapsing into a Map — otherwise a conflicting pair (false + true for
+    // the same response) would pass exact-set validation while parseUpheldSet silently applies the true one.
+    const seen = new Set()
+    for (const r of (rec.rulings ?? [])) {
+      const k = `${r.caseId}|${r.label}`
+      if (seen.has(k)) throw new Error(`adjudication record has a duplicate ruling for ${k}`)
+      seen.add(k)
+    }
     const ruled = new Map((rec.rulings ?? []).map(r => [`${r.caseId}|${r.label}`, r.upheld]))
     for (const [k, v] of ruled) if (typeof v !== 'boolean') throw new Error(`adjudication ruling ${k} has non-boolean upheld ${JSON.stringify(v)}`)
     const missing = [...expectedKeys].filter(k => !ruled.has(k))

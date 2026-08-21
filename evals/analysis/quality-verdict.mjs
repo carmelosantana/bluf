@@ -99,7 +99,8 @@ for (const id of failers) {
   console.log(`  ${id.padEnd(20)}${categoryOf(id).padEnd(24)} ${per}`)
 }
 
-console.log('\nNOTE (Sol Q4): read WITH the length report + stub prevalence. A positive ΔQ where baseline stubbed')
-console.log('out agentically (e.g. cjs-to-esm) means BLUF answered better; cjs-to-esm is an APPARENT length')
-console.log('regression, not a confirmed one. LLM length-preference inflates baseline preference counts —')
-console.log('report preferences per judge, never as the sole verdict. sonnet ran at default temp (CLI has no flag).')
+console.log('\nNOTE: read WITH the length report + stub prevalence. cjs-to-esm is a CONFIRMED per-prompt token')
+console.log('regression (+100% tokens, 1/5 wins, prereg §7); baseline agentic stubbing is an interpretation of')
+console.log('WHY, not a reclassification. Preference is a secondary endpoint, strongly ASSOCIATED with relative')
+console.log('length (association, not diagnosed bias) — report per judge, never as a verdict. See preference-')
+console.log('length.mjs + phase2b-uncertainty.mjs. sonnet ran at default temp (CLI has no flag) — a deviation.')

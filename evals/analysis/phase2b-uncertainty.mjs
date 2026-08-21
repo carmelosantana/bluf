@@ -2,12 +2,12 @@
 // Phase 2b UNCERTAINTY PACKAGE (preregistration §6/§7) — the interval/robustness analyses the point-
 // estimate verdict is reported alongside. Deterministic: every bootstrap is seeded from the manifest
 // randomizationSeed (evals/lib/bootstrap.mjs), so all CIs reproduce exactly. Reads committed data only;
-// spends nothing. Contents:
-//   1. Length — per-category mean Δ (chars, tokens) with prompt-bootstrap 95% CIs; balanced-index CI.
-//   2. Paired hierarchical-bootstrap stability of the balanced index (resample prompts, then trials).
+// spends nothing. Bootstrap resamples = 10,000 (frozen spec). Contents:
+//   1. Length — per-category + balanced Δ (chars, tokens), MEAN and MEDIAN, each with prompt-bootstrap CIs.
+//   2. Paired hierarchical-bootstrap stability (resample prompts, then trials) — per category AND balanced.
 //   3. Per-prompt ΔQ paired-bootstrap 95% CIs per judge; lower bound < −0.5 FLAGGED (prereg §7).
-//   4. Krippendorff α 95% CIs (bootstrap over the 300 response items) per dimension.
-//   5. legacy-12 vs new-18 selection-bias split — length + per-judge mean ΔQ.
+//   4. Krippendorff α 95% CIs — 3-way AND per judge pair, per dimension (bootstrap over 300 items).
+//   5. legacy-12 vs new-18 selection-bias split — length (chars AND tokens) + per-judge mean ΔQ.
 //   6. Raw trial values — pointer + integrity counts.
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -21,8 +21,9 @@ import { makeRng, bootstrapCI } from '../lib/bootstrap.mjs'
 const ROOT = new URL('../../', import.meta.url)
 const rel = p => new URL(p, ROOT).pathname
 const JUDGES = ['codex', 'sonnet', 'ollama']
-const ITERS = 5000
+const ITERS = 10000
 const mean = v => v.reduce((a, b) => a + b, 0) / v.length
+const median = v => { const s = [...v].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
 const fmtPct = x => `${x >= 0 ? '+' : ''}${x.toFixed(1)}%`
 const fmt2 = x => `${x >= 0 ? '+' : ''}${x.toFixed(2)}`
 const resampleIdx = (n, rng) => Array.from({ length: n }, () => (rng() * n) | 0)
@@ -54,36 +55,44 @@ async function main () {
   console.log('PHASE 2b UNCERTAINTY PACKAGE (prereg §6/§7) — 95% percentile bootstrap CIs, ' + ITERS + ' iters, seeded')
   console.log('='.repeat(94))
 
-  // ---- 1. Length: per-category mean Δ with prompt-bootstrap CIs; balanced index ----
+  // ---- 1. Length: per-category + balanced Δ, MEAN and MEDIAN, with prompt-bootstrap CIs ----
   for (const field of ['chars', 'outputTokens']) {
     const byId = new Map(perPrompt(base, bluf, field).map(r => [r.caseId, r.deltaMeanPct]))
-    console.log(`\n### Length — ${field === 'chars' ? 'visible characters' : 'billed output tokens'}: per-category mean Δ [95% CI over prompts]`)
-    for (const cat of categories) {
-      const deltas = prompts.filter(p => p.category === cat).map(p => byId.get(p.id))
-      const ci = bootstrapCI(deltas, mean, { iters: ITERS, seed, namespace: `len|${field}|${cat}` })
-      console.log(`  ${cat.padEnd(24)} ${fmtPct(ci.point).padStart(7)}  [${fmtPct(ci.lo)}, ${fmtPct(ci.hi)}]`)
+    console.log(`\n### Length — ${field === 'chars' ? 'visible characters' : 'billed output tokens'}: per-category Δ [95% CI over prompts] — mean | median`)
+    const line = (label, ids) => {
+      const deltas = ids.map(id => byId.get(id))
+      const cm = bootstrapCI(deltas, mean, { iters: ITERS, seed, namespace: `len|${field}|${label}|mean` })
+      const cd = bootstrapCI(deltas, median, { iters: ITERS, seed, namespace: `len|${field}|${label}|med` })
+      console.log(`  ${label.padEnd(24)} ${fmtPct(cm.point).padStart(7)} [${fmtPct(cm.lo)}, ${fmtPct(cm.hi)}]  |  ${fmtPct(cd.point).padStart(7)} [${fmtPct(cd.lo)}, ${fmtPct(cd.hi)}]`)
     }
-    const bi = bootstrapCI(prompts.map(p => byId.get(p.id)), mean, { iters: ITERS, seed, namespace: `len|${field}|balanced` })
-    console.log(`  ${'BALANCED INDEX'.padEnd(24)} ${fmtPct(bi.point).padStart(7)}  [${fmtPct(bi.lo)}, ${fmtPct(bi.hi)}]`)
+    for (const cat of categories) line(cat, prompts.filter(p => p.category === cat).map(p => p.id))
+    line('BALANCED INDEX', prompts.map(p => p.id))
   }
 
-  // ---- 2. Paired hierarchical-bootstrap stability of the balanced index ----
-  console.log('\n### Balanced-index stability — paired HIERARCHICAL bootstrap (resample prompts, then trials)')
-  for (const field of ['chars', 'outputTokens']) {
-    const ids = prompts.map(p => p.id)
+  // ---- 2. Paired hierarchical-bootstrap stability (resample prompts, then trials) — per category + balanced ----
+  const hierCI = (ids, field, ns) => {
     const trials = new Map(ids.map(id => [id, { b: trialArrays(base, id, field), f: trialArrays(bluf, id, field) }]))
-    const rng = makeRng(seed, `hier|${field}`)
+    const rng = makeRng(seed, ns)
     const stats = []
     for (let it = 0; it < ITERS; it++) {
-      const promptPick = resampleIdx(ids.length, rng)
-      stats.push(mean(promptPick.map(pi => { const t = trials.get(ids[pi]); return pairedDeltaPct(t.b, t.f, resampleIdx(t.b.length, rng)) })))
+      const pick = resampleIdx(ids.length, rng)
+      stats.push(mean(pick.map(pi => { const t = trials.get(ids[pi]); return pairedDeltaPct(t.b, t.f, resampleIdx(t.b.length, rng)) })))
     }
     stats.sort((a, b) => a - b)
     const point = mean(ids.map(id => { const t = trials.get(id); return pairedDeltaPct(t.b, t.f, t.b.map((_, i) => i)) }))
-    console.log(`  ${field === 'chars' ? 'visible characters' : 'billed output tokens'}: ${fmtPct(point)}  [${fmtPct(pctl(stats, 0.025))}, ${fmtPct(pctl(stats, 0.975))}]`)
+    return { point, lo: pctl(stats, 0.025), hi: pctl(stats, 0.975) }
+  }
+  for (const field of ['chars', 'outputTokens']) {
+    console.log(`\n### Balanced/category stability — paired HIERARCHICAL bootstrap (resample prompts, then trials): ${field === 'chars' ? 'chars' : 'tokens'}`)
+    for (const cat of categories) {
+      const ci = hierCI(prompts.filter(p => p.category === cat).map(p => p.id), field, `hier|${field}|${cat}`)
+      console.log(`  ${cat.padEnd(24)} ${fmtPct(ci.point).padStart(7)}  [${fmtPct(ci.lo)}, ${fmtPct(ci.hi)}]`)
+    }
+    const bi = hierCI(prompts.map(p => p.id), field, `hier|${field}|balanced`)
+    console.log(`  ${'BALANCED INDEX'.padEnd(24)} ${fmtPct(bi.point).padStart(7)}  [${fmtPct(bi.lo)}, ${fmtPct(bi.hi)}]`)
   }
 
-  // qArms: judge -> caseId -> {b:[Q...], f:[Q...]} (used by §3 and §5)
+  // qArms: judge -> caseId -> {b:[Q...], f:[Q...]}
   const qArms = {}
   for (const j of JUDGES) {
     qArms[j] = new Map()
@@ -104,15 +113,15 @@ async function main () {
       const stats = []
       for (let it = 0; it < ITERS; it++) { const idx = resampleIdx(b.length, rng); stats.push(mean(idx.map(i => f[i])) - mean(idx.map(i => b[i]))) }
       stats.sort((a, x) => a - x)
-      const lo = pctl(stats, 0.025)
-      if (lo < -0.5) flaggedIds.push(`${entry.caseId}(${fmt2(lo)})`)
+      if (pctl(stats, 0.025) < -0.5) flaggedIds.push(`${entry.caseId}(${fmt2(pctl(stats, 0.025))})`)
     }
     console.log(`  ${j.padEnd(8)} ${flaggedIds.length}/30 flagged: ${flaggedIds.join(', ') || 'none'}`)
   }
 
-  // ---- 4. Krippendorff α CIs (bootstrap over the 300 items) ----
-  console.log('\n### Inter-judge Krippendorff α — 3-way, 95% CI (bootstrap over 300 response items)')
+  // ---- 4. Krippendorff α CIs — 3-way AND per judge pair (bootstrap over the 300 items) ----
+  console.log('\n### Inter-judge Krippendorff α — 95% CI (bootstrap over 300 response items): 3-way + pairwise')
   const key = (c, cond, t) => `${c}|${cond}|${t}`
+  const PAIRS = [['codex', 'sonnet'], ['codex', 'ollama'], ['sonnet', 'ollama']]
   for (const dim of ['correctness', 'completeness']) {
     const perJudge = Object.fromEntries(JUDGES.map(j => [j, new Map()]))
     for (const j of JUDGES) {
@@ -122,20 +131,31 @@ async function main () {
         for (const cond of ['baseline', 'bluf']) for (const r of arms[cond]) perJudge[j].set(key(entry.caseId, cond, r.trial), r[dim])
       }
     }
-    const items = [...perJudge[JUDGES[0]].keys()].map(k => JUDGES.map(j => perJudge[j].get(k)))
-    const ci = bootstrapCI(items, arr => krippendorffAlpha(arr, { level: 'ordinal' }), { iters: ITERS, seed, namespace: `alpha|${dim}` })
-    console.log(`  ${dim.padEnd(13)} α ${ci.point.toFixed(3)}  [${ci.lo.toFixed(3)}, ${ci.hi.toFixed(3)}]`)
+    const keys = [...perJudge[JUDGES[0]].keys()]
+    const items = keys.map(k => JUDGES.map(j => perJudge[j].get(k)))
+    const three = bootstrapCI(items, arr => krippendorffAlpha(arr, { level: 'ordinal' }), { iters: ITERS, seed, namespace: `alpha|3way|${dim}` })
+    console.log(`  ${dim.padEnd(13)} 3-way α ${three.point.toFixed(3)} [${three.lo.toFixed(3)}, ${three.hi.toFixed(3)}]`)
+    for (const [a, b] of PAIRS) {
+      const ia = JUDGES.indexOf(a); const ib = JUDGES.indexOf(b)
+      const items2 = keys.map(k => [perJudge[a].get(k), perJudge[b].get(k)])
+      const ci = bootstrapCI(items2, arr => krippendorffAlpha(arr, { level: 'ordinal' }), { iters: ITERS, seed, namespace: `alpha|${a}~${b}|${dim}` })
+      console.log(`  ${''.padEnd(13)} ${a}~${b} α ${ci.point.toFixed(3)} [${ci.lo.toFixed(3)}, ${ci.hi.toFixed(3)}]`)
+    }
   }
 
-  // ---- 5. legacy-12 vs new-18 selection-bias split ----
+  // ---- 5. legacy-12 vs new-18 selection-bias split (chars AND tokens + per-judge ΔQ) ----
   console.log('\n### Selection-bias check — legacy-12 (drafted pre-2a) vs new-18 (drafted after 2a was visible)')
   const { legacy, fresh } = legacySplit(prompts.map(p => p.id), legacyIds)
-  const ppChars = new Map(perPrompt(base, bluf, 'chars').map(r => [r.caseId, r.deltaMeanPct]))
-  console.log(`  length (chars) balanced index: legacy-12 ${fmtPct(mean(legacy.map(id => ppChars.get(id))))} | new-18 ${fmtPct(mean(fresh.map(id => ppChars.get(id))))}`)
+  for (const field of ['chars', 'outputTokens']) {
+    const byId = new Map(perPrompt(base, bluf, field).map(r => [r.caseId, r.deltaMeanPct]))
+    console.log(`  length ${field === 'chars' ? '(chars)' : '(tokens)'} balanced index: legacy-12 ${fmtPct(mean(legacy.map(id => byId.get(id))))} | new-18 ${fmtPct(mean(fresh.map(id => byId.get(id))))}`)
+  }
   for (const j of JUDGES) {
     const dq = id => { const { b, f } = qArms[j].get(id); return mean(f) - mean(b) }
     console.log(`  ΔQ ${j.padEnd(8)} legacy-12 ${fmt2(mean(legacy.map(dq)))} | new-18 ${fmt2(mean(fresh.map(dq)))}`)
   }
+  console.log('  NOTE: composition differs (legacy-12 has NO conceptual-explain; new-18 has all 5) — this shows')
+  console.log('  no favorable shift on the newer prompts, but cannot rule out selection bias.')
 
   // ---- 6. Raw values ----
   console.log('\n### Raw trial values (every one, committed)')
