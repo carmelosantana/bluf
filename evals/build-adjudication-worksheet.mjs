@@ -34,22 +34,41 @@ export function buildWorksheet ({ reveal, judgeResultsByModel, transcripts, chec
   return { entries, map }
 }
 
-function toMarkdown (entries) {
+// A code fence guaranteed longer than any backtick run inside the text, so a response that itself
+// contains ``` fences (or markdown headers) cannot break out of the block (CommonMark: an opening
+// fence of N backticks is only closed by a line of ≥N backticks).
+export function fenceFor (text) {
+  const longest = (String(text).match(/`+/g) || []).reduce((a, s) => Math.max(a, s.length), 0)
+  return '`'.repeat(Math.max(3, longest + 1))
+}
+
+export function toMarkdown (entries) {
   const head = [
     '# Phase 2b omission adjudication worksheet (BLINDED)',
     '',
-    'For each entry: does the response OMIT the load-bearing item? Set `upheld: true` if the item is',
-    'genuinely absent, `upheld: false` if present. You do NOT know which arm produced each response, and',
-    'you should not open `adjudication-map.json`. Blinding is condition-label only — BLUF structure may be',
-    'recognizable (prereg §6). Edit the JSON file `adjudication-worksheet.json` (flip every `upheld`).',
+    'THIS is the file you edit — read each response, then set its ruling line at the bottom of the entry:',
+    '',
+    '    >>> RULING <id>: null   →   true  (the load-bearing item is ABSENT / omitted)',
+    '                              →   false (the load-bearing item is PRESENT)',
+    '',
+    'Rule ALL entries (no `null` may remain). You do NOT know which arm produced each response, and you',
+    'should NOT open `adjudication-map.json` (the arm key). Blinding is condition-label only — BLUF',
+    'structure may be recognizable (prereg §6). A response that went straight to a tool call / never',
+    'delivered the item counts as ABSENT → true. When done: `node evals/ingest-adjudication.mjs`.',
     ''
   ].join('\n')
-  const body = entries.map((e, i) => [
-    `## ${i + 1}. ${e.adjId}  (${e.caseId})`,
-    `**Load-bearing item:** ${e.loadBearing}`,
-    '', '```', e.responseText, '```',
-    `upheld: ${e.upheld}`, ''
-  ].join('\n')).join('\n')
+  const body = entries.map((e, i) => {
+    const fence = fenceFor(e.responseText)
+    return [
+      `### ${i + 1} · ${e.adjId} · ${e.caseId}`,
+      `**Load-bearing item:** ${e.loadBearing}`,
+      '',
+      fence, e.responseText, fence,
+      '',
+      `>>> RULING ${e.adjId}: ${e.upheld}`,
+      ''
+    ].join('\n')
+  }).join('\n')
   return head + '\n' + body
 }
 
@@ -72,10 +91,9 @@ async function main () {
   const checklists = await loadChecklists({ path: rel('docs/design/phase2b-quality-checklists.md'), expectedSha: manifest.artifacts['docs/design/phase2b-quality-checklists.md'] })
   const { prompts } = loadPhase2Prompts()
   const { entries, map } = buildWorksheet({ reveal, judgeResultsByModel, transcripts, checklists, prompts, seed })
-  await writeFile(rel('evals/results/phase2b-judge/adjudication-worksheet.json'), JSON.stringify(entries, null, 2))
   await writeFile(rel('evals/results/phase2b-judge/adjudication-worksheet.md'), toMarkdown(entries))
   await writeFile(rel('evals/results/phase2b-judge/adjudication-map.json'), JSON.stringify(map, null, 2))
-  console.log(`wrote adjudication worksheet — ${entries.length} flagged responses (gitignored). Fill every \`upheld\` in adjudication-worksheet.json, then run ingest-adjudication.mjs.`)
+  console.log(`wrote adjudication-worksheet.md — ${entries.length} flagged responses (gitignored). Edit the \`>>> RULING\` lines (true/false) in that file, then run ingest-adjudication.mjs.`)
 }
 
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) main()

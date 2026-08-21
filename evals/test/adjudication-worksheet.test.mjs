@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildWorksheet } from '../build-adjudication-worksheet.mjs'
+import { buildWorksheet, toMarkdown, fenceFor } from '../build-adjudication-worksheet.mjs'
 
 const SEED = 'b'.repeat(64)
 const reveal = [{ caseId: 'port-default', responses: {
@@ -32,4 +32,18 @@ test('worksheet entries never expose condition/trial and never leak the harness 
   const blob = JSON.stringify(entries)
   assert.ok(!/bluf-retest/.test(blob))
   assert.ok(!/"condition"|"trial"/.test(blob))
+})
+
+test('fenceFor out-lengths any backtick run in the content', () => {
+  assert.equal(fenceFor('no backticks here'), '```')
+  assert.equal(fenceFor('has ``` a triple'), '````')
+  assert.equal(fenceFor('has ```` a quad'), '`````')
+})
+
+test('toMarkdown emits a ruling line per entry and a fence that survives an inner ``` block', () => {
+  const entries = [{ adjId: 'abc123def456', caseId: 'p1', loadBearing: 'the number 5173.', responseText: 'answer\n```\ncode\n```\ndone', upheld: null }]
+  const md = toMarkdown(entries)
+  assert.match(md, /^>>> RULING abc123def456: null$/m)
+  // the entry's own fence must be 4 backticks so the inner ``` does not close it
+  assert.match(md, /^````\nanswer/m)
 })
