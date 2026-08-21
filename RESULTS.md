@@ -1,5 +1,11 @@
 # BLUF output style — Phase 2b results (padded-dense opus-5)
 
+> **Status: honest model-judge INTERIM report.** The length and 3-judge model-quality findings below are
+> complete and final (with adjudication and the full uncertainty package). Two pre-registered *human*
+> steps remain: the **mandatory** operator-calibrated stratified-6 blinded cross-check, and the
+> **optional** external human-validation (stratified-12, α ≥ 0.8) — see §7. Until at least the operator-6
+> is done, this is an honest interim report, **not** the completed pre-registered results report.
+
 **What this is.** A pre-registered confirmatory measurement of the BLUF Claude Code output style against
 the default baseline, on `claude-opus-5`, across **30 prompts × 2 conditions × 5 trials = 300 responses**
 in a padded-dense context (~120k input tokens/call — density is the point: opus already answers tersely in
@@ -196,9 +202,14 @@ percentile bootstrap, seeded from the manifest so every CI reproduces.
 - **Sonnet temperature deviation.** The frozen protocol pins `claude-sonnet-5` at temperature 0; the CLI
   exposed no temperature flag, so the judge ran at its default. It is a deviation, not a protocol-conformant
   Sonnet run. Affects one of three frozen judge identities. (`evals/lib/judge-claude.mjs`.)
-- **Not human-validated.** The quality claim is **model-judge evidence**. The pre-registered human
-  validation gate (combined Krippendorff α ≥ 0.8 on both dimensions, stratified-12 sample) is open; a hosted
-  blinded rating app and a tiling amendment are in progress. The label upgrades only when that bar clears.
+- **Human cross-checks pending — this is an interim report.** The quality claim is **model-judge
+  evidence**. Two pre-registered human steps are not yet performed: (1) the **mandatory** operator-calibrated
+  **stratified-6** blinded cross-check (operator hand-rates 1 prompt/category → label *"operator-calibrated
+  model-judge evidence"*); and (2) the **optional** external **human-validation** (stratified-12, ≥2
+  external raters + operator, combined Krippendorff α ≥ 0.8 → *"human-validated"*). Until at least (1) is
+  done this is an honest model-judge interim report, not the completed pre-registered results report. A
+  hosted blinded rating app + a tiling amendment are in progress; `evals/analysis/human-validation.mjs`
+  computes the labels once rater files land.
 - **Blinding.** Responses are **condition-label-blinded** (the reveal key and, for adjudication, the
   arm-map were withheld). This is adequate for the registered operator adjudication, but it is not
   independent or behavior-blinded: the operator authored the harness and BLUF's structure may remain
