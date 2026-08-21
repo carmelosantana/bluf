@@ -3,33 +3,31 @@
 **What this is.** A pre-registered confirmatory measurement of the BLUF Claude Code output style against
 the default baseline, on `claude-opus-5`, across **30 prompts × 2 conditions × 5 trials = 300 responses**
 in a padded-dense context (~120k input tokens/call — density is the point: opus already answers tersely in
-a sparse context). Two length endpoints (visible characters, billed output tokens) plus a **blinded
-3-judge quality panel** with **operator omission-adjudication**. Every number below traces to a committed
-file under `evals/results/`; reproduction commands are at the end.
+a sparse context). Two length endpoints (visible characters, billed output tokens), a **blinded 3-judge
+quality panel** with **operator omission-adjudication**, and the **pre-registered uncertainty package**
+(bootstrap CIs, hierarchical stability, per-prompt ΔQ CIs, α CIs, selection-bias split). Every number
+traces to a committed file under `evals/results/`; reproduction commands are at the end.
 
-The pre-registration and frozen decision rules live in `docs/design/phase2b-preregistration.md` (§7/§8);
-the judge protocol in `docs/design/phase2b-judge-protocol.md`. Both were hashed into a commit-reveal
-manifest before the run.
+Pre-registration and frozen decision rules: `docs/design/phase2b-preregistration.md` (§6/§7/§8); judge
+protocol: `docs/design/phase2b-judge-protocol.md`. Both were hashed into a commit-reveal manifest before
+the run.
 
 ---
 
-## Bottom line — read length and the pre-registered gate together
+## Bottom line
 
-- **Length:** BLUF reduces visible output by **≈44%** (balanced index −43.6% mean of per-prompt deltas,
-  −44.7% typical; pooled −40.9%; **129/150 trials shorter**), materially (≤−15%) in **5 of 6 categories**.
-- **Pre-registered adoption gate (§8, operator-adjudicated):** **WIN ×1** (conceptual-explain),
+- **Length:** BLUF is **materially shorter (≤−15%) in 5 of 6 categories and in 129/150 trials** — balanced
+  index −43.6% visible characters (multi-step is the exception at −9.1%, "roughly unchanged"; `cjs-to-esm`
+  is substantially longer — see §1). This is **not** "shorter across the board."
+- **Adoption gate (pre-registered §8, operator-adjudicated):** **WIN ×1** (conceptual-explain),
   **CAUTION ×5** (short-lookup, multi-step, debug-partial-evidence, options, long-list), NEUTRAL ×0. The
   gate is deliberately conservative — a category fails if *any* judge fails *any* prompt.
-- **Quality:** **each judge's mean checklist-score difference (ΔQ) was slightly positive** (codex +0.35,
-  sonnet +0.20, ollama +0.17). This is a set of slightly-positive mean point estimates — **not** a
-  global-average non-inferiority claim, and not "no quality loss." Alongside it sit **one consistent
-  category-wide quality regression (short-lookup), one category-wide cost regression (long-list), and
-  several localized prompt-level failures.**
-
-The honest one-liner: **BLUF is materially shorter across the board with, on average, slightly higher
-model-judge quality scores — but it has a genuine quality regression on quick factual lookups, a token-cost
-regression on long enumerations, and localized failures that keep 5 of 6 categories at CAUTION under the
-conservative gate.**
+- **Quality:** **each judge's mean checklist-score difference (ΔQ) point estimate was slightly positive**
+  (codex +0.35, sonnet +0.20, ollama +0.17). These are slightly-positive *mean point estimates* — not a
+  global-average non-inferiority claim, and they do **not** neutralize CAUTION ×5, the localized losses, or
+  the wide per-prompt CIs (§6). Alongside them: **one consistent category-wide quality regression
+  (short-lookup), one category-wide cost regression (long-list +7.8% tokens), four confirmed per-prompt
+  token regressions (§1), and several localized prompt-level failures.**
 
 ---
 
@@ -46,19 +44,33 @@ Two endpoints, because they diverge — a denser answer can be shorter to read y
 | debug-partial-evidence | −35.8% | −33.7% | material reduction |
 | multi-step | −9.1% | −6.2% | roughly unchanged |
 
-- Balanced index (every prompt weighted equally): **−43.6% mean / −44.7% typical**; pooled (volume-weighted)
-  **−40.9%**. These describe *this balanced benchmark corpus*, not real-usage impact.
-- **long-list is a real cost regression: −40.9% chars but +7.8% tokens** — BLUF's dense enumerations read
-  shorter but bill more (docker-cache-miss, slow-postgres, bundle-bloat drive it).
-- `cjs-to-esm` shows +108% chars / +100% tokens, but this is an **apparent** length regression: the
-  baseline frequently emitted a short agentic stub instead of answering (see §3/§5), deflating its own
-  length. Not a confirmed regression on its own — read with quality (Sol Q4).
+Balanced index (every prompt weighted equally): **−43.6% chars / −29.8% tokens**; pooled (volume-weighted)
+−40.9% / −19.9%. These describe *this balanced benchmark corpus*, not real-usage impact.
+
+### Confirmed per-prompt regressions (prereg §7: endpoint mean > +10% AND BLUF wins ≤1/5 trials)
+Four prompts meet the locked regression definition — all on billed tokens:
+
+| prompt | category | Δ tokens | token wins | note |
+| --- | --- | ---: | :---: | --- |
+| cjs-to-esm | multi-step | **+100.3%** | 1/5 | also +107.7% chars, 2/5 char wins |
+| docker-cache-miss | long-list | +21.8% | 1/5 | |
+| slow-postgres | long-list | +21.6% | 1/5 | |
+| bundle-bloat | long-list | +15.0% | 1/5 | |
+
+`cjs-to-esm` **is a confirmed per-prompt token regression** under our own locked rule — not merely
+"apparent." Two interpretations follow the reported result, they do not replace it: (a) the baseline
+frequently emitted a short agentic stub instead of answering (baseline-stubbing, §3), which inflates the
+relative BLUF length and means the cost result must be read alongside quality (where BLUF scored higher on
+this prompt); and (b) the multi-file transformation **class does not replicate** — only 1 of its 3 matched
+prompts regresses, and the registered class-replication bar was ≥2/3. The three long-list drivers are
+straightforward token regressions (dense enumerations bill more even when they read shorter).
 
 ## 2. Quality — 3-judge panel, adjudicated (`evals/analysis/quality-verdict.mjs`)
 
 Q = correctness + completeness (each 1–5, summed 2–10). ΔQ = Q̄(bluf) − Q̄(baseline), a difference of
 per-arm means over 5 trials. Non-inferior (per judge, per prompt): **ΔQ ≥ −0.5 AND no operator-upheld
-load-bearing omission in ≥2 of 5 bluf trials**. Point estimate decides.
+load-bearing omission in ≥2 of 5 bluf trials**. Point estimate decides; the per-prompt CIs (§6) are
+reported alongside and are wide.
 
 Panel: **Codex `gpt-5.6-sol`** (primary), **`claude-sonnet-5`** (secondary), **Ollama `qwen3.8`**
 (tertiary), reported separately — never majority-collapsed.
@@ -77,11 +89,11 @@ Per-judge overall: codex mean ΔQ **+0.35** (non-inferior 25/30); sonnet **+0.20
 
 ### Regressions (named plainly)
 - **short-lookup — the one consistent, category-wide quality regression.** All three judges negative
-  (ΔQ −0.80 / −1.04 / −1.12). BLUF is too terse for quick factual lookups: it gives the load-bearing
-  value but drops the surrounding context judges reward on completeness (e.g. `port-default` answers
-  "5173" — the number is present, but not `server.port`/configurability — ΔQ −2.4 to −3.2).
+  (ΔQ −0.80 / −1.04 / −1.12). BLUF is too terse for quick factual lookups: it gives the load-bearing value
+  but drops surrounding context judges reward on completeness (e.g. `port-default` answers "5173" — the
+  number is present, but not `server.port`/configurability — ΔQ −2.4 to −3.2).
 - **long-list — a category-wide cost regression** (+7.8% billed tokens; §1).
-- **Localized prompt-level failures:** `ci-exit-1` (all 3 judges), `memory-climb` (codex + sonnet),
+- **Localized prompt-level quality failures:** `ci-exit-1` (all 3 judges), `memory-climb` (codex + sonnet),
   `health-endpoint` (sonnet), `shared-types` (sonnet), `docker-cache-miss` (ollama −1.2).
 
 ### The full conservative-failure caveat set (11 prompts)
@@ -91,76 +103,101 @@ docker-cache-miss (long-list).
 
 ## 3. Omission adjudication (`evals/results/phase2b-judge/omission-adjudication.json`)
 
-The pre-registration requires that every load-bearing-omission flag be confirmed by **blinded operator
-adjudication** — only *upheld* flags count. This step was performed after scoring, blinded to arm,
-uniformly over **all 47 flagged responses** (26 baseline + 21 bluf). The operator did not open the
-arm-reveal key.
+The pre-registration requires every load-bearing-omission flag to be confirmed by **blinded operator
+adjudication** — only *upheld* flags count. Performed after scoring (unavoidable — it is downstream of the
+judge flags), condition-label-blinded, uniformly over **all 47 flagged responses** (26 baseline + 21 bluf).
 
 - **24 of 47 upheld** (item genuinely absent), 23 overturned. By arm: **baseline 16, bluf 8.**
 - **Baseline omitted load-bearing items twice as often as BLUF (16 vs 8)** — the baseline-stubbing signal.
 - **Only 3 bluf prompts carry operator-confirmed omissions at the ≥2/5 gate:** actions-workflow (3/5),
-  callbacks-to-async (3/5), ci-exit-1 (2/5). These legitimately gate multi-step and debug.
-- **Adjudication corrected the model judges where they over-flagged:** `port-default`'s 5 bluf omission
-  flags were all **overturned** (the number *was* present), so its failure is now attributed to genuine
-  quality (ΔQ), not a spurious omission. The category verdict is unchanged by adjudication — evidence the
-  result does not depend on the earlier auto-uphold shortcut.
+  callbacks-to-async (3/5), ci-exit-1 (2/5) — these legitimately gate multi-step and debug.
+- **Adjudication corrected the judges where they over-flagged:** `port-default`'s 5 bluf omission flags
+  were all **overturned** (the number was present), so its failure is genuine quality (ΔQ), not a spurious
+  omission. **The category verdict is unchanged from the pre-adjudication (auto-uphold) computation** —
+  evidence the result does not depend on that shortcut.
 
-## 4. Preference — secondary endpoint, length-confounded (`evals/analysis/preference-length.mjs`)
+## 4. Preference — secondary endpoint (`evals/analysis/preference-length.mjs`)
 
-Preference is a pre-registered *secondary* endpoint. It is reported, **not** used as a quality verdict,
-because pairwise preference is length-confounded (verbosity bias — Tripathi et al., COLM 2025: pairwise
-preferences flip ~35% on spurious features vs ~9% for pointwise scores; the length-controlled win rate of
-Dubois et al., 2024 is the standard debias, which we deliberately did **not** fit at n=150).
+Preference is a pre-registered *secondary* endpoint, reported not used as a verdict.
 
-| judge | bluf / tie / base (of 150) | corr(preference, Δchars) | baseline-pref by \|Δchars\| tercile (small / mid / large) |
-| --- | --- | ---: | --- |
-| codex | 50 / 41 / 59 | +0.339 | 24% / 47% / 47% |
-| sonnet | 25 / 28 / 97 | +0.498 | 56% / 73% / 65% |
-| ollama | 20 / 30 / 100 | +0.555 | 56% / 78% / 67% |
+| judge | bluf / tie / base (of 150) | non-ties: longer answer won | corr(pref, Δchars) | corr(pref, ΔQ) |
+| --- | --- | :---: | ---: | ---: |
+| codex | 50 / 41 / 59 | 75/109 (69%) | +0.339 | +0.533 |
+| sonnet | 25 / 28 / 97 | 115/122 (94%) | +0.498 | +0.672 |
+| ollama | 20 / 30 / 100 | 117/120 (98%) | +0.555 | +0.679 |
 
-- **All three judges prefer the longer answer** (positive correlation), and for every judge
-  **baseline-preference is lowest when the two answers are close in length** — the confound made visible
-  (codex prefers baseline only 24% of the time on small-gap pairs vs 47% otherwise).
-- **The bias is judge-dependent** (as the literature reports): codex (independent GPT) is close to
-  balanced; sonnet and ollama lean strongly to the longer baseline. This is why the panel is reported
-  separately and why a raw preference tally is not a verdict.
+**Preference strongly favored baseline for Sonnet and Ollama and was strongly associated with relative
+response length.** But it is **association, not causation**: because length and substantive content
+co-vary, this analysis cannot determine how much reflects verbosity bias versus genuine perceived
+usefulness/completeness. Note that **preference correlates with checklist ΔQ at least as strongly as with
+length** (e.g. codex +0.53 vs +0.34) — consistent with either story. What can be said: pairwise preference
+is length-confounded (Tripathi et al., COLM 2025: pairwise flips ~35% on spurious features vs ~9% for
+pointwise; Dubois et al., 2024 is the length-controlled debias we did not fit at n=150), and the bias is
+judge-dependent (codex, the independent GPT, is closest to balanced). It is not a clean quality signal in
+either direction, which is why it is secondary.
 
-## 5. Judge agreement & uncertainty
+## 5. Judge agreement (`evals/analysis/quality-verdict.mjs`, CIs in §6)
 
 Ordinal Krippendorff α over 300 responses/dimension: **correctness 3-way α 0.60**, **completeness 0.80**.
 Pairwise correctness: codex~sonnet 0.52, codex~ollama 0.47, **sonnet~ollama 0.90**.
 
-- **Codex is the pre-registered PRIMARY judge and also the correctness outlier** (agrees with the others
-  at only 0.47–0.52; they agree with each other at 0.90). We do **not** re-designate the primary after
-  seeing this — that would be a pre-registration violation — but we flag it: codex-primary and
-  median-of-judges are labeled **sensitivity** analyses, not a privileged lens. The conservative-unanimous
-  panel remains the primary registered rule. (High sonnet~ollama agreement is not proof they are correct;
-  it may reflect shared compression behavior — the uncertainty cuts both ways.)
+- **Codex is the pre-registered PRIMARY judge and also the correctness outlier** (agrees with the others at
+  only 0.47–0.52; they agree with each other at 0.90). We do **not** re-designate the primary after seeing
+  this — that would be a pre-registration violation — but we flag it: codex-primary and median-of-judges
+  are **sensitivity** analyses, not a privileged lens. The conservative-unanimous panel remains the primary
+  registered rule. (High sonnet~ollama agreement is not proof they are correct; it may reflect shared
+  compression behavior — the uncertainty cuts both ways.)
 
-## 6. Protocol deviations & caveats
+## 6. Uncertainty package (`evals/analysis/phase2b-uncertainty.mjs`)
+
+Pre-registered interval/robustness analyses (§6/§7), reported alongside the point-estimate verdict. 95%
+percentile bootstrap, seeded from the manifest so every CI reproduces.
+
+- **Length, balanced index (95% CI over prompts):** chars −43.6% **[−54.7%, −30.0%]**; tokens −29.8%
+  **[−43.1%, −15.7%]**. Per category, most CIs exclude zero; **multi-step is highly uncertain** (chars
+  −9.1% [−49.1%, +51.8%]) and **long-list tokens straddle zero** (+7.8% [−6.0%, +20.4%]).
+- **Balanced-index stability — paired hierarchical bootstrap (resample prompts, then trials):** chars
+  −43.6% **[−54.6%, +5.1%]**; tokens −29.8% **[−42.8%, −0.9%]**. Under two-level resampling the char
+  interval's **upper bound reaches ~0** — the headline reduction is real at the point estimate but its
+  lower confidence bound weakens once trial-level variance (driven by bimodal prompts like `cjs-to-esm`,
+  multi-step) is included. Reported honestly.
+- **Per-prompt ΔQ paired-bootstrap CIs — lower bound < −0.5 (non-inferiority not established with
+  confidence):** flagged for **codex 16/30, sonnet 17/30, ollama 14/30** prompts. With only 5 trials the
+  per-prompt CIs are wide; the point-estimate rule stands (§7 of the prereg anticipated this), but
+  per-prompt non-inferiority is **not** statistically established for roughly half the prompts.
+- **Krippendorff α 95% CIs:** correctness 0.600 **[0.485, 0.696]**; completeness 0.798 **[0.720, 0.856]**.
+  The correctness lower bound (~0.49) sits well below conventional "good agreement" — judge disagreement on
+  correctness is real.
+- **Selection-bias check (legacy-12 drafted pre-2a vs new-18 drafted after 2a was visible):** length
+  similar (chars legacy −41.4% / new −45.0%); quality **less favorable to BLUF on the newer prompts** (ΔQ
+  codex +0.58 vs +0.19, sonnet +0.45 vs +0.03, ollama +0.25 vs +0.11). If anything the prompts drafted with
+  2a visible are *tougher* on BLUF quality — so the slightly-positive means are not a selection artifact.
+
+## 7. Protocol deviations & caveats
 
 - **Sonnet temperature deviation.** The frozen protocol pins `claude-sonnet-5` at temperature 0; the CLI
-  exposed no temperature flag, so the judge ran at its default. This affects one of three frozen judge
-  identities and is disclosed here. (`evals/lib/judge-claude.mjs`, `docs/design/phase2b-judge-protocol.md`.)
+  exposed no temperature flag, so the judge ran at its default. It is a deviation, not a protocol-conformant
+  Sonnet run. Affects one of three frozen judge identities. (`evals/lib/judge-claude.mjs`.)
 - **Not human-validated.** The quality claim is **model-judge evidence**. The pre-registered human
-  validation gate (combined Krippendorff α ≥ 0.8 on both dimensions, stratified-12 sample) is still open; a
-  hosted blinded rating app and a tiling amendment are in progress. The label upgrades to "human-validated"
-  only when that bar is cleared.
-- **Blinding limitation.** Responses are condition-label-blinded, but BLUF's structure may remain
-  recognizable — stated in the pre-registration (§6).
-- **Preference n.** 150 pairs/judge; the length analysis in §4 is descriptive, not a fitted debiaser.
-- **Adjudication.** Performed post-scoring (unavoidable — it is downstream of the judge flags), but
-  blinded to arm, uniform over all flagged responses, and documented in the committed record.
+  validation gate (combined Krippendorff α ≥ 0.8 on both dimensions, stratified-12 sample) is open; a hosted
+  blinded rating app and a tiling amendment are in progress. The label upgrades only when that bar clears.
+- **Blinding.** Responses are **condition-label-blinded** (the reveal key and, for adjudication, the
+  arm-map were withheld). This is adequate for the registered operator adjudication, but it is not
+  independent or behavior-blinded: the operator authored the harness and BLUF's structure may remain
+  recognizable (prereg §6). "The operator did not open the arm-map" is a process attestation, not something
+  the committed record can prove.
+- **Preference n.** 150 pairs/judge; the §4 length analysis is descriptive, not a fitted debiaser.
 
 ## Reproduce
 
 ```bash
-node evals/analysis/padded-phase2.mjs      # length (both endpoints)
-node evals/analysis/quality-verdict.mjs    # 3-judge quality + Krippendorff α (adjudicated)
-node evals/analysis/adoption-verdict.mjs   # §8 per-category adoption verdict (adjudicated)
-node evals/analysis/preference-length.mjs  # preference vs length (secondary)
+node evals/analysis/padded-phase2.mjs        # length (both endpoints)
+node evals/analysis/quality-verdict.mjs      # 3-judge quality + Krippendorff α (adjudicated)
+node evals/analysis/adoption-verdict.mjs     # §8 per-category adoption verdict (adjudicated)
+node evals/analysis/preference-length.mjs    # preference vs length and vs ΔQ (secondary)
+node evals/analysis/phase2b-uncertainty.mjs  # bootstrap CIs, hierarchical stability, per-prompt ΔQ CIs, α CIs, legacy/new split
 ```
 
-Source data (committed): `evals/results/padded-phase2-claude-opus-5-{baseline,bluf}.jsonl` (the 300-row
-corpus), `evals/results/phase2b-judge/judge-{codex,sonnet,ollama}.jsonl` (judge scores),
-`reveal.json` (blinding key), `omission-adjudication.json` (operator rulings).
+Source data (committed, every raw trial value): `evals/results/padded-phase2-claude-opus-5-{baseline,bluf}.jsonl`
+(300 length rows), `evals/results/phase2b-judge/judge-{codex,sonnet,ollama}.jsonl` (30 prompt rows × 10
+responses each), `reveal.json` (blinding key), `omission-adjudication.json` (operator rulings).
