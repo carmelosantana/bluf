@@ -160,12 +160,16 @@ percentile bootstrap, seeded from the manifest so every CI reproduces.
   −9.1% [−48.5%, +51.8%]) and **long-list tokens straddle zero** (+7.8% [−6.0%, +20.4%]). Mean AND median
   sensitivities both carry CIs, per category and balanced (see the script).
 - **Stability — paired hierarchical bootstrap (resample prompts, then trials), per category and balanced.**
-  Balanced: chars −43.6% **[−54.4%, +5.0%]**; tokens −29.8% **[−42.6%, −1.5%]**. Under two-level
-  resampling the balanced char interval **crosses zero and extends to +5.0% — just into the registered
-  LENGTHENS (> +5%) band; it is the UPPER bound that weakens.** So the stability analysis includes
-  scenarios with no reduction and slight lengthening (driven by high-variance prompts — multi-step's own
-  hierarchical char CI is [−54.3%, +242%]). The point estimate is a clear reduction; its robustness to
-  trial-level variance is not guaranteed. Reported plainly.
+  Balanced: chars −43.6% **[−54.4%, +4.98%]**; tokens −29.8% **[−42.6%, −1.5%]**. Under two-level
+  resampling the balanced char interval **crosses zero and extends to ≈+5.0% (exactly +4.98%) — the upper
+  edge of the registered ROUGHLY UNCHANGED band; it does NOT enter registered LENGTHENS (> +5%). It is the
+  UPPER bound that weakens.** So the stability analysis includes scenarios with no reduction and a small
+  increase, but not registered lengthening (driven by high-variance prompts — multi-step's own hierarchical
+  char CI is [−54.3%, +242%]). The point estimate is a clear reduction; its robustness to trial-level
+  variance is not guaranteed. Reported plainly.
+- **Coverage caveat (pre-registered):** with only ~5 prompt clusters per category, cluster/prompt-bootstrap
+  interval coverage is poor — the category-level CIs above (and the hierarchical per-category intervals) are
+  **indicative, not exact**; the balanced-index intervals (30 clusters) are the more reliable ones.
 - **Per-prompt ΔQ paired-bootstrap CIs — lower bound < −0.5 (non-inferiority not established with
   confidence):** flagged for **codex 16/30, sonnet 17/30, ollama 14/30** prompts. This **includes three
   prompts in the sole WIN category (conceptual-explain): `why-sorted-faster` (ollama), `event-loop` and
@@ -175,8 +179,10 @@ percentile bootstrap, seeded from the manifest so every CI reproduces.
   roughly half the prompts.
 - **Krippendorff α 95% CIs (3-way + pairwise):** correctness 3-way 0.600 **[0.485, 0.697]** (pairwise:
   codex~sonnet 0.516 [0.385, 0.626], codex~ollama 0.471 [0.331, 0.591], sonnet~ollama 0.901 [0.824,
-  0.959]); completeness 3-way 0.798 **[0.722, 0.857]**. The correctness lower bound (~0.49) and the weak
-  codex-vs-others pairwise CIs confirm judge disagreement on correctness is real.
+  0.959]); completeness 3-way 0.798 **[0.722, 0.857]** (pairwise: codex~sonnet 0.773 [0.680, 0.847],
+  codex~ollama 0.848 [0.774, 0.906], sonnet~ollama 0.777 [0.687, 0.850]). The correctness lower bound
+  (~0.49) and the weak codex-vs-others pairwise CIs confirm judge disagreement on correctness is real;
+  completeness agreement is uniformly stronger.
 - **Selection-bias check (legacy-12 drafted pre-2a vs new-18 drafted after 2a was visible):** length
   similar (chars legacy −41.4% / new −45.0%; tokens legacy −31.9% / new −28.4%); quality **less favorable
   to BLUF on the newer prompts** (ΔQ codex +0.58 vs +0.19, sonnet +0.45 vs +0.03, ollama +0.25 vs +0.11).
