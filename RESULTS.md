@@ -1,7 +1,7 @@
 # BLUF output style — Phase 2b results (padded-dense opus-5)
 
 > **Status: honest model-judge INTERIM report.** The length and 3-judge model-quality findings below are
-> complete and final (with adjudication and the full uncertainty package). Two pre-registered *human*
+> complete for the model-only endpoints (with adjudication and the full uncertainty package). Two pre-registered *human*
 > steps remain: the **mandatory** operator-calibrated stratified-6 blinded cross-check, and the
 > **optional** external human-validation (stratified-12, α ≥ 0.8) — see §7. Until at least the operator-6
 > is done, this is an honest interim report, **not** the completed pre-registered results report.
