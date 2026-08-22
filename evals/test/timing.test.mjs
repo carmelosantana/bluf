@@ -80,7 +80,7 @@ test('the no-effect result is not an artefact of an empty or broken set', async 
   assert.equal(pairTimings(broken).pairs.length, 0, 'pairing keys are not doing any work')
 })
 
-test('timing survives only for the agentic sweeps, and the README says so', async () => {
+test('timing survives only for the agentic sweeps, and STORY.md says so', async () => {
   // The 260-call prose sweep stored no transcripts, so its wall-clock is unrecoverable without
   // paying again. If prose transcripts are ever stored, widen this deliberately rather than
   // letting the claim quietly pass on a partial corpus.
@@ -88,7 +88,7 @@ test('timing survives only for the agentic sweeps, and the README says so', asyn
   assert.ok(timings.every(row => row.model === 'claude-fable-5'),
     'every timed call is fable; no opus timing exists anywhere in the repo')
 
-  const readme = await readFile(new URL('../../README.md', import.meta.url), 'utf8')
-  assert.match(readme, /6 of 12 pairs faster/, 'the README must state the direction split')
-  assert.match(readme.replace(/\s+/g, ' '), /no measurable effect on wall-clock time/i)
+  const story = await readFile(new URL('../../STORY.md', import.meta.url), 'utf8')
+  assert.match(story, /6 of 12 pairs faster/, 'STORY.md must state the direction split')
+  assert.match(story.replace(/\s+/g, ' '), /no measurable effect on wall-clock time/i)
 })
