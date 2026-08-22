@@ -1,0 +1,3212 @@
+[
+  {
+    "caseId": "port-default",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 2
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R1"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "baseline",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R6"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "git-no-ff",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 3
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R6"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R8"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R1"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "to-sorted",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R9": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 3
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R6"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "baseline",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "bluf",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R7"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "health-endpoint",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R9": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 3
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R6"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R8"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "bluf",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R2"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "actions-workflow",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 4
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R2"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R3"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "cjs-to-esm",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 1
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "baseline",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R2"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "bluf",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "401-no-evidence",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 5
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R10"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "ci-exit-1",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R5": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 1
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R4"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "scheduled-jobs",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R5": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 5
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R6"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R1"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R8"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R5"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "shared-types",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R9": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 1
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R8"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "baseline",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R1"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R6"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "security-headers",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R5": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 5
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R1"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R8"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "bluf",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R10"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "docker-cache-miss",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R5": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 3
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "bluf",
+          "label": "R6"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R1"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "semver-caret",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R9": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 3
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R6"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R1"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "http-204",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R9": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 2
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R6"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R8"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "baseline",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R2"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R9"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "callbacks-to-async",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 5
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R1"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R8"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R10"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "class-to-hooks",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 4
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R8"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "cors-blocked",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 2
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R6"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "memory-climb",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R5": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 5
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R6"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R1"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R2"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "bluf",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R10"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "hydration-mismatch",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 1
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R2"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R6"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "react-state",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R9": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 1
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R6"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "baseline",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R8"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "node-test-runner",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R5": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 4
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R6"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R8"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "db-migrations",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 1
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R1"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "baseline",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "bluf",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R7"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "slow-postgres",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R9": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 2
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R8"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R1"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R3"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "bluf",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "bundle-bloat",
+    "responses": {
+      "R1": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 3
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R1"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R4"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "flaky-tests",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R9": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 4
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R8"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "bluf",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R3"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "why-sorted-faster",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R9": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 5
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R8"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R2"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "bluf",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R5"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "yield-keyword",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R5": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R9": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 3
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R7"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "baseline",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R1"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R3"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "closure-loop",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R4": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R5": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R6": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 1
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R4"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "bluf",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R9"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "bluf",
+          "label": "R5"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R2"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "event-loop",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R2": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R3": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R5": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R7": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R8": {
+        "condition": "baseline",
+        "trial": 2
+      },
+      "R9": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R10": {
+        "condition": "bluf",
+        "trial": 1
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "baseline",
+          "label": "R1"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R10"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "bluf",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R8"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "baseline",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R5"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R6"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R4"
+        }
+      }
+    ]
+  },
+  {
+    "caseId": "this-binding",
+    "responses": {
+      "R1": {
+        "condition": "baseline",
+        "trial": 1
+      },
+      "R2": {
+        "condition": "baseline",
+        "trial": 4
+      },
+      "R3": {
+        "condition": "bluf",
+        "trial": 1
+      },
+      "R4": {
+        "condition": "bluf",
+        "trial": 4
+      },
+      "R5": {
+        "condition": "bluf",
+        "trial": 5
+      },
+      "R6": {
+        "condition": "baseline",
+        "trial": 3
+      },
+      "R7": {
+        "condition": "bluf",
+        "trial": 2
+      },
+      "R8": {
+        "condition": "bluf",
+        "trial": 3
+      },
+      "R9": {
+        "condition": "baseline",
+        "trial": 5
+      },
+      "R10": {
+        "condition": "baseline",
+        "trial": 2
+      }
+    },
+    "pairs": [
+      {
+        "label": "P1",
+        "trial": 1,
+        "A": {
+          "condition": "bluf",
+          "label": "R3"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R1"
+        }
+      },
+      {
+        "label": "P2",
+        "trial": 2,
+        "A": {
+          "condition": "baseline",
+          "label": "R10"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R7"
+        }
+      },
+      {
+        "label": "P3",
+        "trial": 3,
+        "A": {
+          "condition": "bluf",
+          "label": "R8"
+        },
+        "B": {
+          "condition": "baseline",
+          "label": "R6"
+        }
+      },
+      {
+        "label": "P4",
+        "trial": 4,
+        "A": {
+          "condition": "baseline",
+          "label": "R2"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R4"
+        }
+      },
+      {
+        "label": "P5",
+        "trial": 5,
+        "A": {
+          "condition": "baseline",
+          "label": "R9"
+        },
+        "B": {
+          "condition": "bluf",
+          "label": "R5"
+        }
+      }
+    ]
+  }
+]

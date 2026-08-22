@@ -1,0 +1,91 @@
+{
+  "model": "claude-fable-5",
+  "prompt": "what is in ok.txt?",
+  "json": {
+    "topLevelKeys": [
+      "api_error_status",
+      "duration_api_ms",
+      "duration_ms",
+      "fast_mode_disabled_reason",
+      "fast_mode_state",
+      "is_error",
+      "modelUsage",
+      "num_turns",
+      "permission_denials",
+      "result",
+      "session_id",
+      "stop_reason",
+      "subtype",
+      "terminal_reason",
+      "time_to_request_ms",
+      "total_cost_usd",
+      "ttft_ms",
+      "ttft_stream_ms",
+      "type",
+      "usage",
+      "uuid"
+    ],
+    "hasMessagesArray": false,
+    "numTurns": 2,
+    "totalCostUsd": 0.124166,
+    "usageKeys": [
+      "cache_creation",
+      "cache_creation_input_tokens",
+      "cache_read_input_tokens",
+      "inference_geo",
+      "input_tokens",
+      "iterations",
+      "output_tokens",
+      "server_tool_use",
+      "service_tier",
+      "speed"
+    ],
+    "modelsBilled": [
+      "claude-fable-5",
+      "claude-haiku-4-5-20251001"
+    ],
+    "outputTokens": 110
+  },
+  "streamJson": {
+    "eventTypes": [
+      "assistant",
+      "rate_limit_event",
+      "result",
+      "system",
+      "user"
+    ],
+    "eventCount": 10,
+    "assistantEventCount": 3,
+    "toolUseNames": [
+      "Read"
+    ],
+    "resultEventPresent": true,
+    "resultTopLevelKeys": [
+      "api_error_status",
+      "duration_api_ms",
+      "duration_ms",
+      "fast_mode_disabled_reason",
+      "fast_mode_state",
+      "is_error",
+      "modelUsage",
+      "num_turns",
+      "permission_denials",
+      "result",
+      "session_id",
+      "stop_reason",
+      "subtype",
+      "terminal_reason",
+      "time_to_request_ms",
+      "total_cost_usd",
+      "ttft_ms",
+      "ttft_stream_ms",
+      "type",
+      "usage",
+      "uuid"
+    ],
+    "resultNumTurns": 2,
+    "resultTotalCostUsd": 0.123916,
+    "resultOutputTokens": 109,
+    "summedPerMessageOutputTokens": 16
+  }
+}

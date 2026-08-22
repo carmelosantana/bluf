@@ -1,0 +1,7 @@
+{
+  "shape": "failing-test",
+  "prompt": "npm test fails in src/parse-duration.mjs. fix it",
+  "testCommand": "npm",
+  "testArgs": ["test"],
+  "allowedTools": ["Read", "Edit", "Write", "Bash", "Glob", "Grep"]
+}

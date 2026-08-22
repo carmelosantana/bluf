@@ -1,0 +1,7 @@
+{
+  "shape": "multi-file",
+  "prompt": "rename the retryLimit option to maxRetries across src/ and docs/",
+  "testCommand": "npm",
+  "testArgs": ["test"],
+  "allowedTools": ["Read", "Edit", "Write", "Bash", "Glob", "Grep"]
+}

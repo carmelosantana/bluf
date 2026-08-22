@@ -1,0 +1,82 @@
+{
+  "purpose": "Phase 2b quality-input amendment (append-only, pre-judging). NOT preregistration.",
+  "note": "Anchors the raw transcript sidecars and freezes the deterministic label redaction applied IN MEMORY before judging. The original preregistration (evals/phase2b/preregistration.manifest.json) is immutable. Raw sidecars are gitignored and preserved off-machine.",
+  "measurementCorpus": "evals/results/padded-phase2-claude-opus-5-{baseline,bluf}.jsonl (committed c661f6f)",
+  "offMachineBackup": "secret gist https://gist.github.com/carmelosantana/7a295bf97c61cd4e35a9b20c64db45ef (both raw sidecars, unredacted, hashes below)",
+  "rawTranscriptSidecars": {
+    "baseline": {
+      "path": "evals/results/padded-phase2-claude-opus-5-baseline-text.jsonl",
+      "sha256": "6929c31960fe833b800a64353886733c96e38534667362c7a667a00328269d8f"
+    },
+    "bluf": {
+      "path": "evals/results/padded-phase2-claude-opus-5-bluf-text.jsonl",
+      "sha256": "d3366c05be0313466841cb7e4a140625d25210de7a4beb98c48e3d572b452c51"
+    }
+  },
+  "redaction": {
+    "rationale": "Remove the study/style-label leak: the harness temp-dir basename bluf-retest-<suffix> appears in responses that referenced the working directory (24 baseline / 8 bluf). Scaffolding is intentionally NOT stripped — it is genuine treatment-responsive behavior. Study is condition-label-blinded, not behavior-blinded (Sol ruling).",
+    "regex": "bluf-retest-  (global)  ->  eval-retest-   (suffix preserved)",
+    "appliedInMemory": true,
+    "rawFilesUnchanged": true,
+    "affectedRows": {
+      "baseline": 24,
+      "bluf": 8
+    },
+    "byPrompt": {
+      "baseline": {
+        "cjs-to-esm": 4,
+        "actions-workflow": 4,
+        "ci-exit-1": 3,
+        "hydration-mismatch": 1,
+        "node-test-runner": 2,
+        "401-no-evidence": 5,
+        "callbacks-to-async": 3,
+        "db-migrations": 1,
+        "class-to-hooks": 1
+      },
+      "bluf": {
+        "actions-workflow": 2,
+        "callbacks-to-async": 4,
+        "hydration-mismatch": 2
+      }
+    },
+    "assertion": "zero \"bluf-retest\" occurrences remain in any judged packet (enforced at build)"
+  },
+  "derivedPackets": {
+    "seed": "dd94f85aae49718f802c7e067a76c082",
+    "count": 30,
+    "packetSetSha256": "67ab0a588dc408bd121b1e9b7922a8ff9804e39492ff49f68e34b7a462a8c581",
+    "sha256ByCaseId": {
+      "port-default": "4f65e8290a74afdc9f7bd8345a3d6a1089b0b80309a496902e350a2a5f947d62",
+      "git-no-ff": "c1aba664ceb43a530625576e9ade80ef6501c0b0c643202e68f99b2f21f8191d",
+      "to-sorted": "7c4037e832a9c7d71e00d08c89f383cbad2700c01e06dbb5ad7bf0429fdbdea4",
+      "health-endpoint": "5368840782cbfc589b5c7e8000494c26ce163abeadff5331e5b2daf6ab562d14",
+      "actions-workflow": "84101c313c086b87847eef07c34b643f242edc4ea91498b9ee1e4e3ea48912e1",
+      "cjs-to-esm": "d3421cf2f721bfada3542ed501fb25ebb10b4f05c86528f6748fedfa4840e568",
+      "401-no-evidence": "f0556ff57c581bfd58c91c148f505718489471da6ca62341e39d8443d7e79c07",
+      "ci-exit-1": "8967f26c430af4957061535ada9e43598cefd690fa876c1adefac31cff87aeec",
+      "scheduled-jobs": "767d139599fd5419e107e6684dd90a01f53fdd13140640af4f60284ab7625273",
+      "shared-types": "fdfaba9b980fee6ad66b9f24000d505e13bf5bb48421c48697b1c7892ab18789",
+      "security-headers": "c403d66470fbc351be7b2ef194c6edd3896c4ff0b19e9afad959664ea9fd4416",
+      "docker-cache-miss": "d5324cef9228ca12554abb2e829c4e2147ecd193f800a7b7bc937f03430bcf3d",
+      "semver-caret": "335facb66f49d38bcd5049b105c3d6237d5ba1804779a6d649682855272dcd05",
+      "http-204": "917a3d3e95e420805d7bc90f916dd0e313417b5bea9b53ca5a6c5e06d38a7a85",
+      "callbacks-to-async": "30f882c9847035f2557d010b46ea3f30d475bd5034f8fabbf0226a1069bc0e2f",
+      "class-to-hooks": "1bea9fbd40d724112081064e12b8605d6d599ae4d405a157cce538ad4ea77352",
+      "cors-blocked": "6ccc44598a2e8d0b549e01e8e699bc295534ade77529b4008b068e0644aebd93",
+      "memory-climb": "fb116b886ca3bb93c781c3cbb9720e250a94e05bd7fea6aabee11bfd2a60fc0a",
+      "hydration-mismatch": "4b7ca23a2324defe518a309f40997b889ad70176cd6ba172e04cf55eafcf864e",
+      "react-state": "4d97e33a6271d491abd5d4ab3055661c0455c8105252371eea7e8b3945a8a409",
+      "node-test-runner": "05c5ae061669dafec769cc0c7f30016068029509ffbe8f8207bf23a784b4ca59",
+      "db-migrations": "95d95c5c80e64aa1277f73c9f915a0c00c662c0c30a3308d60b12b20f78c12db",
+      "slow-postgres": "88a0f1f639887d64afee0e1a9216a2f29c36bb627abeb75be78eacfc09f9e778",
+      "bundle-bloat": "503fe59a1d6391e6f6762b61c230843ec803c64287c9db37ee7baa93037e93e6",
+      "flaky-tests": "f3cd34ed637d70e5254ceccb96a9aeed735bbcf7a6b7288b654a5f364c7407bf",
+      "why-sorted-faster": "40e0d788df7cc9a42b8e0a93f42b85752560874ca26c33a63552d35f34d3e474",
+      "yield-keyword": "0cf7275ab7963f3efb7ac200efb63322ae945dc948ec89e99a323354b1bf0f6c",
+      "closure-loop": "9fb202a59a137d6293a817cf7576883260170dd1233c092a481328dc7528ccdf",
+      "event-loop": "8b07697d2a73511dc780b71e182099f6ac0e8990d0fee0ab8609f1ae4ddce7cd",
+      "this-binding": "3873b24034fe68028760def02c409e13d0e5b876f2f34d51d9ef2847132b6cec"
+    }
+  }
+}

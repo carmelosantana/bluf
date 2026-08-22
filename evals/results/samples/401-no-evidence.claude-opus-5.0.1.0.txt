@@ -1,0 +1,18 @@
+The 401 is the server rejecting the request. The assertion is reporting that correctly — nothing is wrong with the assert line.
+
+What the evidence establishes:
+
+- The request reached the server. A 401 is a response, so the connection and routing work.
+- Auth rejected the request before your handler ran. The handler never had a chance to return 200.
+
+What it does not establish: why auth rejected it. A bare 401 does not distinguish a credential that was never sent, an expired token, a wrong signing key, or a test fixture that never created the user.
+
+One check separates those cases — log the rejection detail instead of just the status:
+
+```js
+console.log(res.status, res.headers['www-authenticate'], res.body ?? res.text);
+```
+
+Most auth middleware puts the reason in the body or in the `WWW-Authenticate` header. That tells you whether the server saw a credential at all. "No credential sent" points at the test setup. "Credential rejected" points at the token or the middleware config.
+
+Run that, then paste the output along with the request-building lines of the test and your auth middleware. I have no file access in this session, so I cannot read them myself.

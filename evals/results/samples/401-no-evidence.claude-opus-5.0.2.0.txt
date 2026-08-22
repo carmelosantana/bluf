@@ -1,0 +1,13 @@
+The assertion line cannot tell you the cause. It only reports that the server returned 401 instead of 200 — the request was rejected at authentication, before any handler logic ran.
+
+What is known from 401 alone: the server received the request and refused it for missing or invalid credentials. That is all. The cause could be a missing auth header, an expired or unseeded test token, a test-user fixture that never got created, or middleware ordering. Nothing in the evidence you have picks between them.
+
+I also have no file or shell tools in this session, so I cannot read the test or the server code.
+
+Next step: log the response body and the request's `Authorization` header just before the assertion.
+
+```js
+console.log(res.status, res.headers, await res.text());
+```
+
+The 401 body almost always names which check failed. Paste that output and I can narrow it.

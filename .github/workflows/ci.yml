@@ -1,0 +1,18 @@
+name: CI
+
+# Runs the full eval test suite — including the sidecar-never-committed invariant
+# (evals/test/sidecars-gitignored.test.mjs) and the preregistration-manifest check
+# (evals/test/phase2-manifest.test.mjs) — on every push and pull request.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test

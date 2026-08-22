@@ -1,0 +1,34 @@
+`--no-ff` forces git to create a merge commit even when a fast-forward would be possible.
+
+**Without it (default `--ff`):** if the target branch hasn't diverged — i.e. your current HEAD is a direct ancestor of the branch you're merging — git just moves the branch pointer forward. No merge commit, and the fact that a branch ever existed disappears from the graph.
+
+```
+before:  A---B---C main
+              \
+               D---E feature
+
+ff merge: A---B---C---D---E   main, feature
+```
+
+**With `--no-ff`:** git always writes a merge commit with two parents.
+
+```
+A---B---C-----------M  main
+         \         /
+          D---E---'   feature
+```
+
+Why you'd want it:
+
+- **Preserves branch topology.** You can see which commits belonged to a feature, and `git log --first-parent main` gives you one entry per merged feature instead of every individual commit.
+- **Revert is easy.** `git revert -m 1 M` undoes the whole feature in one shot. With a fast-forward you'd have to revert each commit.
+- **The merge commit is a place to put a message** — PR number, ticket link, summary.
+
+The cost is a noisier graph and an extra commit per merge; teams that prefer linear history use `--ff-only` or rebase instead.
+
+Related knobs:
+- `git config merge.ff false` — make `--no-ff` the default for all merges.
+- `git config --global pull.ff only` — refuse a pull that would need a merge.
+- `--ff-only` — the opposite: abort rather than create a merge commit.
+
+Note that `--no-ff` only matters when a fast-forward is *possible*. If the branches have genuinely diverged, git creates a merge commit either way.

@@ -1,0 +1,21 @@
+{
+  "name": "bluf",
+  "version": "0.2.0",
+  "description": "Bottom Line Up Front — a Claude Code output style that leads with the conclusion, with the output-token reduction measured.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test 'evals/test/*.test.mjs'",
+    "preflight": "node evals/preflight.mjs",
+    "measure": "node evals/measure.mjs",
+    "measure:agentic": "node evals/measure-agentic.mjs",
+    "measure:amortization": "node evals/measure-amortization.mjs",
+    "measure:opus-retest": "node evals/measure-opus-retest.mjs",
+    "measure:opus-phase2": "node evals/measure-opus-phase2.mjs",
+    "analyze:phase2": "node evals/analysis/padded-phase2.mjs"
+  }
+}

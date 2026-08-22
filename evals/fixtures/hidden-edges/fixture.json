@@ -1,0 +1,13 @@
+{
+  "shape": "hidden-edges",
+  "prompt": "npm test fails in src/ordinal.mjs. fix it",
+  "testCommand": "npm",
+  "testArgs": ["test"],
+  "hiddenCommand": "npm",
+  "hiddenArgs": ["run", "test:hidden"],
+  "hiddenPaths": ["test-hidden"],
+  "hiddenScripts": {
+    "test:hidden": "node --test 'test-hidden/*.test.mjs'"
+  },
+  "allowedTools": ["Read", "Edit", "Write", "Bash", "Glob", "Grep"]
+}

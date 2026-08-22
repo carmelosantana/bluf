@@ -1,0 +1,24 @@
+node_modules/
+.DS_Store
+.superpowers/
+# Repo-root specs and plans stay local and unpublished. Anchored so it does NOT
+# swallow nested docs/ directories (a fixture's docs/ must be committed).
+/docs/
+# Re-test diagnostic sidecars: full transcripts and quarantined anomalous rows kept locally for
+# diagnosis, never committed (the repo stays light; padded-*.jsonl count rows remain the source of
+# truth). These suffixes never match the committable padded-<model>-<condition>.jsonl count files.
+evals/results/padded-*-text.jsonl
+evals/results/padded-*-quarantine.jsonl
+# Phase 2b judge working dir: the blinded PACKETS embed the (gitignored) transcripts, so they stay
+# local. The judge outputs (judge-*.jsonl, scores only) and the reveal map (blinding key, no transcript
+# text) ARE committed as the quality evidence the verdict traces to.
+evals/results/phase2b-judge/packet-*.txt
+evals/results/phase2b-judge/rating-data.json
+evals/results/phase2b-judge/rating-app.html
+# Omission-adjudication worksheet + its adjId→identity sidecar embed transcript text (stay local);
+# the operator's RULINGS record (omission-adjudication.json, scores only) IS committed.
+evals/results/phase2b-judge/adjudication-worksheet.*
+evals/results/phase2b-judge/adjudication-map.json
+
+# Human rater submissions (scores only) — kept local until the set is complete
+evals/results/phase2b-judge/raters/

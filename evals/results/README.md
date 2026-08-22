@@ -1,0 +1,193 @@
+# What is in this directory
+
+Two things, kept apart on purpose — plus one retired experiment, labelled below.
+
+## The current measurement
+
+The unsuffixed `full-claude-*-baseline.jsonl` and `full-claude-*-bluf.jsonl` files, together
+with the preserved `lean-claude-opus-5-*-0.2.0.jsonl` pair below, are the 0.2.0 rules,
+measured at three trials per case with conditions interleaved. The project README's
+output-side figures — the headline percentages, the results table, the variance ranges —
+trace to these files. Its input-cost and break-even figures trace to the amortization slice
+below, and its 0.1.0 regression figures to the archive below.
+
+`report-0.2.0.md` is the three-trial report those files produced — its main sections measured
+in the `full` environment, its two lean sections in `lean`. It is kept under a versioned name
+because `npm run measure` writes `report.md` unconditionally, and the 0.2.0 measurement is
+evidence for claims the README still makes.
+
+`lean-claude-opus-5-baseline-0.2.0.jsonl` and `lean-claude-opus-5-bluf-0.2.0.jsonl` are the
+three-trial, schedule-version-1 lean rows behind the 0.2.0 lean figures — the source of the
++13.4% output / +560-token lean aggregate the project README quotes, and of the lean sections
+inside `report-0.2.0.md`. They carry the version suffix for the same reason the report does,
+following the `-v1` precedent: the overhead sweep in `npm run measure` writes
+`lean-claude-opus-5-baseline.jsonl` and `lean-claude-opus-5-bluf.jsonl` unconditionally, and
+its replacement rows (five trials, schedule version 2, new provenance fields) would not be
+the rows those figures cite.
+
+## Schedule versions
+
+Rows written by `npm run measure` carry a `scheduleVersion` field recording which
+execution schedule produced them. Version 1 was case-major: a case's repetitions ran
+back to back, with the condition rotation keyed on the case alone. Version 2 is
+trial-major: a trial is a whole sweep of every case, in an order reshuffled per trial,
+with the rotation keyed on case and trial — so cross-trial ranges under version 2
+measure independent sweeps, while under version 1 they measured back-to-back repeats.
+The two generations' cross-trial ranges are therefore not comparable. Committed rows
+that predate the field are version 1.
+
+## The 0.1.0 archive
+
+`report-0.1.0.md` and the `-v1.jsonl` files record the **retracted** first rule set — the
+one that cut Fable-5 output 22.7% while inflating Opus-5 output 32.2%. They are kept
+because that regression is a claim the README still makes, and evidence for a live claim
+should not be deleted.
+
+Two things about them:
+
+- **The filenames and the `condition` field inside them say `less-chatty`.** That was the
+  project's working name when the run happened. The files are preserved byte for byte
+  rather than relabelled, because rewriting stored measurement records to match a name
+  chosen afterwards is the kind of tidying that quietly destroys provenance.
+- **They are not methodologically comparable to `report-0.2.0.md`.** The 0.1.0 run was a single
+  trial per case with each condition run as a contiguous block, which confounds the
+  condition with elapsed time. The 0.2.0 run is three trials with conditions interleaved
+  and rotated. The +32.2% regression is far enough outside the measured drift band to
+  survive that difference, but the two reports should not be diffed row by row.
+
+## The terse variant — a retired experiment
+
+The `bluf-terse` files are the full evaluation of a compression variant that was
+**retired before launch** and is no longer shipped:
+
+- `full-claude-fable-5-bluf-terse.jsonl` and `full-claude-opus-5-bluf-terse.jsonl` —
+  its 12-case main sweep
+- `lean-claude-opus-5-bluf-terse.jsonl` — its 2-case lean-environment sweep
+- `amortization-claude-opus-5-bluf-terse.jsonl` — its arm of the amortization slice
+- the `less-chatty-terse-v1` files — its rows in the retracted 0.1.0 archive above
+- the terse sections of `report-0.2.0.md` — the terse variant is not a condition in any
+  newer run, so no future `report.md` will carry them
+
+It saved more output tokens than base BLUF but hurt consistency and skimmability — it
+lost to BLUF outright on some cases, and compressed grammar is harder prose — and a
+second shipped variant meant a second behaviour to re-validate on every rule change. The
+style file itself is preserved at [`archive/bluf-terse.md`](../../archive/bluf-terse.md),
+with the full rationale in [`archive/README.md`](../../archive/README.md).
+
+These files are preserved byte for byte, like the 0.1.0 archive: they are the evidence
+the variant was evaluated rather than dropped on taste. Their rows carry
+`condition: "bluf-terse"`, a key no longer in the live `CONDITIONS` table in
+`evals/lib/runner.mjs` — expected, because that table validates conditions a new paid
+run is about to spend on, not stored evidence.
+
+## Samples
+
+`samples/` holds verbatim response text, which the `.jsonl` files do not record. See
+`samples/CAPTURE.md` for how each was captured and which prompt produced it.
+
+## Amortization slice
+
+`amortization-claude-opus-5-*.jsonl` — 18 rows from `npm run measure:amortization`, run when
+the sweep still carried three conditions (6 of the rows belong to the retired terse arm; a
+re-run today covers two conditions and 12 rows). Two turns
+of a single `claude` session per (condition, trial): turn 1 opens it with `--session-id`, turn 2
+re-asks the same prompt with `--resume`. Case `port-default`, lean environment, three trials, on
+claude-opus-5. The pin was chosen at the time because `--strict-mcp-config` was believed to force
+that model — a forcing that did not reproduce when probed on 2026-08-17 (see
+[probes/README.md](probes/README.md), "Model resolution"); the pin now stands for comparability
+with these committed opus rows.
+
+**These are the only rows here that carry the input-token tier split** —
+`inputUncached`, `inputCacheRead`, `inputCacheWrite`, and the `1h`/`5m` breakdown of the write.
+Every other file predates tier capture and stores only a summed `inputTokens`, which is why no
+cost figure can be derived from them: uncached input, cache reads, and cache writes bill at
+different rates, and 1-hour and 5-minute writes differ again. `requireTiers()` in
+`evals/lib/report.mjs` throws on those older rows rather than treating an absent tier as zero.
+
+This slice exists because every other measurement here is single-shot, and single-shot cannot
+observe the thing that decides the cost question: whether the style's input overhead is a cache
+write paid once per session or a cache read paid every turn. It is the latter from turn 2 on.
+
+Four post-payment checks in `evals/lib/runner.mjs` gate the result — that every turn-2 row read
+from cache, that each turn-2 row's input strictly exceeds its turn-1 partner's (a forked session
+would send an identical prefix and pass the first check), that every turn-1 row was a cold cache
+write (`inputCacheRead` 0, positive write — the precondition that makes the turn-1 figures
+cold-write figures), and that the styled arms' turn-1 input exceeds baseline by the style's own
+token count. None of them can save money. They exist so a run that measured the wrong thing
+aborts loudly instead of printing a plausible number.
+
+**Output tokens in this slice are not a style measurement.** Turn 2 re-asks a question just
+answered, so its length is noise — the unstyled arm measured 181, 33, and 194 across three
+trials. The output-reduction claim comes from the 12-case sweep in `report-0.2.0.md`, not from here.
+An earlier version of this slice aborted a valid run on a turn-2 output ceiling for exactly this
+reason, and the unstyled arm has separately measured 5 output tokens on turn 1, identical to a
+styled answer.
+
+## Environments, and what the committed rows carry
+
+Rows record the environment they were measured in. The three differ in what they exclude,
+and the distinction matters for reading any absolute figure.
+
+- **`full`** — no isolation flags. Inherits the operator's MCP servers and user settings.
+- **`lean`** — `--strict-mcp-config` with an empty MCP config. Excludes MCP servers, still
+  inherits user settings.
+- **`clean`** — also passes `--setting-sources project`, excluding the operator's user
+  settings entirely, and installs the style at project level inside the run's temp
+  directory so it remains loadable.
+
+The figures below are **design-time probes, not sweeps** — single observations from ad-hoc
+scripts, without tier splits, interleaving, or rotation. Their raw rows are committed under
+[`probes/`](probes/), and `evals/test/probes.test.mjs` recomputes every one of them from that
+data, so they are traceable even though they are not measurements at this directory's usual bar.
+Read them as orientation; the published claims come from `report-0.2.0.md`.
+
+**Every row committed before the `clean` environment existed carries the operator's user
+settings**, and they are not small: measured against the same prompt and model, the operator's
+user settings are worth **98,284 input tokens** and their MCP servers 116,766, the two
+overlapping because user settings are where MCP servers are configured. Excluding both leaves
+3,598. A figure of "1,248 tokens of operator config" appeared in earlier drafts of this
+repository; it reproduces at **1,243**, but it never meant what it said — it is the remainder of
+user settings *after* their MCP content is already excluded, not their cost. See
+[`probes/README.md`](probes/README.md).
+
+Because that configuration is present in both arms, it is an additive constant on the **input**
+side and paired input deltas cancel it. That argument does not transfer to output tokens, which
+are generated behaviour rather than an additive term — this harness's own notes record leaked
+plugin config making one arm invoke a tool call the other did not. What supports the published
+output-reduction figures against this is weaker and worth stating as such: an isolation
+replication on claude-opus-5 produced a median of **−36.5%**, larger than the published −30.9%
+and in the same direction, across trials measuring −13.2%, −36.5% and −41.0%, and reproduced the
+input overhead at a median of **2,033 tokens across 29 in-band observations**.
+
+Two things about that replication, both of which limit it. It was **not** run in the `clean`
+environment described above — its script passes `--setting-sources project` but not
+`--strict-mcp-config`, so MCP servers were still loaded, and its baseline input sits with the
+`no-user-settings` configuration rather than the `clean` one. And its overhead figure excludes 7
+of 36 pairs whose two arms were in different cache states. That is a post-hoc filter, so the
+rule, the count, and every excluded row are written down in `probes/README.md` and asserted by a
+test.
+
+What those rows cannot support is an **absolute** figure that transfers to another machine.
+Read `full` and `lean` input totals as specific to the machine that produced them.
+
+The preflight figure below is the one clean-environment number produced by shipped code rather
+than a probe script, though `evals/preflight.mjs` writes no rows — it only prints. What sets it
+apart is that anyone can re-run it for the cost of two calls and watch the check pass or fail for
+themselves. The paid preflight
+(`npm run preflight`) was run against the commit that added it and measured a **+2,034-token**
+input overhead in the clean environment, with output collapsing from 349 to 5 tokens on the
+`port-default` case with `claude-opus-5`.
+
+Two limits on that figure, so it is not read for more than it is worth. It is a **single
+observation**, not a median — the probes put the style overhead between 2,028 and 2,038 and
++2,034 sits inside that band, but those probes ran with MCP servers loaded, and one call
+establishes no spread either way. And a re-run reproduces the **effect**, not these exact
+numbers: the overhead is near-deterministic because it is the style's own text, while the output
+figures are generated and will vary. Four `clean` observations recorded input of 3,588 / 3,597 /
+3,598 against outputs of 223 / 1,767 / 64,342 — the last a runaway to a one-line question. What
+`npm run preflight` guarantees on a re-run is that the style reached the model at all.
+
+One further caveat for anyone re-running: an isolated environment is **noisier**. Across three
+replication trials the baseline output sums were 21,298 / 24,673 / 27,332 — a 28% spread,
+against 3.2% for the same model in `full`. The tooling-heavy context appears to stabilise the
+baseline. Budget more trials, not fewer.

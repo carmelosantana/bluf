@@ -1,0 +1,60 @@
+Four things break the cache permanently: the cache isn't there, an input changes every run, the cache gets evicted or overwritten, or the export silently failed.
+
+## The cache isn't there
+
+- **Ephemeral CI runner with local-only cache.** Each run starts on a fresh machine. Nothing is imported, so nothing hits. Fix with `--cache-from`/`--cache-to`.
+- **`docker buildx create` on every run.** The `docker-container` driver keeps cache inside the builder container. Recreating the builder discards it.
+- **`--no-cache` left in the command.** Often hidden in a Makefile or a CI template.
+- **`--cache-to` missing.** You import cache that was never exported.
+- **`mode=min` (the default) on a multi-stage build.** It exports only the final stage. Every intermediate stage misses. Use `mode=max`.
+- **`BUILDKIT_INLINE_CACHE=1` on a multi-stage build.** Inline cache carries final-stage layers only. Same failure as above.
+- **`--cache-from type=registry` with bad credentials or a wrong ref.** BuildKit does not fail the build. It just builds cold.
+- **Registry rejects the cache manifest.** Some registries need `image-manifest=true,oci-mediatypes=true` on `--cache-to`. Export fails quietly.
+- **`type=local` cache directory not persisted by CI.** The dir is written, then thrown away with the workspace.
+- **`--cache-to` and `--cache-from` point at different refs.** Common after a rename.
+- **GitHub Actions cache scoping.** `type=gha` caches are isolated per branch. A PR run cannot read another PR's cache, and it can read `main` only as a parent.
+- **Classic builder with `--cache-from`.** The image must be pulled locally first, and the layer history must match exactly.
+- **Builder switched between BuildKit and the legacy builder.** They do not share a cache.
+- **A different daemon than you think.** Rootless vs root, `sudo` vs not, or a reset Docker Desktop VM.
+- **New `--platform` value.** Cache is per-platform. Adding `linux/arm64` starts cold for that platform.
+- **`docker system prune -a` or `docker builder prune` in a cleanup step.**
+
+## An input changes every run
+
+- **`COPY . .` before dependency install.** Any source edit invalidates the install layer.
+- **No `.dockerignore`.** `.git`, `node_modules`, `dist`, logs, and coverage output enter the context hash. A previous build's output alone will do it.
+- **A build arg holding the git SHA, build date, or version, declared near the top.** `ARG` invalidates every instruction after its first use. Move it to the last stage.
+- **`ENV` set from a volatile `ARG`.** Same effect, further reach.
+- **`--pull` with a moving base tag.** `:latest` or `:alpine` republishes, the digest changes, everything after `FROM` rebuilds. Pin by digest.
+- **`ADD` from a URL without `--checksum`.** BuildKit re-resolves the remote each build.
+- **`ADD` from a git ref that moves.**
+- **File mode changes between checkouts.** BuildKit hashes content, path, and mode. A umask or uid difference in the runner flips the key.
+- **Line-ending changes.** `core.autocrlf` on Windows runners rewrites content.
+- **The legacy builder and fresh mtimes.** Its checksum includes file metadata, so a clean `git clone` busts `COPY` every time. BuildKit does not have this problem.
+- **A floating `# syntax=docker/dockerfile:1` frontend.** A new frontend release can change how keys are computed.
+- **Symlink targets changing inside the context.**
+- **Any edit to the instruction string.** Whitespace, argument order, and a comment inside a heredoc all count. A comment on its own line does not.
+
+## The cache is evicted or overwritten
+
+- **BuildKit garbage collection.** The default policy caps cache size. One large build can evict the previous one, so every run looks cold. Raise `gckeepstorage` in `buildkitd.toml`.
+- **Two branches sharing one registry cache ref with `mode=max`.** Each build overwrites the other. The hit rate collapses.
+- **A fleet of runners with independent local caches.** Each runner sees a cold cache most of the time. Use a shared registry or `gha` cache.
+- **Local cache dir wiped because it grew unbounded.** `type=local` does not prune itself.
+
+## Not actually a cache miss
+
+- **`RUN --mount=type=cache` is empty.** That is a mount, not a layer. It does not persist across ephemeral builders unless you export it separately. The layer above it can still be `CACHED`.
+- **A changed secret or SSH socket.** Secret contents are not part of the cache key.
+- **Slow export or push after a full cache hit.** Check the timing per step, not the total.
+- **A huge context upload.** That is transfer time, not a rebuild.
+
+## Next step
+
+Run the build twice and read the second one:
+
+```
+docker buildx build --progress=plain . 2>&1 | grep -nE 'CACHED|^#[0-9]+ \[' | head -40
+```
+
+The first step without `CACHED` is the one to fix. Everything below it is downstream noise.

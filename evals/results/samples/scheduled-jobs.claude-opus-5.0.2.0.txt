@@ -1,0 +1,19 @@
+The deciding question is whether you run more than one instance. In-process timers double-fire on every replica.
+
+**Single instance, jobs can be missed after a restart**
+- `setInterval` — no dependency. Fine for polling every N minutes.
+- `node-cron` or `croner` — cron syntax in-process. `croner` handles timezones and DST correctly; `node-cron` is lighter.
+
+**Multiple instances, or jobs must survive restarts**
+- **pg-boss** — Postgres-backed queue with cron scheduling. Best pick if you already run Postgres. No new infrastructure.
+- **BullMQ** — Redis-backed, repeatable jobs, retries, concurrency control. Best pick if you already run Redis. Strongest ecosystem and dashboard.
+- **Agenda** — MongoDB-backed. Only if Mongo is your existing store; less active than the two above.
+
+**Schedule outside the app**
+- **Kubernetes CronJob / systemd timer / system cron** — runs a separate process per tick. The scheduler is not your app's problem. Good for batch work that does not need app state.
+- **Cloud schedulers** (EventBridge Scheduler, Cloud Scheduler, Vercel Cron) — hit an authenticated HTTP endpoint on a schedule. Works well with serverless, where in-process timers cannot run.
+
+**Long or multi-step jobs**
+- **Temporal**, **Inngest**, or **Trigger.dev** — durable execution with retries and step-level recovery. Worth it when a job spans minutes and partial failure is costly. Overkill for a nightly cleanup.
+
+Next step: tell me your instance count and your existing datastore. That picks the option in one line.
