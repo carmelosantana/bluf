@@ -478,7 +478,9 @@ has not been run through the sweep. Treat ~+6% as a lead, not a result.
 share of the agentic bill (under 1% by raw token count), so the credit a brevity style can earn
 there is tiny. Shrinking the tax removes most of a penalty; it does not create a meaningful
 saving. In principle a style small enough for that tiny credit to exceed its residual tax could
-dip marginally below break-even — but no style large enough to carry these rules gets there.
+dip below break-even; where that point sits — the minimum rule size and its residual tax — is
+unmeasured. So this projection supports only the narrower claim that the lean variant, at ~716
+tokens, stays positive; it does not establish that no smaller style could cross the line.
 Confirming even the ~+6% requires a real re-run.
 
 ## Does it make anything faster?
