@@ -454,6 +454,28 @@ ordering, not a commit hash.
 - **12/12 task success shows no adequacy penalty *at this scale*; it does not show there is
   none.** That question gets its own section below.
 
+## Does it make anything faster?
+
+**No. The style has no measurable effect on wall-clock time.** 6 of 12 pairs faster under the
+style, 6 slower; the median difference is **0.27 seconds** on calls averaging about 18 seconds, and
+the total across all pairs moved **+0.8%**. That is not a slowdown and it is not a speed-up — it is
+nothing.
+
+This figure came free, and how it was recovered is worth a sentence. **No result row in this
+repository records a duration** — the schema was designed around billing and wall-clock never made
+it in. But the agentic sweeps committed their raw transcripts, and the CLI's result event carries
+`duration_ms`. So the 24 committed transcripts answered the question without buying a call.
+`evals/test/timing.test.mjs` recomputes every number here from them.
+
+Two limits. It covers the **agentic sweeps only** — the 260-call prose sweep stored no transcripts,
+so its timing is gone and cannot be recovered without paying again. And every timed call is
+`claude-fable-5`; there is no opus timing anywhere in the repo.
+
+Why the null is unsurprising in hindsight: the style cuts output tokens, and generation time scales
+with output — but in agentic work output is a sliver of the total, and most of the wall-clock is
+spent on tool execution and re-sending context, neither of which the style touches. The same
+mechanism that makes the cost go up keeps the clock flat.
+
 ## Is what remains enough?
 
 **Three instruments, three honest results: one did not discriminate, one found nothing but
