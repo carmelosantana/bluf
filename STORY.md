@@ -629,6 +629,8 @@ Nobody asked about port collisions or overrides. In the current run, the unstyle
 
 ## Reproducing
 
+The investment behind these figures is committed, not asserted: **1,034 recorded API calls** across 34 sweep files under [`evals/results/`](evals/results/) (a further 300 rows re-score the same calls text-only, for 1,334 rows over 37 files). Every figure in this repo and in the README recomputes from those rows — nothing here rests on a number you have to take on trust.
+
 ```bash
 npm test
 ```
