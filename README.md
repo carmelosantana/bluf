@@ -2,7 +2,9 @@
 
 *Bottom Line Up Front.* A Claude Code output style that leads with the conclusion and cuts filler — measured, including what it costs.
 
-**Great for chat and prose. In agentic coding it's tighter to read but costs more to run.**
+**Shortens output in chat and prose; in agentic coding it's tighter to read but costs more to run.**
+
+*Measured on opus-5, on a balanced JS/web-development benchmark — interim and model-judged. Not a real-usage guarantee.*
 
 <img src="assets/01-regimes.png" width="900" alt="Two panels. Left, chat and prose: with BLUF, opus answers in a realistic padded-dense context get shorter — visible characters −43.6%, materially shorter in 5 of 6 categories, in 129 of 150 trials. Right, agentic coding: the same nine paired fixture runs cost more with the style — billed cost +18.3%, positive in 9 of 9 pairs — even though the assistant's own prose fell 31.5%.">
 
@@ -10,10 +12,10 @@
 
 | Regime | Result |
 | --- | --- |
-| **Chat / prose** | output **~44% shorter** (opus, realistic padded-dense context) and cheaper — the reply shrinks by more than the style's own instructions cost. |
+| **Chat / prose** | output **~44% shorter** on a balanced JS/web benchmark (opus-5, one model, realistic padded-dense context). Cheaper *only* once caching amortizes the re-sent instructions across a multi-turn chat — a one-shot question can lose money ([break-even math](STORY.md)). |
 | **Agentic coding** | output **~31% tighter** to read (`textChars` −31.5%) but **+18.3%** more expensive to run — the style's ~2,030-token instructions get re-sent on every turn, and in coding work that's most of the bill. |
 
-A **lean, 65%-smaller variant** ([`output-styles/bluf-lean.md`](output-styles/bluf-lean.md)) projects to **~+6%** agentic, down from +18%. This is a **projection, not a measurement** — it has not been re-run through the sweep. Treat it as a lead, not a result.
+A **lean, 65%-smaller variant** ([`output-styles/bluf-lean.md`](output-styles/bluf-lean.md)) projects to **~+6%** agentic, down from +18%. This is a **projection, not a measurement** — it has not been re-run through the sweep. Treat it as a lead, not a result. It scales the measured +18.3% by the variant's remaining instruction size and assumes the per-turn tax dominates linearly; the derivation and its assumptions are in [`STORY.md`](STORY.md).
 
 ## Before / after
 
@@ -53,7 +55,7 @@ Then run `/output-style BLUF` and `/clear`. An output style is read once at sess
 
 ## Try it yourself (5 min)
 
-Everything measured here is length, cost, and whether the code still worked. **None of it measures whether you liked the answer.** Only you can judge that.
+Everything measured here is length, cost, model-judged correctness and completeness, and whether the code still worked. **None of it measures whether you liked the answer.** Only you can judge that.
 
 ```bash
 claude -p 'in git, what does --no-ff do on a merge?' --settings '{"outputStyle":"Default"}'
@@ -68,14 +70,14 @@ Run the same question twice, once under each style, in a fresh session each time
 
 **Agentic tax.** Output is 0.96% of billed tokens in the agentic sweep; the style adds roughly a 2,030-token instruction tax on every turn. Cutting the output sliver can't outrun a tax charged on the other 99%. Detail: [`RESULTS.md`](RESULTS.md), [`report-agentic-0.1.0.md`](evals/results/report-agentic-0.1.0.md).
 
-**Quality is regime-dependent, not uniformly safe.** Phase 2b's pre-registered gate gives one clean **PASS** (`conceptual-explain`) and a real **regression on `short-lookup`** — the style drops context a quick-lookup answer is judged on. Detail: [`RESULTS.md`](RESULTS.md).
+**Quality is regime-dependent, not uniformly safe.** Phase 2b's pre-registered gate gives one point-estimate **PASS** (`conceptual-explain` — its per-prompt CIs are still wide) and a real **regression on `short-lookup`** — the style drops context a quick-lookup answer is judged on. Overall the gate is **WIN ×1 / CAUTION ×5**. Detail: [`RESULTS.md`](RESULTS.md).
 
 ## Honest limits
 
 - **This is an interim, model-judged result.** The pre-registered human cross-check has not run yet; see [`RESULTS.md`](RESULTS.md) for what's outstanding.
-- **Quality is regime-dependent, not uniformly safe** — one category passes cleanly, one regresses, the rest sit in a cautious middle.
+- **Quality is regime-dependent, not uniformly safe** — one category passes on the point estimate, one regresses, the rest sit in a cautious middle (**WIN ×1 / CAUTION ×5**).
 - **The agentic figures are one fixture set** — 3 fixtures, one model, 9 paired runs. Direction is consistent; no interval is claimed.
-- **Every number here traces to a committed file** under [`evals/results/`](evals/results/) — nothing is asserted without a row behind it.
+- **Every measured number here traces to a committed file** under [`evals/results/`](evals/results/). The one exception is the lean variant's projected ~+6%, labeled a projection, not a measurement.
 
 ## More
 

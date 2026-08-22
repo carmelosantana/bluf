@@ -13,7 +13,9 @@ once you can picture them. Four things, without the numbers:
 
 **Why "fewer output tokens" doesn't mean "cheaper".** You pay for what you send as well as what
 you get back. The style is a page of instructions that gets sent with *every* message, forever.
-In a chat that's a fine trade: the reply shrinks by more than the instructions cost. In coding
+In a chat it *can* be a fine trade — but only once caching makes the re-sent instructions cheap
+and several turns amortize the first one. A single one-shot question can still cost more than it
+saves (the break-even math is below). In coding
 work it isn't, because the replies are already short — most of what the model produces is tool
 calls, and most of what you pay for is the file contents and command output being sent *to* it.
 You end up paying the instruction tax on every turn to shorten the one part that was never the
@@ -153,26 +155,26 @@ Three findings follow, each from committed rows:
 - **It is one model, not a trend.** In the same sparse environment, `claude-opus-4-8`, `claude-sonnet-5` and `claude-fable-5` produced **zero** short answers in thirty calls, at 7.3–10.8% variation. Sparse opus-5 sat at 68.6%.
 - **It is not a harness fault.** No cache effect, no ordering effect, no trial-level state; every one of the 240 clean rows was a cold cache write and input varied by ~40 tokens across an entire file.
 
-**What that means for the retraction, stated carefully.** It explains the collapse without rescuing the number. In a sparse room opus-5's *unstyled* answer is already 300–550 characters on half of calls — at or below what BLUF itself produces — so there is nothing left to cut and the measured effect goes to zero. In a dense room the unstyled baseline is reliably 2,261–4,263 characters and the style has real work to do. **The −30.9% was never wrong about a dense context; it was never a statement about a sparse one.**
+**What that means for the retraction, stated carefully.** It explains the collapse without rescuing the number. In a sparse room opus-5's *unstyled* answer is already 300–550 characters on half of calls — at or below what BLUF itself produces — so there is nothing left to cut and the measured effect goes to zero. In a dense room the unstyled baseline is reliably 2,261–4,263 characters and the style has real work to do. On this evidence, the −30.9% most likely described a dense context and never applied to a sparse one — but read that as the best available explanation, not a proof: the density probe above turned on a single prompt and did not measure where the threshold between the two modes sits.
 
 It stays retracted regardless, for a reason the diagnosis cannot remove: every `full-*.jsonl` row is schedule version 1 and records no CLI version, while every `clean-*.jsonl` row is version 2 on CLI 2.1.222. The dense-versus-sparse comparison rests on exactly the cross-generation comparison this repo already says is not valid. Publishing it would mean trusting a confound we have written down twice.
 
-**The uncomfortable implication is about the measurement, not the style.** A sparse "clean room" was adopted to remove the operator's machine from the result. For opus-5 it introduced a regime that real Claude Code sessions — which always carry substantial context — never occupy. The isolation that made the number portable also made it describe something nobody experiences.
+**The uncomfortable implication is about the measurement, not the style.** A sparse "clean room" was adopted to remove the operator's machine from the result. For opus-5 it introduced a regime that real Claude Code sessions — which typically carry substantial context — rarely occupy. The isolation that made the number portable also made it describe a regime few real sessions are in.
 
-### Phase 2b resolves the retraction
+### Phase 2b confirms the dense-context claim
 
-The paragraphs above stop at a diagnosis: the clean room explained *why* the opus number collapsed, but the isolated dense-versus-sparse comparison could not be published as a fix, because it crossed a schedule-version confound this repo already treats as invalid. **Phase 2b is the properly-scheduled re-measurement that diagnosis called for**, and it resolves the retraction rather than merely explaining it.
+The paragraphs above stop at a diagnosis: the clean room explained *why* the opus number collapsed, but the isolated dense-versus-sparse comparison could not be published as a fix, because it crossed a schedule-version confound this repo already treats as invalid. **Phase 2b is the properly-scheduled re-measurement that diagnosis called for.** It confirms the *claim* the retracted number gestured at — a dense-context length reduction — on a valid schedule, without un-retracting the original figure or proving density alone explains the entire earlier result.
 
 **Stated plainly: on opus, in realistic padded-dense context, BLUF prose genuinely compresses.** Across 30 prompts × 2 conditions × 5 trials (300 responses, ~120k input tokens per call — density chosen because that is the regime a real Claude Code session is always in), the balanced index is **−43.6% visible characters / −29.8% billed tokens**, with material reduction in **5 of 6 categories** and in **129 of 150 trials**. `multi-step` is the one exception, at a roughly-unchanged −9.1%. Full breakdown, per-category numbers, and the pre-registered uncertainty package are in [`RESULTS.md`](RESULTS.md); every row is committed under [`evals/results/`](evals/results/).
 
-**The earlier clean-room, low-context regime is what had masked the effect and driven the retraction.** That is now the settled explanation, not a hypothesis: the two-discrete-modes finding above showed sparse opus-5 already answering briefly *on its own* about half the time, leaving nothing for a brevity style to cut. Phase 2b removes that confound by design — it runs dense, not sparse — and the effect that vanished in the clean room reappears at a similar magnitude to the original, retracted −30.9%. **The style does reduce opus prose length; the clean room had simply put the model in a regime no real user occupies**, and measuring it there was the error, not the style's absence of an effect.
+**The earlier clean-room, low-context regime is the most likely reason the effect was masked.** This is the best-supported explanation, not a settled one: the two-discrete-modes finding above showed sparse opus-5 already answering briefly *on its own* about half the time, leaving little for a brevity style to cut — but that probe covered a single prompt, and the threshold is unmeasured. Phase 2b removes the confound by design — it runs dense, not sparse — and a dense-context reduction reappears at a magnitude near the original, retracted −30.9%. **The style does reduce opus prose length in a dense context; the clean room had put the model in a regime real sessions rarely occupy, and measuring there is the likeliest reason the effect vanished** — not proof that density alone explains the entire earlier aggregate.
 
 **This does not un-retract the number the clean room measured, and it should not be read as one.** The −30.9% stays retracted for the reasons already given: it crossed a schedule-version boundary this project treats as invalid, and no re-run of that exact confound is being published now either. What Phase 2b establishes is the *claim* the retracted number gestured at — that BLUF shortens opus's prose in a context density real sessions actually have — on a new, independent, and much larger measurement (30 prompts against the original 12, with a pre-registered protocol, a blinded 3-judge quality panel, and a full bootstrap uncertainty package) that does not share that confound.
 
 **Quality is regime-dependent, not uniformly safe, and Phase 2b says so plainly rather than rounding it off.** The length win does not come for free everywhere:
 
 - **`short-lookup` is a consistent, category-wide quality regression.** All three judges score it negative. BLUF gives the load-bearing fact but drops the surrounding context a completeness rubric rewards — `port-default` answering "5173" without mentioning `server.port`/configurability is the representative case.
-- **`conceptual-explain` is the one category with a clean PASS** under the pre-registered, deliberately conservative adoption gate (a category fails if *any* judge fails *any* prompt).
+- **`conceptual-explain` is the one category that PASSES the point-estimate adoption gate** (pre-registered, deliberately conservative — a category fails if *any* judge fails *any* prompt). Its per-prompt CIs are still wide, so read this as a point-estimate pass, not a guarantee.
 - **`long-list` is a cost regression, not a quality one:** +7.8% billed tokens even though visible characters still fall, because dense enumerations bill more per character than prose does.
 - The other three categories (`multi-step`, `debug-partial-evidence`, `options`) land in the pre-registered gate's CAUTION band — not clean passes, not clean failures.
 
@@ -455,6 +457,24 @@ ordering, not a commit hash.
 - **12/12 task success shows no adequacy penalty *at this scale*; it does not show there is
   none.** That question gets its own section below.
 
+### The lean variant, and why it can only shrink the penalty
+
+If the cost is a per-turn instruction tax, a smaller instruction file pays a smaller tax. The
+lean variant ([`output-styles/bluf-lean.md`](output-styles/bluf-lean.md)) is ~716 tokens against
+the full style's ~2,030 — 65% smaller (2,186 bytes against 6,177; the byte ratio stands in for
+the token ratio, and neither is a committed measurement).
+
+**The ~+6% projection, and its assumptions.** It scales the measured agentic penalty by the
+remaining instruction size: +18.3% × (716 / 2,030) ≈ +6.4%, rounded to ~+6%. This assumes the
+per-turn tax dominates the delta, that it scales linearly with instruction size, and that the
+model's behaviour is otherwise unchanged. **None of those is measured** — the lean variant has
+not been run through the sweep. Treat ~+6% as a lead, not a result.
+
+**It cannot make agentic work cheaper, only less expensive.** Output is a small share of the
+agentic bill, so the most a brevity style can save there is bounded by that share; shrinking the
+tax removes a penalty, it does not create a saving. The honest ceiling: a leaner style narrows
+the gap toward zero, it does not cross it. Confirming even the ~+6% requires a real re-run.
+
 ## Does it make anything faster?
 
 **No. The style has no measurable effect on wall-clock time.** 6 of 12 pairs faster under the
@@ -629,7 +649,7 @@ Nobody asked about port collisions or overrides. In the current run, the unstyle
 
 ## Reproducing
 
-The investment behind these figures is committed, not asserted: **1,034 recorded API calls** across 34 sweep files under [`evals/results/`](evals/results/) (a further 300 rows re-score the same calls text-only, for 1,334 rows over 37 files). Every figure in this repo and in the README recomputes from those rows — nothing here rests on a number you have to take on trust.
+The investment behind these figures is committed, not asserted: **1,034 recorded primary measurement rows** across 35 sweep files under [`evals/results/`](evals/results/) — superseded and archived runs included — plus 300 text-only re-scores of the same responses (1,334 rows over 37 files). Agentic rows each cover a full multi-turn session, so the underlying model and tool calls run higher still. Every *measured* figure in this repo and the README recomputes from these rows; the single exception is the lean-variant projection, labeled as such.
 
 ```bash
 npm test
