@@ -12,10 +12,10 @@
 
 | Regime | Result |
 | --- | --- |
-| **Chat / prose** | output **~44% shorter** on a balanced JS/web benchmark (opus-5, one model, realistic padded-dense context). Cheaper *only* once caching amortizes the re-sent instructions across a multi-turn chat — a one-shot question can lose money ([break-even math](STORY.md)). |
+| **Chat / prose** | output **~44% shorter** on a balanced JS/web benchmark (opus-5, one model, realistic padded-dense context). Whether it is also *cheaper* depends on your price ratio and how many turns share the cached instructions; a one-shot question can lose money (fable-only [break-even math](STORY.md)). |
 | **Agentic coding** | output **~31% tighter** to read (`textChars` −31.5%) but **+18.3%** more expensive to run — the style's ~2,030-token instructions get re-sent on every turn, and in coding work that's most of the bill. |
 
-A **lean, 65%-smaller variant** ([`output-styles/bluf-lean.md`](output-styles/bluf-lean.md)) projects to **~+6%** agentic, down from +18%. This is a **projection, not a measurement** — it has not been re-run through the sweep. Treat it as a lead, not a result. It scales the measured +18.3% by the variant's remaining instruction size and assumes the per-turn tax dominates linearly; the derivation and its assumptions are in [`STORY.md`](STORY.md).
+A **lean, 65%-smaller variant** ([`output-styles/bluf-lean.md`](output-styles/bluf-lean.md)) projects to **~+6%** agentic, down from +18%. This is a **projection, not a measurement** — it has not been re-run through the sweep. Treat it as a lead, not a result. It scales the dominant per-turn instruction tax by the variant's remaining size while holding the small output saving fixed; the derivation and its assumptions are in [`STORY.md`](STORY.md).
 
 ## Before / after
 
@@ -81,7 +81,7 @@ Run the same question twice, once under each style, in a fresh session each time
 
 ## More
 
-- [`STORY.md`](STORY.md) — the full narrative: the retraction, the follow-up that resolved it, the break-even math, and everything else that didn't fit here.
+- [`STORY.md`](STORY.md) — the full narrative: the retraction, the follow-up that confirmed the claim behind it, the break-even math, and everything else that didn't fit here.
 - [`RESULTS.md`](RESULTS.md) — the current, rigorous Phase 2b measurement.
 - [`evals/results/`](evals/results/) — every raw row, committed.
 

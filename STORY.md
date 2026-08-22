@@ -2,8 +2,8 @@
 
 This is the long version. [`README.md`](README.md) gives the headline numbers; this document
 carries the narrative behind them — the reasoning, the false starts, the retraction, and the
-follow-up that resolved it. For the rigorous interim numbers behind the Phase 2b resolution
-below, see [`RESULTS.md`](RESULTS.md). All raw rows are committed under
+follow-up that confirmed the claim behind it. For the rigorous interim numbers behind the Phase 2b
+re-measurement below, see [`RESULTS.md`](RESULTS.md). All raw rows are committed under
 [`evals/results/`](evals/results/).
 
 ## In plain terms
@@ -31,8 +31,8 @@ setup, where the tool carries a lot of background context. That made the result 
 machine, so we re-ran it in a stripped-down "clean room" to make it portable. The number
 collapsed. It turned out the clean room was the problem: with almost no context, one model
 started giving very short answers *on its own*, about half the time. There was nothing left for
-a brevity style to trim. The room we built to measure honestly had put the model somewhere no
-real user ever is. We kept the retraction anyway, because the two runs differ in a second way we
+a brevity style to trim. The room we built to measure honestly had put the model in a regime
+real sessions rarely occupy. We kept the retraction anyway, because the two runs differ in a second way we
 can't undo — a fuller explanation is in [The Opus result](#the-opus-result-stated-plainly).
 
 **Why "it saves a third" isn't the whole story.** Cutting a third off an answer is good if the
@@ -43,9 +43,9 @@ about debugging with almost no evidence to go on, it drops below. Brevity rules 
 difference between padding and the part where you explain how to find out.
 
 **One thing this project cannot tell you:** whether *you* will like the answers. Everything here
-measures length, cost, and whether code still worked. None of it measures whether the shorter
+measures length, cost, model-judged correctness and completeness, and whether code still worked. None of it measures whether the shorter
 reply was the one you wanted. That judgement is yours, and it takes about five minutes — see
-[Try it yourself](README.md#try-it-yourself).
+[Try it yourself](README.md#try-it-yourself-5-min).
 
 ## Before / after
 
@@ -165,7 +165,7 @@ It stays retracted regardless, for a reason the diagnosis cannot remove: every `
 
 The paragraphs above stop at a diagnosis: the clean room explained *why* the opus number collapsed, but the isolated dense-versus-sparse comparison could not be published as a fix, because it crossed a schedule-version confound this repo already treats as invalid. **Phase 2b is the properly-scheduled re-measurement that diagnosis called for.** It confirms the *claim* the retracted number gestured at — a dense-context length reduction — on a valid schedule, without un-retracting the original figure or proving density alone explains the entire earlier result.
 
-**Stated plainly: on opus, in realistic padded-dense context, BLUF prose genuinely compresses.** Across 30 prompts × 2 conditions × 5 trials (300 responses, ~120k input tokens per call — density chosen because that is the regime a real Claude Code session is always in), the balanced index is **−43.6% visible characters / −29.8% billed tokens**, with material reduction in **5 of 6 categories** and in **129 of 150 trials**. `multi-step` is the one exception, at a roughly-unchanged −9.1%. Full breakdown, per-category numbers, and the pre-registered uncertainty package are in [`RESULTS.md`](RESULTS.md); every row is committed under [`evals/results/`](evals/results/).
+**Stated plainly: on opus, in realistic padded-dense context, BLUF prose genuinely compresses.** Across 30 prompts × 2 conditions × 5 trials (300 responses, ~120k input tokens per call — density chosen because a real Claude Code session typically carries substantial context), the balanced index is **−43.6% visible characters / −29.8% billed tokens**, with material reduction in **5 of 6 categories** and in **129 of 150 trials**. `multi-step` is the one exception, at a roughly-unchanged −9.1%. Full breakdown, per-category numbers, and the pre-registered uncertainty package are in [`RESULTS.md`](RESULTS.md); every row is committed under [`evals/results/`](evals/results/).
 
 **The earlier clean-room, low-context regime is the most likely reason the effect was masked.** This is the best-supported explanation, not a settled one: the two-discrete-modes finding above showed sparse opus-5 already answering briefly *on its own* about half the time, leaving little for a brevity style to cut — but that probe covered a single prompt, and the threshold is unmeasured. Phase 2b removes the confound by design — it runs dense, not sparse — and a dense-context reduction reappears at a magnitude near the original, retracted −30.9%. **The style does reduce opus prose length in a dense context; the clean room had put the model in a regime real sessions rarely occupy, and measuring there is the likeliest reason the effect vanished** — not proof that density alone explains the entire earlier aggregate.
 
@@ -178,7 +178,7 @@ The paragraphs above stop at a diagnosis: the clean room explained *why* the opu
 - **`long-list` is a cost regression, not a quality one:** +7.8% billed tokens even though visible characters still fall, because dense enumerations bill more per character than prose does.
 - The other three categories (`multi-step`, `debug-partial-evidence`, `options`) land in the pre-registered gate's CAUTION band — not clean passes, not clean failures.
 
-**This is an interim report, and the interim caveats bind here too.** The quality panel is model-judged (Codex, Sonnet, and a local Ollama model), not yet human-validated; the pre-registered mandatory operator cross-check has not run. Treat "Phase 2b resolves the retraction" as resolving the *length* question with confirmatory-scale evidence, and the *quality* question as regime-dependent and still open pending the human step. See [`RESULTS.md`](RESULTS.md) in full for the adoption-gate table, the per-prompt confirmed regressions, the judge-agreement statistics, and the uncertainty package this summary compresses.
+**This is an interim report, and the interim caveats bind here too.** The quality panel is model-judged (Codex, Sonnet, and a local Ollama model), not yet human-validated; the pre-registered mandatory operator cross-check has not run. Treat Phase 2b as confirming the *length* claim with confirmatory-scale evidence, and the *quality* question as regime-dependent and still open pending the human step. See [`RESULTS.md`](RESULTS.md) in full for the adoption-gate table, the per-prompt confirmed regressions, the judge-agreement statistics, and the uncertainty package this summary compresses.
 
 ### What it costs
 
@@ -195,7 +195,7 @@ Fable's figure is rounded for display; break-even below divides by the **unround
 **No opus figure is published here.** The same statistic computes to 139.5 on opus, but the
 category-clustered range for opus spans zero, so that number describes noise as much as the
 style. Quoting it would be the same mistake this project retracted once already. (Phase 2b, above,
-resolves the retraction in a different, denser context; it does not license quoting this
+confirms the length claim in a different, denser context; it does not license quoting this
 particular sparse-context statistic, which is exactly the one the retraction was about.)
 
 The statistic is the median of the per-trial means, matching the [Variance](#variance) section.
@@ -464,16 +464,22 @@ lean variant ([`output-styles/bluf-lean.md`](output-styles/bluf-lean.md)) is ~71
 the full style's ~2,030 — 65% smaller (2,186 bytes against 6,177; the byte ratio stands in for
 the token ratio, and neither is a committed measurement).
 
-**The ~+6% projection, and its assumptions.** It scales the measured agentic penalty by the
-remaining instruction size: +18.3% × (716 / 2,030) ≈ +6.4%, rounded to ~+6%. This assumes the
-per-turn tax dominates the delta, that it scales linearly with instruction size, and that the
-model's behaviour is otherwise unchanged. **None of those is measured** — the lean variant has
-not been run through the sweep. Treat ~+6% as a lead, not a result.
+**The ~+6% projection, and its assumptions.** The measured +18.3% net is not one quantity. It is
+a per-turn instruction *tax* — a debit that scales with instruction size — minus a small *output
+saving*, a credit that does not scale with it. The honest projection scales only the tax and
+holds the credit fixed. Because the tax is by far the dominant term (output is under 1% of the
+agentic bill), scaling it by the lean variant's size lands near +18.3% × (716 / 2,030) ≈ **+6%**
+— the naive whole-delta scaling coincides here only because the credit is tiny. This assumes the
+tax dominates the delta, scales linearly with instruction size, and that the model's behaviour
+and its output saving are otherwise unchanged. **None of that is measured** — the lean variant
+has not been run through the sweep. Treat ~+6% as a lead, not a result.
 
-**It cannot make agentic work cheaper, only less expensive.** Output is a small share of the
-agentic bill, so the most a brevity style can save there is bounded by that share; shrinking the
-tax removes a penalty, it does not create a saving. The honest ceiling: a leaner style narrows
-the gap toward zero, it does not cross it. Confirming even the ~+6% requires a real re-run.
+**A leaner style shrinks the penalty; it does not turn agentic into a saving.** Output is a small
+share of the agentic bill (under 1% by raw token count), so the credit a brevity style can earn
+there is tiny. Shrinking the tax removes most of a penalty; it does not create a meaningful
+saving. In principle a style small enough for that tiny credit to exceed its residual tax could
+dip marginally below break-even — but no style large enough to carry these rules gets there.
+Confirming even the ~+6% requires a real re-run.
 
 ## Does it make anything faster?
 
@@ -718,10 +724,10 @@ and their report are preserved unchanged at
 is not a smaller number but the absence of one, plus the measured reason: the unstyled opus
 baseline varies 80% between sweeps in that environment, against 3.2% in the old one.
 
-**This retraction stays on the record. It is not silently dropped, and it is now resolved.**
-Phase 2b (see [Phase 2b resolves the retraction](#phase-2b-resolves-the-retraction) above and
+**This retraction stays on the record. It is not silently dropped, and the claim it gestured at is now confirmed.**
+Phase 2b (see [Phase 2b confirms the dense-context claim](#phase-2b-confirms-the-dense-context-claim) above and
 [`RESULTS.md`](RESULTS.md) in full) re-measured opus prose reduction in the padded-dense context
-a real Claude Code session actually runs in, at confirmatory scale — 30 prompts, 300 responses,
+real Claude Code sessions typically run in, at confirmatory scale — 30 prompts, 300 responses,
 a pre-registered protocol — and found a genuine, material reduction: **−43.6% chars / −29.8%
 tokens**, in 5 of 6 categories and 129 of 150 trials. That result does not retroactively validate
 the retracted −30.9% figure, which crossed a schedule-version boundary this project still treats
