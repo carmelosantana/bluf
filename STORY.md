@@ -207,7 +207,8 @@ instead of leaving this document stale.
 **Input added, split by how it bills.** From the committed amortization slice — two turns of
 one session per condition, on `port-default` in the lean environment, on **claude-opus-5
 only**. The committed run covered three conditions (18 calls), including the retired terse
-arm, whose rows are preserved unchanged; a re-run of `npm run measure:amortization` today
+arm — an earlier, more aggressive variant kept in [`archive/`](archive/) — whose rows are
+preserved unchanged; a re-run of `npm run measure:amortization` today
 covers two (12 calls):
 
 | Variant | Turn | Cache write | Cache read | Total input added |
@@ -644,7 +645,7 @@ npm run measure:agentic
 npm run measure:amortization
 ```
 
-`npm test` runs 437 tests with zero dependencies on Node 22+.
+`npm test` runs 590 tests with zero dependencies on Node 22+.
 
 **`TRIALS=5 npm run measure` makes 260 live API calls and costs real money** — 12 cases × 2 conditions × 5 trials × 2 models in the clean environment (240 calls), plus 2 overhead cases × 2 conditions × 5 trials in the lean environment (20). The only measured cost figure is for a different design and does not transfer: the last full run — 3 trials, full environment, still carrying a third condition at 234 calls — cost roughly $48–54. The sweep is not part of `npm test` and nothing runs it by accident. It refuses to start while any file it would write is tracked by git, so committed evidence has to be preserved under a versioned name (or sacrificed by name via an environment variable the refusal message documents) before it rewrites `evals/results/`. Omit `TRIALS` for a single-trial run of 52 calls, which is cheaper and correspondingly less trustworthy.
 
